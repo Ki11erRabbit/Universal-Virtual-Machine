@@ -8,7 +8,7 @@ use std::array::from_fn;
 
 use crate::instruction::Opcode;
 
-#[derive(Debug)]
+#[derive(Debug,PartialEq)]
 pub enum RegisterType {
     Register64,
     Register128,
@@ -17,7 +17,7 @@ pub enum RegisterType {
     RegisterAtomic64,
 }
 
-#[derive(Debug)]
+#[derive(Debug,PartialEq)]
 pub enum Fault {
     ProgramLock,
     InvalidOperation,
@@ -1263,6 +1263,10 @@ impl Core {
                 let reg1_value = self.registers_64[register1] as i8;
                 let reg2_value = self.registers_64[register2] as i8;
 
+                if reg2_value == 0 {
+                    return Err(Fault::DivideByZero);
+                }
+
                 self.remainder_64 = (reg1_value % reg2_value) as usize;
                 
                 let new_value = reg1_value / reg2_value;
@@ -1297,6 +1301,10 @@ impl Core {
                 }
                 let reg1_value = self.registers_64[register1] as i16;
                 let reg2_value = self.registers_64[register2] as i16;
+
+                if reg2_value == 0 {
+                    return Err(Fault::DivideByZero);
+                }
 
                 self.remainder_64 = (reg1_value % reg2_value) as usize;
                 
@@ -1334,6 +1342,10 @@ impl Core {
                 let reg1_value = self.registers_64[register1] as i32;
                 let reg2_value = self.registers_64[register2] as i32;
 
+                if reg2_value == 0 {
+                    return Err(Fault::DivideByZero);
+                }
+
                 self.remainder_64 = (reg1_value % reg2_value) as usize;
                 
                 let new_value = reg1_value / reg2_value;
@@ -1368,6 +1380,10 @@ impl Core {
                 }
                 let reg1_value = self.registers_64[register1] as i64;
                 let reg2_value = self.registers_64[register2] as i64;
+
+                if reg2_value == 0 {
+                    return Err(Fault::DivideByZero);
+                }
 
                 self.remainder_64 = (reg1_value % reg2_value) as usize;
                 
@@ -1404,6 +1420,10 @@ impl Core {
                 }
                 let reg1_value = self.registers_128[register1] as i128;
                 let reg2_value = self.registers_128[register2] as i128;
+
+                if reg2_value == 0 {
+                    return Err(Fault::DivideByZero);
+                }
 
                 self.remainder_128 = (reg1_value % reg2_value) as u128;
                 
@@ -1505,6 +1525,25 @@ mod tests {
         assert_eq!(core.registers_64[0] as i64, 1);
         assert_eq!(core.remainder_64 as i64, 1);
         assert_eq!(core.sign_flag, Sign::Positive);
+    }
+
+    #[test]
+    fn test_divi_by_zero() {
+        let program = vec![9,0,64,0,1];
+        let memory = Arc::new(RwLock::new(Vec::new()));
+        let mut core = Core::new(memory, Arc::new(RwLock::new(program)));
+
+        core.registers_64[0] = 4;
+        core.registers_64[1] = 0;
+
+        let result = core.run(0);
+
+        if result.is_ok() {
+            panic!("Divide by zero did not return an error");
+        }
+        else {
+            assert_eq!(result.unwrap_err(), Fault::DivideByZero, "Divide by zero was successfull but should have failed");
+        }
     }
 
 
