@@ -137,6 +137,20 @@ pub enum Opcode {
     /* Instructions for memory management */
     Malloc,
     Free,
+    /* IO instructions */
+    ReadByte,
+    /* Takes a string pointer and a length */
+    Read,
+    WriteByte,
+    /* Takes a string pointer and a length */
+    Write,
+    /* Takes a string pointer and a length */
+    Open,
+    /* Takes a file descriptor */
+    Flush,
+    /* Instructions for threads */
+    Thread,
+    
     
 
     /* Instructions illegal instruction */
@@ -281,6 +295,16 @@ impl From<u16> for Opcode {
             /* Instructions for memory management */
             141 => Malloc,
             142 => Free,
+            /* IO instructions */
+            143 => ReadByte,
+            144 => Read,
+            145 => WriteByte,
+            146 => Write,
+            147 => Open,
+            148 => Flush,
+            /* Instructions for threads */
+            149 => Thread,
+            
             
             /* Instructions illegal instruction */
             _ => Illegal,
