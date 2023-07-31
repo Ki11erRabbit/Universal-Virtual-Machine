@@ -1,19 +1,7 @@
-pub mod assembler;
+//pub mod assembler;
 pub mod instruction;
 pub mod virtual_machine;
 
 
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}

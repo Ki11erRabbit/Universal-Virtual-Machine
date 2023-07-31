@@ -8,7 +8,7 @@ use std::array::from_fn;
 
 use crate::instruction::Opcode;
 
-
+#[derive(Debug)]
 pub enum RegisterType {
     Register64,
     Register128,
@@ -17,6 +17,7 @@ pub enum RegisterType {
     RegisterAtomic64,
 }
 
+#[derive(Debug)]
 pub enum Fault {
     ProgramLock,
     InvalidOperation,
@@ -32,7 +33,7 @@ pub enum Fault {
 
 pub struct Machine {
     heap: Arc<RwLock<Vec<u8>>>,
-    cores: Vec<Arc<RwLock<Core>>>,
+    //cores: Vec<Arc<RwLock<Core>>>,
     core_threads: Vec<JoinHandle<Result<(),Fault>>>,
     program: Option<Arc<RwLock<Vec<u8>>>>,
 }
@@ -42,27 +43,34 @@ impl Machine {
     pub fn new() -> Machine {
         Machine {
             heap: Arc::new(RwLock::new(Vec::new())),
-            cores: Vec::new(),
+     //       cores: Vec::new(),
             core_threads: Vec::new(),
             program: None,
         }
     }
 
     pub fn add_core(&mut self, core: Core, program_counter: usize) {
-        let core = Arc::new(RwLock::new(core));
         let core_thread = {
-            let core = core.clone();
             thread::spawn(move || {
-                let mut core = core.write().unwrap();
-                core.run(program_counter);
+                let mut core = core;
+                core.run(program_counter)
             })
         };
-        self.cores.push(core);
+        //self.cores.push(core);
         self.core_threads.push(core_thread);
     }
 
     pub fn add_program(&mut self, program: Vec<u8>) {
         self.program = Some(Arc::new(RwLock::new(program)));
+    }
+
+    pub fn core_count(&self) -> usize {
+        self.core_threads.len()
+    }
+
+    pub fn run_single(&mut self) -> Result<(),Fault> {
+        let mut core = Core::new(self.heap.clone(),self.program.clone().unwrap());
+        core.run(0)
     }
 
 
@@ -75,6 +83,7 @@ const REGISTER_F32_COUNT: usize = 8;
 const REGISTER_F64_COUNT: usize = 8;
 const REGISTER_ATOMIC_64_COUNT: usize = 8;
 
+#[derive(Debug,PartialEq)]
 pub enum Sign {
     Positive,
     Negative,
@@ -107,7 +116,7 @@ pub struct Core {
 }
     
 impl Core {
-    pub fn new(memory: Arc<RwLock<Vec<u8>>>, program: Arc<RwLock<Vec<u8>>>,program_counter: usize) -> Core {
+    pub fn new(memory: Arc<RwLock<Vec<u8>>>, program: Arc<RwLock<Vec<u8>>>) -> Core {
         Core {
             registers_64: [0; 16],
             registers_128: [0; 8],
@@ -120,7 +129,7 @@ impl Core {
             zero_flag: false,
             sign_flag: Sign::Positive,
             overflow_flag: false,
-            program_counter,
+            program_counter: 0,
             pipeline_counter: 0,
             stack: Vec::new(),
             pipeline: Vec::new(),
@@ -128,6 +137,7 @@ impl Core {
             memory,
         }
     }
+
     #[inline]
     fn advance_by_size(&mut self, size: usize) {
         self.program_counter += size;
@@ -151,9 +161,19 @@ impl Core {
 
     pub fn run(&mut self, program_counter: usize) -> Result<(),Fault> {
         self.program_counter = program_counter;
-        // TODO: initialize pipeline
+
+        let pipeline = {
+            let program = self.program.read().unwrap();
+            program[..].to_vec().clone()
+        };
+        println!("Pipeline: {:?}",pipeline);
+        println!("Program {:?}",self.program);
+        self.pipeline = pipeline;
+        
         let mut is_done = false;
+        println!("Running core");
         while !is_done {
+            println!("Running instruction");
             is_done = self.execute_instruction()?;
         }
         Ok(())
@@ -167,14 +187,17 @@ impl Core {
     #[inline]
     fn check_program_counter(&self) -> Result<bool,Fault> {
         loop {
+            //println!("Checking program counter");
+            //println!("Program {:?}",self.program);
             match self.program.try_read() {
                 Ok(program) => {
                     if self.program_counter >= program.len() {
                         return Ok(true);
                     }
+                    return Ok(false);
                 },
                 TryLockResult::Err(TryLockError::WouldBlock) => {
-                    thread::yield_now();
+                    //thread::yield_now();
                     continue;
                 },
                 Err(_) => {
@@ -193,10 +216,16 @@ impl Core {
 
     fn execute_instruction(&mut self) -> Result<bool, Fault> {
         if self.check_program_counter()? {
+            println!("Program counter out of bounds");
             return Ok(true);
         }
         use Opcode::*;
-        match self.decode_opcode() {
+
+        let opcode = self.decode_opcode();
+
+        println!("Executing opcode: {:?}", opcode);
+        
+        match opcode {
             Halt | NoOp => return Ok(true),
             Set => self.set_opcode()?,
             DeRef => self.deref_opcode()?,
@@ -651,6 +680,9 @@ impl Core {
                         },
                     }
                 }
+            }
+            _ => {
+                return Err(Fault::InvalidSize);
             }
 
         }
@@ -1412,8 +1444,68 @@ impl Core {
 
 
 #[cfg(test)]
-mod machine_tests {
+mod tests {
+    use super::*;
 
+    #[test]
+    fn test_addi() {
+        let program = Arc::new(RwLock::new(vec![6,0,64,0,1]));
+        let memory = Arc::new(RwLock::new(Vec::new()));
+        let mut core = Core::new(memory, program.clone());
+
+        core.registers_64[0] = 1;
+        core.registers_64[1] = 2;
+
+        core.run(0).unwrap();
+
+        assert_eq!(core.registers_64[0] as i64, 3);
+    }
+
+    #[test]
+    fn test_subi() {
+        let program = vec![7,0,64,0,1];
+        let memory = Arc::new(RwLock::new(Vec::new()));
+        let mut core = Core::new(memory, Arc::new(RwLock::new(program)));
+
+        core.registers_64[0] = 1;
+        core.registers_64[1] = 2;
+
+        core.run(0).unwrap();
+
+        assert_eq!(core.registers_64[0] as i64, -1);
+        assert_eq!(core.sign_flag, Sign::Negative);
+    }
+
+    #[test]
+    fn test_muli() {
+        let program = vec![8,0,64,0,1];
+        let memory = Arc::new(RwLock::new(Vec::new()));
+        let mut core = Core::new(memory, Arc::new(RwLock::new(program)));
+
+        core.registers_64[0] = 2;
+        core.registers_64[1] = 2;
+
+        core.run(0).unwrap();
+
+        assert_eq!(core.registers_64[0] as i64, 4);
+        assert_eq!(core.sign_flag, Sign::Positive);
+    }
+
+    #[test]
+    fn test_divi() {
+        let program = vec![9,0,64,0,1];
+        let memory = Arc::new(RwLock::new(Vec::new()));
+        let mut core = Core::new(memory, Arc::new(RwLock::new(program)));
+
+        core.registers_64[0] = 4;
+        core.registers_64[1] = 3;
+
+        core.run(0).unwrap();
+
+        assert_eq!(core.registers_64[0] as i64, 1);
+        assert_eq!(core.remainder_64 as i64, 1);
+        assert_eq!(core.sign_flag, Sign::Positive);
+    }
 
 
 }
