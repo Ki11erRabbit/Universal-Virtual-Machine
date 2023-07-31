@@ -25,6 +25,7 @@ pub enum Fault {
     InvalidMemory,
     InvalidAddress(u64),
     DivideByZero,
+    CorruptedMemory,
 
 }
 
@@ -87,6 +88,26 @@ impl Core {
             memory,
         }
     }
+    #[inline]
+    fn advance_by_size(&mut self, size: usize) {
+        self.program_counter += size;
+        self.pipeline_counter += size;
+    }
+    fn advance_by_1_byte(&mut self) {
+        self.advance_by_size(1);
+    }
+    fn advance_by_2_bytes(&mut self) {
+        self.advance_by_size(2);
+    }
+    fn advance_by_4_bytes(&mut self) {
+        self.advance_by_size(4);
+    }
+    fn advance_by_8_bytes(&mut self) {
+        self.advance_by_size(8);
+    }
+    fn advance_by_16_bytes(&mut self) {
+        self.advance_by_size(16);
+    }
 
     pub fn run(&mut self) -> Result<(),Fault> {
         let mut is_done = false;
@@ -115,7 +136,7 @@ impl Core {
                     continue;
                 },
                 Err(_) => {
-                    return Err(Fault::ProgramLock);
+                    return Err(Fault::CorruptedMemory);
                 },
             }
         }
@@ -123,8 +144,7 @@ impl Core {
 
     fn decode_opcode(&mut self) -> Opcode {
         let opcode = Opcode::from(self.pipeline[self.pipeline_counter] as u16);
-        self.program_counter += 2;
-        self.pipeline_counter += 2;
+        self.advance_by_2_bytes();
         return opcode;
 
     }
@@ -136,106 +156,10 @@ impl Core {
         use Opcode::*;
         match self.decode_opcode() {
             Halt | NoOp => return Ok(true),
-            Load => {
-                let size = self.pipeline[self.pipeline_counter] as usize;
-                self.pipeline_counter += 1;
-                self.program_counter += 1;
-                let register = self.pipeline[self.pipeline_counter] as usize;
-                self.pipeline_counter += 1;
-                self.program_counter += 1;
-                match size {
-                    8 => {
-                        let value = self.pipeline[self.pipeline_counter] as u8;
-                        if register >= REGISTER_64_COUNT {
-                            return Err(Fault::InvalidRegister(register, RegisterType::Register64));
-                        }
-                        self.registers_64[register] = value as u64;
-                        self.pipeline_counter += 1;
-                        self.program_counter += 1;
-                    },
-                    16 => {
-                        let value = self.pipeline[self.pipeline_counter] as u16;
-                        if register >= REGISTER_64_COUNT {
-                            return Err(Fault::InvalidRegister(register, RegisterType::Register64));
-                        }
-                        self.registers_64[register] = value as u64;
-                        self.pipeline_counter += 2;
-                        self.program_counter += 2;
-                    },
-                    32 => {
-                        let value = self.pipeline[self.pipeline_counter] as u32;
-                        if register >= REGISTER_64_COUNT {
-                            return Err(Fault::InvalidRegister(register, RegisterType::Register64));
-                        }
-                        self.registers_64[register] = value as u64;
-                        self.pipeline_counter += 4;
-                        self.program_counter += 4;
-                    },
-                    64 => {
-                        let value = self.pipeline[self.pipeline_counter] as u64;
-                        if register >= REGISTER_64_COUNT {
-                            return Err(Fault::InvalidRegister(register, RegisterType::Register64));
-                        }
-                        self.registers_64[register] = value as u64;
-                        self.pipeline_counter += 8;
-                        self.program_counter += 8;
-                    },
-                    128 => {
-                        let value = self.pipeline[self.pipeline_counter] as u128;
-                        if register >= REGISTER_128_COUNT {
-                            return Err(Fault::InvalidRegister(register, RegisterType::Register128));
-                        }
-                        self.registers_128[register] = value as u128;
-                        self.pipeline_counter += 16;
-                        self.program_counter += 16;
-                    },
-                    _ => return Err(Fault::InvalidSize),
-                }
-                
-            },
-            DeRef => {
-                let size = self.pipeline[self.pipeline_counter] as usize;
-                self.pipeline_counter += 1;
-                self.program_counter += 1;
-                let register = self.pipeline[self.pipeline_counter] as usize;
-                self.pipeline_counter += 1;
-                self.program_counter += 1;
-                let address = self.registers_64[register];
-                let memory = self.memory.read().unwrap();
-                match size {
-                    8 => {
-                        if address >= memory.len() as u64 && address >= self.stack.len() as u64 {
-                            return Err(Fault::InvalidAddress(address));
-                        }
-                        self.registers_64[register] = (memory[address as usize] as u8) as u64;
-                    },
-                    16 => {
-                        if address >= memory.len() as u64 - 1 {
-                            return Err(Fault::InvalidAddress(address));
-                        }
-                        self.registers_64[register] = (memory[address as usize] as u16) as u64;
-                    },
-                    32 => {
-                        if address >= memory.len() as u64 - 3 {
-                            return Err(Fault::InvalidAddress(address));
-                        }
-                        self.registers_64[register] = (memory[address as usize] as u32) as u64;
-                    },
-                    64 => {
-                        if address >= memory.len() as u64 - 7 {
-                            return Err(Fault::InvalidAddress(address));
-                        }
-                        self.registers_64[register] = (memory[address as usize] as u64) as u64;
-                    },
-                    128 => {
-                        if address >= memory.len() as u64 - 15 {
-                            return Err(Fault::InvalidAddress(address));
-                        }
-                        self.registers_128[register] = (memory[address as usize] as u128) as u128;
-                    },
-                    _ => return Err(Fault::InvalidSize),
-                }
-            },
+            Set => self.set_opcode()?,
+            DeRef => self.deref_opcode()?,
+            Move => self.move_opcode()?,
+            DeRefReg => self.deref_reg_opcode()?,
 
             _ => return Err(Fault::InvalidOperation),
             
@@ -245,4 +169,449 @@ impl Core {
         Ok(false)
             
     }
+
+
+    fn set_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.pipeline[self.pipeline_counter] as usize;
+        self.advance_by_1_byte();
+        let register = self.pipeline[self.pipeline_counter] as usize;
+        self.advance_by_1_byte();
+        match size {
+            8 => {
+                let value = self.pipeline[self.pipeline_counter] as u8;
+                if register >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register, RegisterType::Register64));
+                }
+                self.registers_64[register] = value as u64;
+                self.advance_by_1_byte();
+            },
+            16 => {
+                let value = self.pipeline[self.pipeline_counter] as u16;
+                if register >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register, RegisterType::Register64));
+                }
+                self.registers_64[register] = value as u64;
+                self.advance_by_2_bytes();
+            },
+            32 => {
+                let value = self.pipeline[self.pipeline_counter] as u32;
+                if register >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register, RegisterType::Register64));
+                }
+                self.registers_64[register] = value as u64;
+                self.advance_by_4_bytes();
+            },
+            64 => {
+                let value = self.pipeline[self.pipeline_counter] as u64;
+                if register >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register, RegisterType::Register64));
+                }
+                self.registers_64[register] = value as u64;
+                self.advance_by_8_bytes();
+            },
+            128 => {
+                let value = self.pipeline[self.pipeline_counter] as u128;
+                if register >= REGISTER_128_COUNT {
+                    return Err(Fault::InvalidRegister(register, RegisterType::Register128));
+                }
+                self.registers_128[register] = value as u128;
+                self.advance_by_16_bytes();
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+        Ok(())
+    }
+
+    fn deref_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.pipeline[self.pipeline_counter] as usize;
+        self.advance_by_1_byte();
+        let register = self.pipeline[self.pipeline_counter] as usize;
+        self.advance_by_1_byte();
+        let address = self.registers_64[register];
+        match size {
+            8 => {
+                let memory = self.memory.read().unwrap();
+                if address >= memory.len() as u64 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+                self.registers_64[register] = (memory[address as usize] as u8) as u64;
+                drop(memory);
+                self.advance_by_1_byte();
+            },
+            16 => {
+                let memory = self.memory.read().unwrap();
+                if address >= memory.len() as u64 - 1 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+                self.registers_64[register] = (memory[address as usize] as u16) as u64;
+                drop(memory);
+                self.advance_by_2_bytes();
+            },
+            32 => {
+                let memory = self.memory.read().unwrap();
+                if address >= memory.len() as u64 - 3 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+                self.registers_64[register] = (memory[address as usize] as u32) as u64;
+                drop(memory);
+                self.advance_by_4_bytes();
+            },
+            64 => {
+                let memory = self.memory.read().unwrap();
+                if address >= memory.len() as u64 - 7 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+                self.registers_64[register] = (memory[address as usize] as u64) as u64;
+                drop(memory);
+                self.advance_by_8_bytes();
+            },
+            128 => {
+                let memory = self.memory.read().unwrap();
+                if address >= memory.len() as u64 - 15 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+                self.registers_128[register] = (memory[address as usize] as u128) as u128;
+                drop(memory);
+                self.advance_by_16_bytes();
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+        Ok(())
+    }
+
+    fn move_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.pipeline[self.pipeline_counter] as usize;
+        self.advance_by_1_byte();
+        let register = self.pipeline[self.pipeline_counter] as usize;
+        self.advance_by_1_byte();
+        match size {
+            8 => {
+                if register >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register, RegisterType::Register64));
+                }
+                let address = self.pipeline[self.pipeline_counter] as u64;
+                self.advance_by_8_bytes();
+                loop {
+                    match self.memory.try_write() {
+                        Ok(mut memory) => {
+                            if address >= memory.len() as u64 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            memory[address as usize] = self.registers_64[register] as u8;
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => {
+                            thread::yield_now();
+                            continue;
+                        },
+                        Err(_) => {
+                            return Err(Fault::CorruptedMemory);
+                        },
+                    }
+                }
+            },
+            16 => {
+                if register >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register, RegisterType::Register64));
+                }
+                let address = self.pipeline[self.pipeline_counter] as u64;
+                self.advance_by_8_bytes();
+                loop {
+                    match self.memory.try_write() {
+                        Ok(mut memory) => {
+                            if address >= memory.len() as u64 - 1 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            memory[address as usize] = (self.registers_64[register] >> 8) as u8;
+                            memory[address as usize + 1] = self.registers_64[register] as u8;
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => {
+                            thread::yield_now();
+                            continue;
+                        },
+                        Err(_) => {
+                            return Err(Fault::CorruptedMemory);
+                        },
+                    }
+                }
+            },
+            32 => {
+                if register >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register, RegisterType::Register64));
+                }
+                let address = self.pipeline[self.pipeline_counter] as u64;
+                self.advance_by_8_bytes();
+                loop {
+                    match self.memory.try_write() {
+                        Ok(mut memory) => {
+                            if address >= memory.len() as u64 - 3 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            memory[address as usize] = (self.registers_64[register] >> 24) as u8;
+                            memory[address as usize + 1] = (self.registers_64[register] >> 16) as u8;
+                            memory[address as usize + 2] = (self.registers_64[register] >> 8) as u8;
+                            memory[address as usize + 3] = self.registers_64[register] as u8;
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => {
+                            thread::yield_now();
+                            continue;
+                        },
+                        Err(_) => {
+                            return Err(Fault::CorruptedMemory);
+                        },
+                    }
+                }
+            },
+            64 => {
+                if register >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register, RegisterType::Register64));
+                }
+                let address = self.pipeline[self.pipeline_counter] as u64;
+                self.advance_by_8_bytes();
+                loop {
+                    match self.memory.try_write() {
+                        Ok(mut memory) => {
+                            if address >= memory.len() as u64 - 7 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            memory[address as usize] = (self.registers_64[register] >> 56) as u8;
+                            memory[address as usize + 1] = (self.registers_64[register] >> 48) as u8;
+                            memory[address as usize + 2] = (self.registers_64[register] >> 40) as u8;
+                            memory[address as usize + 3] = (self.registers_64[register] >> 32) as u8;
+                            memory[address as usize + 4] = (self.registers_64[register] >> 24) as u8;
+                            memory[address as usize + 5] = (self.registers_64[register] >> 16) as u8;
+                            memory[address as usize + 6] = (self.registers_64[register] >> 8) as u8;
+                            memory[address as usize + 7] = self.registers_64[register] as u8;
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => {
+                            thread::yield_now();
+                            continue;
+                        },
+                        Err(_) => {
+                            return Err(Fault::CorruptedMemory);
+                        },
+                    }
+                }
+            },
+            128 => {
+                if register >= REGISTER_128_COUNT {
+                    return Err(Fault::InvalidRegister(register, RegisterType::Register128));
+                }
+                let address = self.pipeline[self.pipeline_counter] as u64;
+                self.advance_by_8_bytes();
+                loop {
+                    match self.memory.try_write() {
+                        Ok(mut memory) => {
+                            if address >= memory.len() as u64 - 15 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            memory[address as usize] = (self.registers_128[register] >> 120) as u8;
+                            memory[address as usize + 1] = (self.registers_128[register] >> 112) as u8;
+                            memory[address as usize + 2] = (self.registers_128[register] >> 104) as u8;
+                            memory[address as usize + 3] = (self.registers_128[register] >> 96) as u8;
+                            memory[address as usize + 4] = (self.registers_128[register] >> 88) as u8;
+                            memory[address as usize + 5] = (self.registers_128[register] >> 80) as u8;
+                            memory[address as usize + 6] = (self.registers_128[register] >> 72) as u8;
+                            memory[address as usize + 7] = (self.registers_128[register] >> 64) as u8;
+                            memory[address as usize + 8] = (self.registers_128[register] >> 56) as u8;
+                            memory[address as usize + 9] = (self.registers_128[register] >> 48) as u8;
+                            memory[address as usize + 10] = (self.registers_128[register] >> 40) as u8;
+                            memory[address as usize + 11] = (self.registers_128[register] >> 32) as u8;
+                            memory[address as usize + 12] = (self.registers_128[register] >> 24) as u8;
+                            memory[address as usize + 13] = (self.registers_128[register] >> 16) as u8;
+                            memory[address as usize + 14] = (self.registers_128[register] >> 8) as u8;
+                            memory[address as usize + 15] = self.registers_128[register] as u8;
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => {
+                            thread::yield_now();
+                            continue;
+                        },
+                        Err(_) => {
+                            return Err(Fault::CorruptedMemory);
+                        },
+                    }
+                }
+
+            },
+            _ => return Err(Fault::InvalidSize),
+
+        }
+        Ok(())
+    }
+
+    fn derefreg_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+        let register = self.pipeline[self.pipeline_counter] as usize;
+        self.advance_by_1_byte();
+        let address_register = self.pipeline[self.pipeline_counter] as usize;
+        if address_register >= REGISTER_64_COUNT {
+            return Err(Fault::InvalidRegister(register, RegisterType::Register64));
+        }
+        self.advance_by_1_byte();
+        let offset = self.pipeline[self.pipeline_counter] as i64;
+        self.advance_by_8_bytes();
+        let address = self.registers_64[address_register] as i64 + offset;
+        let address = address as u64;
+
+        match size {
+            8 => {
+                if register >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register, RegisterType::Register64));
+                }
+
+                loop {
+                    match self.memory.try_read() {
+                        Ok(memory) => {
+                            if address >= memory.len() as u64 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            self.registers_64[register] = (memory[address as usize] as u8) as u64;
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => {
+                            thread::yield_now();
+                            continue;
+                        },
+                        Err(_) => {
+                            return Err(Fault::CorruptedMemory);
+                        },
+                    }
+                }
+                
+            },
+            16 => {
+                if register >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register, RegisterType::Register64));
+                }
+
+                loop {
+                    match self.memory.try_read() {
+                        Ok(memory) => {
+                            if address >= memory.len() as u64 - 1 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            self.registers_64[register] = ((memory[address as usize] as u8) as u64) << 8;
+                            self.registers_64[register] |= (memory[address as usize + 1] as u8) as u64;
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => {
+                            thread::yield_now();
+                            continue;
+                        },
+                        Err(_) => {
+                            return Err(Fault::CorruptedMemory);
+                        },
+                    }
+                }
+            },
+            32 => {
+                if register >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register, RegisterType::Register64));
+                }
+
+                loop {
+                    match self.memory.try_read() {
+                        Ok(memory) => {
+                            if address >= memory.len() as u64 - 3 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            self.registers_64[register] = ((memory[address as usize] as u8) as u64) << 24;
+                            self.registers_64[register] |= ((memory[address as usize + 1] as u8) as u64) << 16;
+                            self.registers_64[register] |= ((memory[address as usize + 2] as u8) as u64) << 8;
+                            self.registers_64[register] |= (memory[address as usize + 3] as u8) as u64;
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => {
+                            thread::yield_now();
+                            continue;
+                        },
+                        Err(_) => {
+                            return Err(Fault::CorruptedMemory);
+                        },
+                    }
+                }
+            },
+            64 => {
+                if register >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register, RegisterType::Register64));
+                }
+
+                loop {
+                    match self.memory.try_read() {
+                        Ok(memory) => {
+                            if address >= memory.len() as u64 - 7 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            self.registers_64[register] = ((memory[address as usize] as u8) as u64) << 56;
+                            self.registers_64[register] |= ((memory[address as usize + 1] as u8) as u64) << 48;
+                            self.registers_64[register] |= ((memory[address as usize + 2] as u8) as u64) << 40;
+                            self.registers_64[register] |= ((memory[address as usize + 3] as u8) as u64) << 32;
+                            self.registers_64[register] |= ((memory[address as usize + 4] as u8) as u64) << 24;
+                            self.registers_64[register] |= ((memory[address as usize + 5] as u8) as u64) << 16;
+                            self.registers_64[register] |= ((memory[address as usize + 6] as u8) as u64) << 8;
+                            self.registers_64[register] |= (memory[address as usize + 7] as u8) as u64;
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => {
+                            thread::yield_now();
+                            continue;
+                        },
+                        Err(_) => {
+                            return Err(Fault::CorruptedMemory);
+                        },
+                    }
+                }
+            },
+            128 => {
+                if register >= REGISTER_128_COUNT {
+                    return Err(Fault::InvalidRegister(register, RegisterType::Register128));
+                }
+
+                loop {
+                    match self.memory.try_read() {
+                        Ok(memory) => {
+                            if address >= memory.len() as u64 - 15 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            self.registers_128[register] = ((memory[address as usize] as u8) as u128) << 120;
+                            self.registers_128[register] |= ((memory[address as usize + 1] as u8) as u128) << 112;
+                            self.registers_128[register] |= ((memory[address as usize + 2] as u8) as u128) << 104;
+                            self.registers_128[register] |= ((memory[address as usize + 3] as u8) as u128) << 96;
+                            self.registers_128[register] |= ((memory[address as usize + 4] as u8) as u128) << 88;
+                            self.registers_128[register] |= ((memory[address as usize + 5] as u8) as u128) << 80;
+                            self.registers_128[register] |= ((memory[address as usize + 6] as u8) as u128) << 72;
+                            self.registers_128[register] |= ((memory[address as usize + 7] as u8) as u128) << 64;
+                            self.registers_128[register] |= ((memory[address as usize + 8] as u8) as u128) << 56;
+                            self.registers_128[register] |= ((memory[address as usize + 9] as u8) as u128) << 48;
+                            self.registers_128[register] |= ((memory[address as usize + 10] as u8) as u128) << 40;
+                            self.registers_128[register] |= ((memory[address as usize + 11] as u8) as u128) << 32;
+                            self.registers_128[register] |= ((memory[address as usize + 12] as u8) as u128) << 24;
+                            self.registers_128[register] |= ((memory[address as usize + 13] as u8) as u128) << 16;
+                            self.registers_128[register] |= ((memory[address as usize + 14] as u8) as u128) << 8;
+                            self.registers_128[register] |= (memory[address as usize + 15] as u8) as u128;
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => {
+                            thread::yield_now();
+                            continue;
+                        },
+                        Err(_) => {
+                            return Err(Fault::CorruptedMemory);
+                        },
+                    }
+                }
+            }
+
+        }
+
+        Ok(())
+        
+    }
+        
+        
 }
