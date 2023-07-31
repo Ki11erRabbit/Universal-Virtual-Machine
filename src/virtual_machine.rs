@@ -34,9 +34,39 @@ pub struct Machine {
     heap: Arc<RwLock<Vec<u8>>>,
     cores: Vec<Arc<RwLock<Core>>>,
     core_threads: Vec<JoinHandle<Result<(),Fault>>>,
-    program: Arc<RwLock<Vec<u8>>>,
+    program: Option<Arc<RwLock<Vec<u8>>>>,
 }
 
+impl Machine {
+
+    pub fn new() -> Machine {
+        Machine {
+            heap: Arc::new(RwLock::new(Vec::new())),
+            cores: Vec::new(),
+            core_threads: Vec::new(),
+            program: None,
+        }
+    }
+
+    pub fn add_core(&mut self, core: Core, program_counter: usize) {
+        let core = Arc::new(RwLock::new(core));
+        let core_thread = {
+            let core = core.clone();
+            thread::spawn(move || {
+                let mut core = core.write().unwrap();
+                core.run(program_counter);
+            })
+        };
+        self.cores.push(core);
+        self.core_threads.push(core_thread);
+    }
+
+    pub fn add_program(&mut self, program: Vec<u8>) {
+        self.program = Some(Arc::new(RwLock::new(program)));
+    }
+
+
+}
 
 
 const REGISTER_64_COUNT: usize = 16;
@@ -45,6 +75,10 @@ const REGISTER_F32_COUNT: usize = 8;
 const REGISTER_F64_COUNT: usize = 8;
 const REGISTER_ATOMIC_64_COUNT: usize = 8;
 
+pub enum Sign {
+    Positive,
+    Negative,
+}
 
 pub struct Core {
     /* 64-bit registers */
@@ -57,10 +91,13 @@ pub struct Core {
     /* Atomic registers */
     registers_atomic_64: [AtomicU64; REGISTER_ATOMIC_64_COUNT],
     /* flags */
-    parity_flag: bool,
+    odd_flag: bool,
     zero_flag: bool,
-    sign_flag: bool,
+    sign_flag: Sign,
+    overflow_flag: bool,
     /* other */
+    remainder_64: usize,
+    remainder_128: u128,
     program_counter: usize,
     pipeline_counter: usize,
     stack: Vec<u8>,
@@ -77,9 +114,12 @@ impl Core {
             registers_f32: [0.0; 8],
             registers_f64: [0.0; 8],
             registers_atomic_64: from_fn(|_| AtomicU64::new(0)),
-            parity_flag: false,
+            remainder_64: 0,
+            remainder_128: 0,
+            odd_flag: false,
             zero_flag: false,
-            sign_flag: false,
+            sign_flag: Sign::Positive,
+            overflow_flag: false,
             program_counter,
             pipeline_counter: 0,
             stack: Vec::new(),
@@ -109,7 +149,9 @@ impl Core {
         self.advance_by_size(16);
     }
 
-    pub fn run(&mut self) -> Result<(),Fault> {
+    pub fn run(&mut self, program_counter: usize) -> Result<(),Fault> {
+        self.program_counter = program_counter;
+        // TODO: initialize pipeline
         let mut is_done = false;
         while !is_done {
             is_done = self.execute_instruction()?;
@@ -159,7 +201,11 @@ impl Core {
             Set => self.set_opcode()?,
             DeRef => self.deref_opcode()?,
             Move => self.move_opcode()?,
-            DeRefReg => self.deref_reg_opcode()?,
+            DeRefReg => self.derefreg_opcode()?,
+            AddI => self.addi_opcode()?,
+            SubI => self.subi_opcode()?,
+            MulI => self.muli_opcode()?,
+            DivI => self.divi_opcode()?,
 
             _ => return Err(Fault::InvalidOperation),
             
@@ -612,6 +658,762 @@ impl Core {
         Ok(())
         
     }
-        
-        
+
+
+    fn addi_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        self.advance_by_1_byte();
+        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            8 => {
+                if register1 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register1, RegisterType::Register64));
+                }
+                if register2 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register2, RegisterType::Register64));
+                }
+                let reg1_value = self.registers_64[register1] as i8;
+                let reg2_value = self.registers_64[register2] as i8;
+
+                let new_value = reg1_value + reg2_value;
+
+                if new_value < reg1_value {
+                    self.overflow_flag = true;
+                }
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
+                }
+                if new_value < 0 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                self.registers_64[register1] = new_value as u64;
+            },
+            16 => {
+                if register1 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register1, RegisterType::Register64));
+                }
+                if register2 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register2, RegisterType::Register64));
+                }
+                let reg1_value = self.registers_64[register1] as i16;
+                let reg2_value = self.registers_64[register2] as i16;
+
+                let new_value = reg1_value + reg2_value;
+
+                if new_value < reg1_value {
+                    self.overflow_flag = true;
+                }
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
+                }
+                if new_value < 0 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                self.registers_64[register1] = new_value as u64;
+            },
+
+            32 => {
+                if register1 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register1, RegisterType::Register64));
+                }
+                if register2 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register2, RegisterType::Register64));
+                }
+                let reg1_value = self.registers_64[register1] as i32;
+                let reg2_value = self.registers_64[register2] as i32;
+
+                let new_value = reg1_value + reg2_value;
+
+                if new_value < reg1_value {
+                    self.overflow_flag = true;
+                }
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
+                }
+                if new_value < 0 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                self.registers_64[register1] = new_value as u64;
+            },
+            64 => {
+                if register1 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register1, RegisterType::Register64));
+                }
+                if register2 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register2, RegisterType::Register64));
+                }
+                let reg1_value = self.registers_64[register1] as i64;
+                let reg2_value = self.registers_64[register2] as i64;
+
+                let new_value = reg1_value + reg2_value;
+
+                if new_value < reg1_value {
+                    self.overflow_flag = true;
+                }
+
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
+                }
+                if new_value > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+
+                self.registers_64[register1] = new_value as u64;
+            },
+            128 => {
+                if register1 >= REGISTER_128_COUNT {
+                    return Err(Fault::InvalidRegister(register1, RegisterType::Register128));
+                }
+                if register2 >= REGISTER_128_COUNT {
+                    return Err(Fault::InvalidRegister(register2, RegisterType::Register128));
+                }
+                let reg1_value = self.registers_128[register1] as i128;
+                let reg2_value = self.registers_128[register2] as i128;
+
+                let new_value = reg1_value + reg2_value;
+
+                if new_value < reg1_value {
+                    self.overflow_flag = true;
+                }
+
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
+                }
+                if new_value > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+
+                self.registers_128[register1] = new_value as u128;
+            },
+            _ => return Err(Fault::InvalidSize),
+
+        }
+        Ok(())
+    }
+
+
+    fn subi_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        self.advance_by_1_byte();
+        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            8 => {
+                if register1 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register1, RegisterType::Register64));
+                }
+                if register2 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register2, RegisterType::Register64));
+                }
+                let reg1_value = self.registers_64[register1] as i8;
+                let reg2_value = self.registers_64[register2] as i8;
+
+                let new_value = reg1_value - reg2_value;
+
+                if new_value > reg1_value {
+                    self.overflow_flag = true;
+                }
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
+                }
+                if new_value < 0 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                self.registers_64[register1] = new_value as u64;
+            },
+            16 => {
+                if register1 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register1, RegisterType::Register64));
+                }
+                if register2 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register2, RegisterType::Register64));
+                }
+                let reg1_value = self.registers_64[register1] as i16;
+                let reg2_value = self.registers_64[register2] as i16;
+
+                let new_value = reg1_value - reg2_value;
+
+                if new_value < reg1_value {
+                    self.overflow_flag = true;
+                }
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
+                }
+                if new_value < 0 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                self.registers_64[register1] = new_value as u64;
+            },
+
+            32 => {
+                if register1 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register1, RegisterType::Register64));
+                }
+                if register2 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register2, RegisterType::Register64));
+                }
+                let reg1_value = self.registers_64[register1] as i32;
+                let reg2_value = self.registers_64[register2] as i32;
+
+                let new_value = reg1_value - reg2_value;
+
+                if new_value < reg1_value {
+                    self.overflow_flag = true;
+                }
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
+                }
+                if new_value < 0 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                self.registers_64[register1] = new_value as u64;
+            },
+            64 => {
+                if register1 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register1, RegisterType::Register64));
+                }
+                if register2 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register2, RegisterType::Register64));
+                }
+                let reg1_value = self.registers_64[register1] as i64;
+                let reg2_value = self.registers_64[register2] as i64;
+
+                let new_value = reg1_value - reg2_value;
+
+                if new_value < reg1_value {
+                    self.overflow_flag = true;
+                }
+
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
+                }
+                if new_value > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+
+                self.registers_64[register1] = new_value as u64;
+            },
+            128 => {
+                if register1 >= REGISTER_128_COUNT {
+                    return Err(Fault::InvalidRegister(register1, RegisterType::Register128));
+                }
+                if register2 >= REGISTER_128_COUNT {
+                    return Err(Fault::InvalidRegister(register2, RegisterType::Register128));
+                }
+                let reg1_value = self.registers_128[register1] as i128;
+                let reg2_value = self.registers_128[register2] as i128;
+
+                let new_value = reg1_value - reg2_value;
+
+                if new_value < reg1_value {
+                    self.overflow_flag = true;
+                }
+
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
+                }
+                if new_value > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+
+                self.registers_128[register1] = new_value as u128;
+            },
+            _ => return Err(Fault::InvalidSize),
+
+        }
+        Ok(())
+    }
+
+
+    fn muli_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        self.advance_by_1_byte();
+        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            8 => {
+                if register1 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register1, RegisterType::Register64));
+                }
+                if register2 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register2, RegisterType::Register64));
+                }
+                let reg1_value = self.registers_64[register1] as i8;
+                let reg2_value = self.registers_64[register2] as i8;
+
+                let new_value = reg1_value * reg2_value;
+
+                if new_value > reg1_value {
+                    self.overflow_flag = true;
+                }
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
+                }
+                if new_value < 0 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                self.registers_64[register1] = new_value as u64;
+            },
+            16 => {
+                if register1 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register1, RegisterType::Register64));
+                }
+                if register2 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register2, RegisterType::Register64));
+                }
+                let reg1_value = self.registers_64[register1] as i16;
+                let reg2_value = self.registers_64[register2] as i16;
+
+                let new_value = reg1_value * reg2_value;
+
+                if new_value < reg1_value {
+                    self.overflow_flag = true;
+                }
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
+                }
+                if new_value < 0 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                self.registers_64[register1] = new_value as u64;
+            },
+
+            32 => {
+                if register1 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register1, RegisterType::Register64));
+                }
+                if register2 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register2, RegisterType::Register64));
+                }
+                let reg1_value = self.registers_64[register1] as i32;
+                let reg2_value = self.registers_64[register2] as i32;
+
+                let new_value = reg1_value * reg2_value;
+
+                if new_value < reg1_value {
+                    self.overflow_flag = true;
+                }
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
+                }
+                if new_value < 0 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                self.registers_64[register1] = new_value as u64;
+            },
+            64 => {
+                if register1 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register1, RegisterType::Register64));
+                }
+                if register2 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register2, RegisterType::Register64));
+                }
+                let reg1_value = self.registers_64[register1] as i64;
+                let reg2_value = self.registers_64[register2] as i64;
+
+                let new_value = reg1_value * reg2_value;
+
+                if new_value < reg1_value {
+                    self.overflow_flag = true;
+                }
+
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
+                }
+                if new_value > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+
+                self.registers_64[register1] = new_value as u64;
+            },
+            128 => {
+                if register1 >= REGISTER_128_COUNT {
+                    return Err(Fault::InvalidRegister(register1, RegisterType::Register128));
+                }
+                if register2 >= REGISTER_128_COUNT {
+                    return Err(Fault::InvalidRegister(register2, RegisterType::Register128));
+                }
+                let reg1_value = self.registers_128[register1] as i128;
+                let reg2_value = self.registers_128[register2] as i128;
+
+                let new_value = reg1_value * reg2_value;
+
+                if new_value < reg1_value {
+                    self.overflow_flag = true;
+                }
+
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
+                }
+                if new_value > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+
+                self.registers_128[register1] = new_value as u128;
+            },
+            _ => return Err(Fault::InvalidSize),
+
+        }
+        Ok(())
+    }
+
+
+    fn divi_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        self.advance_by_1_byte();
+        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            8 => {
+                if register1 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register1, RegisterType::Register64));
+                }
+                if register2 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register2, RegisterType::Register64));
+                }
+                let reg1_value = self.registers_64[register1] as i8;
+                let reg2_value = self.registers_64[register2] as i8;
+
+                self.remainder_64 = (reg1_value % reg2_value) as usize;
+                
+                let new_value = reg1_value / reg2_value;
+
+                if new_value > reg1_value {
+                    self.overflow_flag = true;
+                }
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
+                }
+                if new_value < 0 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                self.registers_64[register1] = new_value as u64;
+            },
+            16 => {
+                if register1 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register1, RegisterType::Register64));
+                }
+                if register2 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register2, RegisterType::Register64));
+                }
+                let reg1_value = self.registers_64[register1] as i16;
+                let reg2_value = self.registers_64[register2] as i16;
+
+                self.remainder_64 = (reg1_value % reg2_value) as usize;
+                
+                let new_value = reg1_value / reg2_value;
+
+                if new_value < reg1_value {
+                    self.overflow_flag = true;
+                }
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
+                }
+                if new_value < 0 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                self.registers_64[register1] = new_value as u64;
+            },
+
+            32 => {
+                if register1 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register1, RegisterType::Register64));
+                }
+                if register2 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register2, RegisterType::Register64));
+                }
+                let reg1_value = self.registers_64[register1] as i32;
+                let reg2_value = self.registers_64[register2] as i32;
+
+                self.remainder_64 = (reg1_value % reg2_value) as usize;
+                
+                let new_value = reg1_value / reg2_value;
+
+                if new_value < reg1_value {
+                    self.overflow_flag = true;
+                }
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
+                }
+                if new_value < 0 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                self.registers_64[register1] = new_value as u64;
+            },
+            64 => {
+                if register1 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register1, RegisterType::Register64));
+                }
+                if register2 >= REGISTER_64_COUNT {
+                    return Err(Fault::InvalidRegister(register2, RegisterType::Register64));
+                }
+                let reg1_value = self.registers_64[register1] as i64;
+                let reg2_value = self.registers_64[register2] as i64;
+
+                self.remainder_64 = (reg1_value % reg2_value) as usize;
+                
+                let new_value = reg1_value / reg2_value;
+
+                if new_value < reg1_value {
+                    self.overflow_flag = true;
+                }
+
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
+                }
+                if new_value > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+
+                self.registers_64[register1] = new_value as u64;
+            },
+            128 => {
+                if register1 >= REGISTER_128_COUNT {
+                    return Err(Fault::InvalidRegister(register1, RegisterType::Register128));
+                }
+                if register2 >= REGISTER_128_COUNT {
+                    return Err(Fault::InvalidRegister(register2, RegisterType::Register128));
+                }
+                let reg1_value = self.registers_128[register1] as i128;
+                let reg2_value = self.registers_128[register2] as i128;
+
+                self.remainder_128 = (reg1_value % reg2_value) as u128;
+                
+                let new_value = reg1_value / reg2_value;
+
+                if new_value < reg1_value {
+                    self.overflow_flag = true;
+                }
+
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
+                }
+                if new_value > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+
+                self.registers_128[register1] = new_value as u128;
+            },
+            _ => return Err(Fault::InvalidSize),
+
+        }
+        Ok(())
+    }
+
+}
+
+
+
+
+
+#[cfg(test)]
+mod machine_tests {
+
+
+
 }
