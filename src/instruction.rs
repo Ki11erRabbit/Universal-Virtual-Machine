@@ -146,10 +146,19 @@ pub enum Opcode {
     Write,
     /* Takes a string pointer and a length */
     Open,
+    Close,
     /* Takes a file descriptor */
     Flush,
     /* Instructions for threads */
-    Thread,
+    ThreadSpawn,
+    Remainder,
+    /* Instruction for clearing flags */
+    Clear,
+    /* Instructions for going from floats to ints and back */
+    Float32ToInt32,
+    Int32ToFloat32,
+    Float64ToInt64,
+    Int64ToFloat64,
     
     
 
@@ -301,9 +310,19 @@ impl From<u16> for Opcode {
             145 => WriteByte,
             146 => Write,
             147 => Open,
-            148 => Flush,
+            148 => Close,
+            149 => Flush,
             /* Instructions for threads */
-            149 => Thread,
+            150 => ThreadSpawn,
+            151 => Remainder,
+            /* Instruction for clearing flags */
+            152 => Clear,
+            /* Instructions for going from floats to ints and back */
+            153 => Float32ToInt32,
+            154 => Int32ToFloat32,
+            155 => Float64ToInt64,
+            156 => Int64ToFloat64,
+            
             
             
             /* Instructions illegal instruction */

@@ -261,6 +261,18 @@ impl Core {
             GeqU => self.gequ_opcode()?,
             WriteByte => self.writebyte_opcode()?,
             Write => self.write_opcode()?,
+            Flush => self.flush_opcode()?,
+            And => self.and_opcode()?,
+            Or => self.or_opcode()?,
+            Xor => self.xor_opcode()?,
+            Not => self.not_opcode()?,
+            ShiftLeft => self.shiftleft_opcode()?,
+            ShiftRight => self.shiftright_opcode()?,
+            Clear => self.clear_opcode()?,
+            Float32ToInt32 => self.float32_to_int32_opcode()?,
+            Float64ToInt64 => self.float64_to_int64_opcode()?,
+            Int32ToFloat32 => self.int32_to_float32_opcode()?,
+            Int64ToFloat64 => self.int64_to_float64_opcode()?,
             
 
             _ => return Err(Fault::InvalidOperation),
@@ -3035,6 +3047,1035 @@ impl Core {
         Ok(())
     }
 
+    fn and_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        self.advance_by_1_byte();
+        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            8 => {
+                check_register64!(register1, register2);
+
+                let reg1_value = self.registers_64[register1] as u8;
+                let reg2_value = self.registers_64[register2] as u8;
+
+                self.registers_64[register1] = (reg1_value & reg2_value) as u64;
+
+                if self.registers_64[register1] as u8 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register1] as u8 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register1] as u8 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+                
+            },
+            16 => {
+                check_register64!(register1, register2);
+
+                let reg1_value = self.registers_64[register1] as u16;
+                let reg2_value = self.registers_64[register2] as u16;
+
+                self.registers_64[register1] = (reg1_value & reg2_value) as u64;
+
+                if self.registers_64[register1] as u16 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register1] as u16 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register1] as u16 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+                
+            },
+            32 => {
+                check_register64!(register1, register2);
+
+                let reg1_value = self.registers_64[register1] as u32;
+                let reg2_value = self.registers_64[register2] as u32;
+
+                self.registers_64[register1] = (reg1_value & reg2_value) as u64;
+
+                if self.registers_64[register1] as u32 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register1] as u32 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register1] as u32 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+                
+            },
+            64 => {
+                check_register64!(register1, register2);
+
+                let reg1_value = self.registers_64[register1] as u64;
+                let reg2_value = self.registers_64[register2] as u64;
+
+                self.registers_64[register1] = (reg1_value & reg2_value) as u64;
+
+                if self.registers_64[register1] as u64 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register1] as u64 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register1] as u64 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+                
+            },
+            128 => {
+                check_register128!(register1, register2);
+
+                let reg1_value = self.registers_128[register1] as u128;
+                let reg2_value = self.registers_128[register2] as u128;
+
+                self.registers_128[register1] = (reg1_value & reg2_value) as u128;
+
+                if self.registers_64[register1] as u128 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register1] as u128 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register1] as u128 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+        
+        Ok(())
+    }
+
+    fn or_opcode(&mut self) -> Result<(),Fault> {
+        let size = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+        let register2 = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+
+        match size {
+            8 => {
+                check_register64!(register1 as usize, register2 as usize);
+
+                let reg1_value = self.registers_64[register1 as usize] as u8;
+                let reg2_value = self.registers_64[register2 as usize] as u8;
+
+                self.registers_64[register1 as usize] = (reg1_value | reg2_value) as u64;
+
+                if self.registers_64[register1 as usize] as u8 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register1 as usize] as u8 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register1 as usize] as u8 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+                
+            },
+            16 => {
+                check_register64!(register1 as usize, register2 as usize);
+
+                let reg1_value = self.registers_64[register1 as usize] as u16;
+                let reg2_value = self.registers_64[register2 as usize] as u16;
+
+                self.registers_64[register1 as usize] = (reg1_value | reg2_value) as u64;
+
+                if self.registers_64[register1 as usize] as u16 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register1 as usize] as u16 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register1 as usize] as u16 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+                
+            },
+            32 => {
+                check_register64!(register1 as usize, register2 as usize);
+
+                let reg1_value = self.registers_64[register1 as usize] as u32;
+                let reg2_value = self.registers_64[register2 as usize] as u32;
+
+                self.registers_64[register1 as usize] = (reg1_value | reg2_value) as u64;
+
+                if self.registers_64[register1 as usize] as u32 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register1 as usize] as u32 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register1 as usize] as u32 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+                
+            },
+            64 => {
+                check_register64!(register1 as usize, register2 as usize);
+
+                let reg1_value = self.registers_64[register1 as usize] as u64;
+                let reg2_value = self.registers_64[register2 as usize] as u64;
+
+                self.registers_64[register1 as usize] = (reg1_value | reg2_value) as u64;
+
+                if self.registers_64[register1 as usize] as u64 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register1 as usize] as u64 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register1 as usize] as u64 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+                
+            },
+            128 => {
+                check_register128!(register1 as usize, register2 as usize);
+
+                let reg1_value = self.registers_128[register1 as usize];
+                let reg2_value = self.registers_128[register2 as usize];
+
+                self.registers_128[register1 as usize] = (reg1_value | reg2_value);
+
+                if self.registers_128[register1 as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_128[register1 as usize] & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_128[register1 as usize] % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+                
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+        Ok(())
+    }
+
+    fn xor_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+        let register2 = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+
+        match size {
+            8 => {
+                check_register64!(register1 as usize, register2 as usize);
+
+                let reg1_value = self.registers_64[register1 as usize] as u8;
+                let reg2_value = self.registers_64[register2 as usize] as u8;
+
+                self.registers_64[register1 as usize] = (reg1_value ^ reg2_value) as u64;
+
+                if self.registers_64[register1 as usize] as u8 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register1 as usize] as u8 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register1 as usize] as u8 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+                
+            },
+            16 => {
+                check_register64!(register1 as usize, register2 as usize);
+
+                let reg1_value = self.registers_64[register1 as usize] as u16;
+                let reg2_value = self.registers_64[register2 as usize] as u16;
+
+                self.registers_64[register1 as usize] = (reg1_value ^ reg2_value) as u64;
+
+                if self.registers_64[register1 as usize] as u16 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register1 as usize] as u16 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register1 as usize] as u16 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+                
+            },
+            32 => {
+                check_register64!(register1 as usize, register2 as usize);
+
+                let reg1_value = self.registers_64[register1 as usize] as u32;
+                let reg2_value = self.registers_64[register2 as usize] as u32;
+
+                self.registers_64[register1 as usize] = (reg1_value ^ reg2_value) as u64;
+
+                if self.registers_64[register1 as usize] as u32 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register1 as usize] as u32 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register1 as usize] as u32 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+                
+            },
+            64 => {
+                check_register64!(register1 as usize, register2 as usize);
+
+                let reg1_value = self.registers_64[register1 as usize];
+                let reg2_value = self.registers_64[register2 as usize];
+
+                self.registers_64[register1 as usize] = (reg1_value ^ reg2_value);
+
+                if self.registers_64[register1 as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register1 as usize] & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register1 as usize] % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+                
+            },
+            128 => {
+                check_register128!(register1 as usize, register2 as usize);
+
+                let reg1_value = self.registers_128[register1 as usize];
+                let reg2_value = self.registers_128[register2 as usize];
+
+                self.registers_128[register1 as usize] = (reg1_value ^ reg2_value);
+
+                if self.registers_128[register1 as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_128[register1 as usize] & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_128[register1 as usize] % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+                
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+        Ok(())
+    }
+
+    fn not_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+        let register = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+
+        match size {
+            8 => {
+                check_register64!(register as usize);
+
+                let reg_value = self.registers_64[register as usize] as u8;
+
+                self.registers_64[register as usize] = (!reg_value) as u64;
+
+                if self.registers_64[register as usize] as u8 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register as usize] as u8 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register as usize] as u8 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            16 => {
+                check_register64!(register as usize);
+
+                let reg_value = self.registers_64[register as usize] as u16;
+
+                self.registers_64[register as usize] = (!reg_value) as u64;
+
+                if self.registers_64[register as usize] as u16 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register as usize] as u16 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register as usize] as u16 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            32 => {
+                check_register64!(register as usize);
+
+                let reg_value = self.registers_64[register as usize] as u32;
+
+                self.registers_64[register as usize] = (!reg_value) as u64;
+
+                if self.registers_64[register as usize] as u32 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register as usize] as u32 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register as usize] as u32 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            64 => {
+                check_register64!(register as usize);
+
+                let reg_value = self.registers_64[register as usize];
+
+                self.registers_64[register as usize] = !reg_value;
+
+                if self.registers_64[register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register as usize] & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register as usize] % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            128 => {
+                check_register128!(register as usize);
+
+                let reg_value = self.registers_128[register as usize];
+
+                self.registers_128[register as usize] = !reg_value;
+
+                if self.registers_128[register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_128[register as usize] & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_128[register as usize] % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+        Ok(())
+    }
+
+    fn shiftleft_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+        let register = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+        let shift_amount = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+
+        match size {
+            8 => {
+                check_register64!(register as usize);
+
+                let reg_value = self.registers_64[register as usize] as u8;
+
+                self.registers_64[register as usize] = (reg_value << shift_amount) as u64;
+
+                if self.registers_64[register as usize] as u8 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register as usize] as u8 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register as usize] as u8 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            16 => {
+                check_register64!(register as usize);
+
+                let reg_value = self.registers_64[register as usize] as u16;
+
+                self.registers_64[register as usize] = (reg_value << shift_amount) as u64;
+
+                if self.registers_64[register as usize] as u16 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register as usize] as u16 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register as usize] as u16 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            32 => {
+                check_register64!(register as usize);
+
+                let reg_value = self.registers_64[register as usize] as u32;
+
+                self.registers_64[register as usize] = (reg_value << shift_amount) as u64;
+
+                if self.registers_64[register as usize] as u32 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register as usize] as u32 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register as usize] as u32 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            64 => {
+                check_register64!(register as usize);
+
+                let reg_value = self.registers_64[register as usize];
+
+                self.registers_64[register as usize] = reg_value << shift_amount;
+
+                if self.registers_64[register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register as usize] & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register as usize] % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            128 => {
+                check_register128!(register as usize);
+
+                let reg_value = self.registers_128[register as usize];
+
+                self.registers_128[register as usize] = reg_value << shift_amount;
+
+                if self.registers_128[register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_128[register as usize] & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_128[register as usize] % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+        Ok(())
+    }
+
+    fn shiftright_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+        let register = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+        let shift_amount = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+
+        match size {
+            8 => {
+                check_register64!(register as usize);
+
+                let reg_value = self.registers_64[register as usize] as u8;
+
+                self.registers_64[register as usize] = (reg_value >> shift_amount) as u64;
+
+                if self.registers_64[register as usize] as u8 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register as usize] as u8 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register as usize] as u8 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            16 => {
+                check_register64!(register as usize);
+
+                let reg_value = self.registers_64[register as usize] as u16;
+
+                self.registers_64[register as usize] = (reg_value >> shift_amount) as u64;
+
+                if self.registers_64[register as usize] as u16 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register as usize] as u16 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register as usize] as u16 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            32 => {
+                check_register64!(register as usize);
+
+                let reg_value = self.registers_64[register as usize] as u32;
+
+                self.registers_64[register as usize] = (reg_value >> shift_amount) as u64;
+
+                if self.registers_64[register as usize] as u32 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register as usize] as u32 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register as usize] as u32 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            64 => {
+                check_register64!(register as usize);
+
+                let reg_value = self.registers_64[register as usize];
+
+                self.registers_64[register as usize] = reg_value >> shift_amount;
+
+                if self.registers_64[register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register as usize] & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register as usize] % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            128 => {
+                check_register128!(register as usize);
+
+                let reg_value = self.registers_128[register as usize];
+
+                self.registers_128[register as usize] = reg_value >> shift_amount;
+
+                if self.registers_128[register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_128[register as usize] & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_128[register as usize] % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+        Ok(())
+    }
+
+    fn clear_opcode(&mut self) -> Result<(), Fault> {
+        self.zero_flag = false;
+        self.remainder_64 = 0;
+        self.remainder_128 = 0;
+        self.comparison_flag = Comparison::NotEqual;
+        Ok(())
+    }
+
+    fn float32_to_int32_opcode(&mut self) -> Result<(), Fault> {
+        let float_register = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+        let int_register = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(int_register as usize);
+        check_registerF32!(float_register as usize);
+
+        let reg_value = self.registers_64[float_register as usize] as f32;
+
+        
+        self.registers_64[int_register as usize] = reg_value as u64;
+
+        Ok(())
+    }
+
+    fn float64_to_int64_opcode(&mut self) -> Result<(), Fault> {
+        let float_register = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+        let int_register = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(int_register as usize);
+        check_registerF64!(float_register as usize);
+
+        let reg_value = self.registers_64[float_register as usize] as f64;
+
+        
+        self.registers_64[int_register as usize] = reg_value as u64;
+
+        Ok(())
+    }
+
+    fn int32_to_float32_opcode(&mut self) -> Result<(), Fault> {
+        let int_register = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+        let float_register = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(int_register as usize);
+        check_registerF32!(float_register as usize);
+
+        let reg_value = self.registers_64[int_register as usize] as u32;
+
+        
+        self.registers_64[float_register as usize] = reg_value as u64;
+
+        Ok(())
+    }
+
+    fn int64_to_float64_opcode(&mut self) -> Result<(), Fault> {
+        let int_register = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+        let float_register = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(int_register as usize);
+        check_registerF64!(float_register as usize);
+
+        let reg_value = self.registers_64[int_register as usize] as u64;
+
+        
+        self.registers_64[float_register as usize] = reg_value as u64;
+
+        Ok(())
+    }
+    
+
     fn writebyte_opcode(&mut self) -> Result<(),Fault> {
         let fd_register = self.pipeline[self.pipeline_counter] as u8;
         self.advance_by_1_byte();
@@ -3086,9 +4127,26 @@ impl Core {
             },
             _ => return Err(Fault::InvalidFileDescriptor),
         }
-        
-        
+        Ok(())
+    }
 
+    fn flush_opcode(&mut self) -> Result<(), Fault> {
+        let fd_register = self.pipeline[self.pipeline_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(fd_register as usize);
+
+        let fd = self.registers_64[fd_register as usize] as i64;
+
+        match fd {
+            1 => {
+                std::io::stdout().flush().unwrap();
+            },
+            2 => {
+                std::io::stderr().flush().unwrap();
+            },
+            _ => return Err(Fault::InvalidFileDescriptor),
+        }
 
         Ok(())
     }
@@ -3295,7 +4353,7 @@ mod tests {
 
     #[test]
     fn test_hello_world() {
-        let program = vec![146,0,0,1,2];
+        let program = vec![146,0,0,1,2,149,0,0];
         let memory = vec![0, 104,101,108,108,111,32,119,111,114,108,100,10];
         let memory = Arc::new(RwLock::new(memory));
         let mut core = Core::new(memory.clone(), Arc::new(RwLock::new(program)));
@@ -3307,8 +4365,9 @@ mod tests {
         core.run(0).unwrap();
         
         
-        std::io::stdout().flush().unwrap();
+        //std::io::stdout().flush().unwrap();
         
     }
+
 
 }
