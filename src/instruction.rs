@@ -159,6 +159,16 @@ pub enum Opcode {
     Int32ToFloat32,
     Float64ToInt64,
     Int64ToFloat64,
+    /* Instructions for adding integers to floats */
+    AddF32I32,
+    SubF32I32,
+    MulF32I32,
+    DivF32I32,
+    AddF64I64,
+    SubF64I64,
+    MulF64I64,
+    DivF64I64,
+    
     
     
 
