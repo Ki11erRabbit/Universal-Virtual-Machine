@@ -4141,11 +4141,13 @@ impl Core {
                 check_register64!(register as usize);
 
                 self.registers_64[register as usize] = self.remainder_64 as u64;
+                self.remainder_64 = 0;
             },
             128 => {
                 check_register128!(register as usize);
 
                 self.registers_128[register as usize] = self.remainder_128;
+                self.remainder_128 = 0;
             },
             _ => return Err(Fault::InvalidSize),
 
