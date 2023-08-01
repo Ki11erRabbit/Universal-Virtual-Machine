@@ -327,7 +327,8 @@ impl Core {
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let address = self.registers_64[register];
+        let address = self.program[self.program_counter] as u64;
+        self.advance_by_8_bytes();
         match size {
             8 => {
                 //TODO: Check to see if we can even read from memory so we don't panic
@@ -337,7 +338,6 @@ impl Core {
                 }
                 self.registers_64[register] = (memory[address as usize] as u8) as u64;
                 drop(memory);
-                self.advance_by_1_byte();
             },
             16 => {
                 let memory = self.memory.read().unwrap();
@@ -346,7 +346,6 @@ impl Core {
                 }
                 self.registers_64[register] = (memory[address as usize] as u16) as u64;
                 drop(memory);
-                self.advance_by_2_bytes();
             },
             32 => {
                 let memory = self.memory.read().unwrap();
@@ -355,7 +354,6 @@ impl Core {
                 }
                 self.registers_64[register] = (memory[address as usize] as u32) as u64;
                 drop(memory);
-                self.advance_by_4_bytes();
             },
             64 => {
                 let memory = self.memory.read().unwrap();
@@ -364,7 +362,6 @@ impl Core {
                 }
                 self.registers_64[register] = (memory[address as usize] as u64) as u64;
                 drop(memory);
-                self.advance_by_8_bytes();
             },
             128 => {
                 let memory = self.memory.read().unwrap();
@@ -373,7 +370,6 @@ impl Core {
                 }
                 self.registers_128[register] = (memory[address as usize] as u128) as u128;
                 drop(memory);
-                self.advance_by_16_bytes();
             },
             _ => return Err(Fault::InvalidSize),
         }
@@ -6136,9 +6132,10 @@ impl Core {
     fn dereff_opcode(&mut self) -> Result<(), Fault> {
         let size = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as usize;
+        let register = self.program[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
-        let address = self.registers_64[register];
+        let address = self.program[self.program_counter] as u64;
+        self.advance_by_8_bytes();
         match size {
             32 => {
                 loop {
@@ -6153,6 +6150,10 @@ impl Core {
                             bytes[2] = memory[address as usize + 2];
                             bytes[3] = memory[address as usize + 3];
 
+                            println!("Program counter: {}", self.program_counter);
+                            println!("Address: {}", address);
+                            println!("Dereffing {:?} into {}", bytes, register);
+
                             self.registers_f32[register] = f32::from_ne_bytes(bytes);
                             break;
                         },
@@ -6163,7 +6164,6 @@ impl Core {
                     }
 
                 }
-                self.advance_by_4_bytes();
             }
             64 => {
                 loop {
@@ -6192,7 +6192,6 @@ impl Core {
                     }
 
                 }
-                self.advance_by_8_bytes();
             }
             _ => return Err(Fault::InvalidSize),
         }
