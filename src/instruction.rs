@@ -92,7 +92,7 @@ pub enum Opcode {
     JumpZero,
     JumpNotZero,
     JumpNeg,
-    JumpNotNeg,
+    JumpPos,
     JumpEven,
     JumpOdd,
     JumpBack,
@@ -105,6 +105,9 @@ pub enum Opcode {
     JumpNotUnderflow,
     JumpNaN,
     JumpNotNaN,
+    JumpRemainder,
+    JumpNotRemainder,
+    
 
     /* Instructions for function calls */
     Call,
@@ -277,7 +280,7 @@ impl From<u16> for Opcode {
             77 => JumpZero,
             78 => JumpNotZero,
             79 => JumpNeg,
-            80 => JumpNotNeg,
+            80 => JumpPos,
             81 => JumpEven,
             82 => JumpOdd,
             83 => JumpBack,
@@ -290,6 +293,8 @@ impl From<u16> for Opcode {
             90 => JumpNotUnderflow,
             91 => JumpNaN,
             92 => JumpNotNaN,
+            92 => JumpRemainder,
+            93 => JumpNotRemainder,
             
             // Block of reserved opcodes for future use
             /* Instructions for function calls */

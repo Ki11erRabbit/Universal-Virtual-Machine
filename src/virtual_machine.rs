@@ -25,6 +25,7 @@ pub enum Fault {
     DivideByZero,
     CorruptedMemory,
     InvalidFileDescriptor,
+    InvalidJump,
 
 }
 

@@ -93,6 +93,7 @@ pub enum Sign {
 
 #[derive(Debug,PartialEq)]
 pub enum Comparison {
+    None,
     Equal,
     NotEqual,
     LessThan,
@@ -140,7 +141,7 @@ impl Core {
             registers_atomic_64: from_fn(|_| AtomicU64::new(0)),
             remainder_64: 0,
             remainder_128: 0,
-            comparison_flag: Comparison::Equal,
+            comparison_flag: Comparison::None,
             odd_flag: false,
             zero_flag: false,
             sign_flag: Sign::Positive,
@@ -278,6 +279,31 @@ impl Core {
             GtF => self.gtf_opcode()?,
             LeqF => self.leqf_opcode()?,
             GeqF => self.geqf_opcode()?,
+            Jump => self.jump_opcode()?,
+            JumpEq => self.jumpeq_opcode()?,
+            JumpNeq => self.jumpneq_opcode()?,
+            JumpLt => self.jumplt_opcode()?,
+            JumpGt => self.jumpgt_opcode()?,
+            JumpLeq => self.jumpleq_opcode()?,
+            JumpGeq => self.jumpgeq_opcode()?,
+            JumpZero => self.jumpzero_opcode()?,
+            JumpNotZero => self.jumpnotzero_opcode()?,
+            JumpNeg => self.jumpneg_opcode()?,
+            JumpPos => self.jumppos_opcode()?,
+            JumpEven => self.jumpeven_opcode()?,
+            JumpOdd => self.jumpodd_opcode()?,
+            JumpBack => self.jumpback_opcode()?,
+            JumpForward => self.jumpforward_opcode()?,
+            JumpInfinity => self.jumpinfinity_opcode()?,
+            JumpNotInfinity => self.jumpnotinfinity_opcode()?,
+            JumpOverflow => self.jumpoverflow_opcode()?,
+            JumpNotOverflow => self.jumpnotoverflow_opcode()?,
+            JumpUnderflow => self.jumpunderflow_opcode()?,
+            JumpNotUnderflow => self.jumpnotunderflow_opcode()?,
+            JumpNaN => self.jumpnan_opcode()?,
+            JumpNotNaN => self.jumpnotnan_opcode()?,
+            JumpRemainder => self.jumpremainder_opcode()?,
+            JumpNotRemainder => self.jumpnotremainder_opcode()?,
             
             
 
@@ -6813,7 +6839,387 @@ impl Core {
 
         Ok(())
     }
-    
+
+    fn jump_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+
+        if line >= self.program.len()|| line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+        
+        self.program_counter = line;
+
+        Ok(())
+    }
+
+    fn jumpeq_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        if self.comparison_flag == Comparison::Equal {
+            self.program_counter = line;
+            self.comparison_flag = Comparison::None;
+        }
+        Ok(())
+    }
+
+    fn jumpneq_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        if self.comparison_flag == Comparison::NotEqual {
+            self.program_counter = line;
+            self.comparison_flag = Comparison::None;
+        }
+        Ok(())
+    }
+
+    fn jumplt_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        if self.comparison_flag == Comparison::LessThan {
+            self.program_counter = line;
+            self.comparison_flag = Comparison::None;
+        }
+        Ok(())
+    }
+
+    fn jumpgt_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        if self.comparison_flag == Comparison::GreaterThan {
+            self.program_counter = line;
+            self.comparison_flag = Comparison::None;
+        }
+        Ok(())
+    }
+
+    fn jumpleq_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        if self.comparison_flag == Comparison::LessThanOrEqual {
+            self.program_counter = line;
+            self.comparison_flag = Comparison::None;
+        }
+        Ok(())
+    }
+
+    fn jumpgeq_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        if self.comparison_flag == Comparison::GreaterThanOrEqual {
+            self.program_counter = line;
+            self.comparison_flag = Comparison::None;
+        }
+        Ok(())
+    }
+
+    fn jumpzero_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        if self.zero_flag {
+            self.program_counter = line;
+            self.zero_flag = false;
+        }
+        Ok(())
+    }
+
+    fn jumpnotzero_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        if !self.zero_flag {
+            self.program_counter = line;
+            self.zero_flag = false;
+        }
+        Ok(())
+    }
+
+    fn jumpneg_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+        
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        match self.sign_flag {
+            Sign::Negative => {
+                self.program_counter = line;
+            },
+            _ => {},
+        }
+        
+        Ok(())
+    }
+
+    fn jumppos_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+        
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        match self.sign_flag {
+            Sign::Positive => {
+                self.program_counter = line;
+            },
+            _ => {},
+        }
+        
+        Ok(())
+    }
+
+    fn jumpeven_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+        
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        if !self.odd_flag {
+            self.program_counter = line;
+        }
+        
+        Ok(())
+    }
+
+    fn jumpodd_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+        
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        if self.odd_flag {
+            self.program_counter = line;
+        }
+        
+        Ok(())
+    }
+
+    fn jumpback_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+        
+        if self.program_counter - line >= self.program.len() || self.program_counter - line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        self.program_counter -= line;
+        
+        Ok(())
+    }
+
+    fn jumpforward_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+        
+        if self.program_counter + line >= self.program.len() || self.program_counter + line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        self.program_counter += line;
+        
+        Ok(())
+    }
+
+    fn jumpinfinity_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+        
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        if self.infinity_flag {
+            self.program_counter = line;
+            self.infinity_flag = false;
+        }
+        
+        Ok(())
+    }
+
+    fn jumpnotinfinity_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+        
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        if !self.infinity_flag {
+            self.program_counter = line;
+        }
+        
+        Ok(())
+    }
+
+    fn jumpoverflow_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+        
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        if self.overflow_flag {
+            self.program_counter = line;
+            self.overflow_flag = false;
+        }
+        
+        Ok(())
+    }
+
+    fn jumpnotoverflow_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+        
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        if !self.overflow_flag {
+            self.program_counter = line;
+        }
+        
+        Ok(())
+    }
+
+    fn jumpunderflow_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+        
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        if self.overflow_flag && self.sign_flag == Sign::Positive {
+            self.program_counter = line;
+            self.overflow_flag = false;
+        }
+        
+        Ok(())
+    }
+
+    fn jumpnotunderflow_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        if !self.overflow_flag || self.sign_flag == Sign::Negative {
+            self.program_counter = line;
+        }
+
+        Ok(())
+    }
+
+    fn jumpnan_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        if self.nan_flag {
+            self.program_counter = line;
+            self.nan_flag = false;
+        }
+
+        Ok(())
+    }
+
+    fn jumpnotnan_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        if !self.nan_flag {
+            self.program_counter = line;
+        }
+
+        Ok(())
+    }
+
+    fn jumpremainder_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        if self.remainder_64 != 0 || self.remainder_128 != 0 {
+            self.program_counter = line;
+            self.remainder_64 = 0;
+            self.remainder_128 = 0;
+        }
+
+        Ok(())
+    }
+
+    fn jumpnotremainder_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as usize;
+        self.advance_by_8_bytes();
+
+        if line >= self.program.len() || line <= 0 {
+            return Err(Fault::InvalidJump);
+        }
+
+        if self.remainder_64 == 0 && self.remainder_128 == 0 {
+            self.program_counter = line;
+        }
+
+        Ok(())
+    }
     
 }
 
