@@ -123,15 +123,13 @@ pub struct Core {
     remainder_64: usize,
     remainder_128: u128,
     program_counter: usize,
-    pipeline_counter: usize,
     stack: Vec<u8>,
-    program: Arc<RwLock<Vec<u8>>>,
-    pipeline: Vec<u8>,
+    program: Arc<Vec<u8>>,
     memory: Arc<RwLock<Vec<u8>>>,
 }
     
 impl Core {
-    pub fn new(memory: Arc<RwLock<Vec<u8>>>, program: Arc<RwLock<Vec<u8>>>) -> Core {
+    pub fn new(memory: Arc<RwLock<Vec<u8>>>, program: Arc<Vec<u8>>) -> Core {
         Core {
             registers_64: [0; 16],
             registers_128: [0; 8],
@@ -146,9 +144,7 @@ impl Core {
             sign_flag: Sign::Positive,
             overflow_flag: false,
             program_counter: 0,
-            pipeline_counter: 0,
             stack: Vec::new(),
-            pipeline: Vec::new(),
             program,
             memory,
         }
@@ -157,7 +153,6 @@ impl Core {
     #[inline]
     fn advance_by_size(&mut self, size: usize) {
         self.program_counter += size;
-        self.pipeline_counter += size;
     }
     fn advance_by_1_byte(&mut self) {
         self.advance_by_size(1);
@@ -178,12 +173,6 @@ impl Core {
     pub fn run(&mut self, program_counter: usize) -> Result<(),Fault> {
         self.program_counter = program_counter;
 
-        let pipeline = {
-            let program = self.program.read().unwrap();
-            program[..].to_vec().clone()
-        };
-        self.pipeline = pipeline;
-        
         let mut is_done = false;
         while !is_done {
             is_done = self.execute_instruction()?;
@@ -198,27 +187,16 @@ impl Core {
 
     #[inline]
     fn check_program_counter(&self) -> Result<bool,Fault> {
-        loop {
-            match self.program.try_read() {
-                Ok(program) => {
-                    if self.program_counter >= program.len() {
-                        return Ok(true);
-                    }
-                    return Ok(false);
-                },
-                TryLockResult::Err(TryLockError::WouldBlock) => {
-                    //thread::yield_now();
-                    continue;
-                },
-                Err(_) => {
-                    return Err(Fault::CorruptedMemory);
-                },
-            }
+
+        if self.program_counter >= self.program.len() {
+            return Ok(true);
         }
+        return Ok(false);
     }
 
+
     fn decode_opcode(&mut self) -> Opcode {
-        let opcode = Opcode::from(self.pipeline[self.pipeline_counter] as u16);
+        let opcode = Opcode::from(self.program[self.program_counter] as u16);
         self.advance_by_2_bytes();
         return opcode;
 
@@ -273,6 +251,7 @@ impl Core {
             Float64ToInt64 => self.float64_to_int64_opcode()?,
             Int32ToFloat32 => self.int32_to_float32_opcode()?,
             Int64ToFloat64 => self.int64_to_float64_opcode()?,
+            Remainder => self.remainder_opcode()?,
             
 
             _ => return Err(Fault::InvalidOperation),
@@ -286,37 +265,37 @@ impl Core {
 
 
     fn set_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.pipeline[self.pipeline_counter] as usize;
+        let size = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let register = self.pipeline[self.pipeline_counter] as usize;
+        let register = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
         match size {
             8 => {
-                let value = self.pipeline[self.pipeline_counter] as u8;
+                let value = self.program[self.program_counter] as u8;
                 check_register64!(register);
                 self.registers_64[register] = value as u64;
                 self.advance_by_1_byte();
             },
             16 => {
-                let value = self.pipeline[self.pipeline_counter] as u16;
+                let value = self.program[self.program_counter] as u16;
                 check_register64!(register);
                 self.registers_64[register] = value as u64;
                 self.advance_by_2_bytes();
             },
             32 => {
-                let value = self.pipeline[self.pipeline_counter] as u32;
+                let value = self.program[self.program_counter] as u32;
                 check_register64!(register);
                 self.registers_64[register] = value as u64;
                 self.advance_by_4_bytes();
             },
             64 => {
-                let value = self.pipeline[self.pipeline_counter] as u64;
+                let value = self.program[self.program_counter] as u64;
                 check_register64!(register);
                 self.registers_64[register] = value as u64;
                 self.advance_by_8_bytes();
             },
             128 => {
-                let value = self.pipeline[self.pipeline_counter] as u128;
+                let value = self.program[self.program_counter] as u128;
                 check_register128!(register);
                 self.registers_128[register] = value as u128;
                 self.advance_by_16_bytes();
@@ -327,9 +306,9 @@ impl Core {
     }
 
     fn deref_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.pipeline[self.pipeline_counter] as usize;
+        let size = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let register = self.pipeline[self.pipeline_counter] as usize;
+        let register = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
         let address = self.registers_64[register];
         match size {
@@ -385,14 +364,14 @@ impl Core {
     }
 
     fn move_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.pipeline[self.pipeline_counter] as usize;
+        let size = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let register = self.pipeline[self.pipeline_counter] as usize;
+        let register = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
         match size {
             8 => {
                 check_register64!(register);
-                let address = self.pipeline[self.pipeline_counter] as u64;
+                let address = self.program[self.program_counter] as u64;
                 self.advance_by_8_bytes();
                 loop {
                     match self.memory.try_write() {
@@ -415,7 +394,7 @@ impl Core {
             },
             16 => {
                 check_register64!(register);
-                let address = self.pipeline[self.pipeline_counter] as u64;
+                let address = self.program[self.program_counter] as u64;
                 self.advance_by_8_bytes();
                 loop {
                     match self.memory.try_write() {
@@ -439,7 +418,7 @@ impl Core {
             },
             32 => {
                 check_register64!(register);
-                let address = self.pipeline[self.pipeline_counter] as u64;
+                let address = self.program[self.program_counter] as u64;
                 self.advance_by_8_bytes();
                 loop {
                     match self.memory.try_write() {
@@ -465,7 +444,7 @@ impl Core {
             },
             64 => {
                 check_register64!(register);
-                let address = self.pipeline[self.pipeline_counter] as u64;
+                let address = self.program[self.program_counter] as u64;
                 self.advance_by_8_bytes();
                 loop {
                     match self.memory.try_write() {
@@ -495,7 +474,7 @@ impl Core {
             },
             128 => {
                 check_register128!(register);
-                let address = self.pipeline[self.pipeline_counter] as u64;
+                let address = self.program[self.program_counter] as u64;
                 self.advance_by_8_bytes();
                 loop {
                     match self.memory.try_write() {
@@ -539,14 +518,14 @@ impl Core {
     }
 
     fn derefreg_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.pipeline[self.pipeline_counter] as usize;
+        let register = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let address_register = self.pipeline[self.pipeline_counter] as usize;
+        let address_register = self.program[self.program_counter] as usize;
         check_register64!(address_register);
         self.advance_by_1_byte();
-        let offset = self.pipeline[self.pipeline_counter] as i64;
+        let offset = self.program[self.program_counter] as i64;
         self.advance_by_8_bytes();
         let address = self.registers_64[address_register] as i64 + offset;
         let address = address as u64;
@@ -701,11 +680,11 @@ impl Core {
 
 
     fn addi_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -860,11 +839,11 @@ impl Core {
 
 
     fn subi_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -1018,11 +997,11 @@ impl Core {
 
 
     fn muli_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -1177,11 +1156,11 @@ impl Core {
 
 
     fn divi_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -1364,11 +1343,11 @@ impl Core {
     }
 
     fn neqi_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -1481,11 +1460,11 @@ impl Core {
     }
     
     fn eqi_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -1598,11 +1577,11 @@ impl Core {
     }
 
     fn lti_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -1679,11 +1658,11 @@ impl Core {
     }
 
     fn gti_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -1760,11 +1739,11 @@ impl Core {
     }
         
     fn leqi_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -1841,11 +1820,11 @@ impl Core {
     }
         
     fn geqi_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -1923,11 +1902,11 @@ impl Core {
 
 
     fn addu_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -2059,11 +2038,11 @@ impl Core {
 
 
     fn subu_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -2192,11 +2171,11 @@ impl Core {
 
 
     fn mulu_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -2328,11 +2307,11 @@ impl Core {
 
 
     fn divu_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -2490,11 +2469,11 @@ impl Core {
     }
 
     fn nequ_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -2607,11 +2586,11 @@ impl Core {
     }
     
     fn equ_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -2724,11 +2703,11 @@ impl Core {
     }
 
     fn ltu_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -2805,11 +2784,11 @@ impl Core {
     }
 
     fn gtu_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -2886,11 +2865,11 @@ impl Core {
     }
         
     fn lequ_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -2967,11 +2946,11 @@ impl Core {
     }
         
     fn gequ_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -3048,11 +3027,11 @@ impl Core {
     }
 
     fn and_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register1 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.pipeline[self.pipeline_counter] as u8) as usize;
+        let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -3212,11 +3191,11 @@ impl Core {
     }
 
     fn or_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.pipeline[self.pipeline_counter] as u8;
+        let register1 = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register2 = self.pipeline[self.pipeline_counter] as u8;
+        let register2 = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         match size {
@@ -3346,7 +3325,7 @@ impl Core {
                 let reg1_value = self.registers_128[register1 as usize];
                 let reg2_value = self.registers_128[register2 as usize];
 
-                self.registers_128[register1 as usize] = (reg1_value | reg2_value);
+                self.registers_128[register1 as usize] = reg1_value | reg2_value;
 
                 if self.registers_128[register1 as usize] == 0 {
                     self.zero_flag = true;
@@ -3376,11 +3355,11 @@ impl Core {
     }
 
     fn xor_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.pipeline[self.pipeline_counter] as u8;
+        let register1 = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register2 = self.pipeline[self.pipeline_counter] as u8;
+        let register2 = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         match size {
@@ -3480,7 +3459,7 @@ impl Core {
                 let reg1_value = self.registers_64[register1 as usize];
                 let reg2_value = self.registers_64[register2 as usize];
 
-                self.registers_64[register1 as usize] = (reg1_value ^ reg2_value);
+                self.registers_64[register1 as usize] = reg1_value ^ reg2_value;
 
                 if self.registers_64[register1 as usize] == 0 {
                     self.zero_flag = true;
@@ -3510,7 +3489,7 @@ impl Core {
                 let reg1_value = self.registers_128[register1 as usize];
                 let reg2_value = self.registers_128[register2 as usize];
 
-                self.registers_128[register1 as usize] = (reg1_value ^ reg2_value);
+                self.registers_128[register1 as usize] = reg1_value ^ reg2_value;
 
                 if self.registers_128[register1 as usize] == 0 {
                     self.zero_flag = true;
@@ -3540,9 +3519,9 @@ impl Core {
     }
 
     fn not_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.pipeline[self.pipeline_counter] as u8;
+        let register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         match size {
@@ -3692,11 +3671,11 @@ impl Core {
     }
 
     fn shiftleft_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.pipeline[self.pipeline_counter] as u8;
+        let register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let shift_amount = self.pipeline[self.pipeline_counter] as u8;
+        let shift_amount = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         match size {
@@ -3846,11 +3825,11 @@ impl Core {
     }
 
     fn shiftright_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.pipeline[self.pipeline_counter] as u8;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.pipeline[self.pipeline_counter] as u8;
+        let register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let shift_amount = self.pipeline[self.pipeline_counter] as u8;
+        let shift_amount = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         match size {
@@ -4008,9 +3987,9 @@ impl Core {
     }
 
     fn float32_to_int32_opcode(&mut self) -> Result<(), Fault> {
-        let float_register = self.pipeline[self.pipeline_counter] as u8;
+        let float_register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let int_register = self.pipeline[self.pipeline_counter] as u8;
+        let int_register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(int_register as usize);
@@ -4025,9 +4004,9 @@ impl Core {
     }
 
     fn float64_to_int64_opcode(&mut self) -> Result<(), Fault> {
-        let float_register = self.pipeline[self.pipeline_counter] as u8;
+        let float_register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let int_register = self.pipeline[self.pipeline_counter] as u8;
+        let int_register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(int_register as usize);
@@ -4042,9 +4021,9 @@ impl Core {
     }
 
     fn int32_to_float32_opcode(&mut self) -> Result<(), Fault> {
-        let int_register = self.pipeline[self.pipeline_counter] as u8;
+        let int_register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let float_register = self.pipeline[self.pipeline_counter] as u8;
+        let float_register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(int_register as usize);
@@ -4059,9 +4038,9 @@ impl Core {
     }
 
     fn int64_to_float64_opcode(&mut self) -> Result<(), Fault> {
-        let int_register = self.pipeline[self.pipeline_counter] as u8;
+        let int_register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let float_register = self.pipeline[self.pipeline_counter] as u8;
+        let float_register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(int_register as usize);
@@ -4077,9 +4056,9 @@ impl Core {
     
 
     fn writebyte_opcode(&mut self) -> Result<(),Fault> {
-        let fd_register = self.pipeline[self.pipeline_counter] as u8;
+        let fd_register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let value_register = self.pipeline[self.pipeline_counter] as u8;
+        let value_register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(fd_register as usize, value_register as usize);
@@ -4101,11 +4080,11 @@ impl Core {
     }
 
     fn write_opcode(&mut self) -> Result<(), Fault> {
-        let fd_register = self.pipeline[self.pipeline_counter] as u8;
+        let fd_register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let pointer_register = self.pipeline[self.pipeline_counter] as u8;
+        let pointer_register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let length_register = self.pipeline[self.pipeline_counter] as u8;
+        let length_register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(fd_register as usize, pointer_register as usize, length_register as usize);
@@ -4131,7 +4110,7 @@ impl Core {
     }
 
     fn flush_opcode(&mut self) -> Result<(), Fault> {
-        let fd_register = self.pipeline[self.pipeline_counter] as u8;
+        let fd_register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(fd_register as usize);
@@ -4150,6 +4129,30 @@ impl Core {
 
         Ok(())
     }
+
+    fn remainder_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        let register = self.program[self.program_counter] as u8;
+
+        match size {
+            8 | 16 | 32 | 64 => {
+                check_register64!(register as usize);
+
+                self.registers_64[register as usize] = self.remainder_64 as u64;
+            },
+            128 => {
+                check_register128!(register as usize);
+
+                self.registers_128[register as usize] = self.remainder_128;
+            },
+            _ => return Err(Fault::InvalidSize),
+
+        }
+
+        Ok(())
+    }
     
 }
 
@@ -4163,7 +4166,7 @@ mod tests {
 
     #[test]
     fn test_addi() {
-        let program = Arc::new(RwLock::new(vec![6,0,64,0,1]));
+        let program = Arc::new(vec![6,0,64,0,1]);
         let memory = Arc::new(RwLock::new(Vec::new()));
         let mut core = Core::new(memory, program.clone());
 
@@ -4179,7 +4182,7 @@ mod tests {
     fn test_subi() {
         let program = vec![7,0,64,0,1];
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory, Arc::new(RwLock::new(program)));
+        let mut core = Core::new(memory, Arc::new(program));
 
         core.registers_64[0] = 1;
         core.registers_64[1] = 2;
@@ -4194,7 +4197,7 @@ mod tests {
     fn test_muli() {
         let program = vec![8,0,64,0,1];
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory, Arc::new(RwLock::new(program)));
+        let mut core = Core::new(memory, Arc::new(program));
 
         core.registers_64[0] = 2;
         core.registers_64[1] = 2;
@@ -4209,7 +4212,7 @@ mod tests {
     fn test_divi() {
         let program = vec![9,0,64,0,1];
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory, Arc::new(RwLock::new(program)));
+        let mut core = Core::new(memory, Arc::new(program));
 
         core.registers_64[0] = 4;
         core.registers_64[1] = 3;
@@ -4225,7 +4228,7 @@ mod tests {
     fn test_divi_by_zero() {
         let program = vec![9,0,64,0,1];
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory, Arc::new(RwLock::new(program)));
+        let mut core = Core::new(memory, Arc::new(program));
 
         core.registers_64[0] = 4;
         core.registers_64[1] = 0;
@@ -4244,7 +4247,7 @@ mod tests {
     fn test_addi_overflow() {
         let program = vec![6,0,8,0,1];
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory, Arc::new(RwLock::new(program)));
+        let mut core = Core::new(memory, Arc::new(program));
 
         core.registers_64[0] = 127;
         core.registers_64[1] = 2;
@@ -4259,7 +4262,7 @@ mod tests {
     fn test_eqi() {
         let program = vec![10,0,64,0,1];
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory, Arc::new(RwLock::new(program)));
+        let mut core = Core::new(memory, Arc::new(program));
 
         core.registers_64[0] = 1;
         core.registers_64[1] = 1;
@@ -4273,7 +4276,7 @@ mod tests {
     fn test_lti() {
         let program = vec![12,0,64,0,1];
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory, Arc::new(RwLock::new(program)));
+        let mut core = Core::new(memory, Arc::new(program));
 
         core.registers_64[0] = 1;
         core.registers_64[1] = 2;
@@ -4287,7 +4290,7 @@ mod tests {
     fn test_geqi() {
         let program = vec![15,0,64,0,1];
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory, Arc::new(RwLock::new(program)));
+        let mut core = Core::new(memory, Arc::new(program));
 
         core.registers_64[0] = 2;
         core.registers_64[1] = 1;
@@ -4301,7 +4304,7 @@ mod tests {
     fn test_addu() {
         let program = vec![16,0,128,0,1];
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory, Arc::new(RwLock::new(program)));
+        let mut core = Core::new(memory, Arc::new(program));
 
         let value1 = 1;
         let value2 = 2;
@@ -4318,7 +4321,7 @@ mod tests {
     fn test_unsigned_overflow() {
         let program = vec![16,0,8,0,1];
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory, Arc::new(RwLock::new(program)));
+        let mut core = Core::new(memory, Arc::new(program));
         
         let value1:u8 = 1;
         let value2:u8 = 255;
@@ -4336,7 +4339,7 @@ mod tests {
     fn test_write_byte() {
         let program = vec![145,0,0,1,145,0,0,2,145,0,0,3,145,0,0,4];
         let memory = Arc::new(RwLock::new(vec![]));
-        let mut core = Core::new(memory.clone(), Arc::new(RwLock::new(program)));
+        let mut core = Core::new(memory.clone(), Arc::new(program));
 
         core.registers_64[0] = 1;
         core.registers_64[1] = 72;
@@ -4356,7 +4359,7 @@ mod tests {
         let program = vec![146,0,0,1,2,149,0,0];
         let memory = vec![0, 104,101,108,108,111,32,119,111,114,108,100,10];
         let memory = Arc::new(RwLock::new(memory));
-        let mut core = Core::new(memory.clone(), Arc::new(RwLock::new(program)));
+        let mut core = Core::new(memory.clone(), Arc::new(program));
 
         core.registers_64[0] = 1;
         core.registers_64[1] = 1;

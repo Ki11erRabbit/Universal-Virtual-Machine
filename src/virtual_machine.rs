@@ -33,7 +33,7 @@ pub struct Machine {
     heap: Arc<RwLock<Vec<u8>>>,
     //cores: Vec<Arc<RwLock<Core>>>,
     core_threads: Vec<JoinHandle<Result<(),Fault>>>,
-    program: Option<Arc<RwLock<Vec<u8>>>>,
+    program: Option<Arc<Vec<u8>>>,
 }
 
 impl Machine {
@@ -59,7 +59,7 @@ impl Machine {
     }
 
     pub fn add_program(&mut self, program: Vec<u8>) {
-        self.program = Some(Arc::new(RwLock::new(program)));
+        self.program = Some(Arc::new(program));
     }
 
     pub fn core_count(&self) -> usize {
