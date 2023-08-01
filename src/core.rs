@@ -251,10 +251,6 @@ impl Core {
             ShiftLeft => self.shiftleft_opcode()?,
             ShiftRight => self.shiftright_opcode()?,
             Clear => self.clear_opcode()?,
-            Float32ToInt32 => self.float32_to_int32_opcode()?,
-            Float64ToInt64 => self.float64_to_int64_opcode()?,
-            Int32ToFloat32 => self.int32_to_float32_opcode()?,
-            Int64ToFloat64 => self.int64_to_float64_opcode()?,
             Remainder => self.remainder_opcode()?,
             AddFI => self.addfi_opcode()?,
             SubFI => self.subfi_opcode()?,
@@ -268,6 +264,10 @@ impl Core {
             SubUF => self.subuf_opcode()?,
             MulUF => self.muluf_opcode()?,
             DivUF => self.divuf_opcode()?,
+            DeRefRegF => self.derefregf_opcode()?,
+            DeRefF => self.dereff_opcode()?,
+            MoveF => self.movef_opcode()?,
+            SetF => self.setf_opcode()?,
             
             
 
@@ -6092,6 +6092,260 @@ impl Core {
         }
         Ok(())
     }
+
+
+    fn setf_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        match size {
+            32 => {
+                check_registerF32!(register as usize);
+                let mut value = 0.0f32.to_ne_bytes();
+                value[0] = self.program[self.program_counter];
+                value[1] = self.program[self.program_counter + 1];
+                value[2] = self.program[self.program_counter + 2];
+                value[3] = self.program[self.program_counter + 3];
+
+                self.advance_by_4_bytes();
+                
+                self.registers_f32[register as usize] = f32::from_ne_bytes(value);
+            },
+            64 => {
+                check_registerF64!(register as usize);
+                let mut value = 0.0f64.to_ne_bytes();
+                value[0] = self.program[self.program_counter];
+                value[1] = self.program[self.program_counter + 1];
+                value[2] = self.program[self.program_counter + 2];
+                value[3] = self.program[self.program_counter + 3];
+                value[4] = self.program[self.program_counter + 4];
+                value[5] = self.program[self.program_counter + 5];
+                value[6] = self.program[self.program_counter + 6];
+                value[7] = self.program[self.program_counter + 7];
+                
+                self.advance_by_8_bytes();
+
+                self.registers_f64[register as usize] = f64::from_ne_bytes(value);
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+        Ok(())
+    }
+
+    fn dereff_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let address = self.registers_64[register];
+        match size {
+            32 => {
+                loop {
+                    match self.memory.try_read() {
+                        Ok(memory) => {
+                            if address >= memory.len() as u64 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            let mut bytes = 0.0f32.to_ne_bytes();
+                            bytes[0] = memory[address as usize];
+                            bytes[1] = memory[address as usize + 1];
+                            bytes[2] = memory[address as usize + 2];
+                            bytes[3] = memory[address as usize + 3];
+
+                            self.registers_f32[register] = f32::from_ne_bytes(bytes);
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => {
+                            continue;
+                        },
+                        Err(_) => return Err(Fault::CorruptedMemory),
+                    }
+
+                }
+                self.advance_by_4_bytes();
+            }
+            64 => {
+                loop {
+                    match self.memory.try_read() {
+                        Ok(memory) => {
+                            if address >= memory.len() as u64 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            let mut bytes = 0.0f64.to_ne_bytes();
+                            bytes[0] = memory[address as usize];
+                            bytes[1] = memory[address as usize + 1];
+                            bytes[2] = memory[address as usize + 2];
+                            bytes[3] = memory[address as usize + 3];
+                            bytes[4] = memory[address as usize + 4];
+                            bytes[5] = memory[address as usize + 5];
+                            bytes[6] = memory[address as usize + 6];
+                            bytes[7] = memory[address as usize + 7];
+
+                            self.registers_f64[register] = f64::from_ne_bytes(bytes);
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => {
+                            continue;
+                        },
+                        Err(_) => return Err(Fault::CorruptedMemory),
+                    }
+
+                }
+                self.advance_by_8_bytes();
+            }
+            _ => return Err(Fault::InvalidSize),
+        }
+        Ok(())
+    }
+
+    fn movef_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8 as usize;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as u8 as usize;
+        self.advance_by_1_byte();
+        match size {
+            32 => {
+                check_registerF32!(register as usize);
+                let address = self.program[self.program_counter] as u64;
+                self.advance_by_8_bytes();
+                loop {
+                    match self.memory.try_write() {
+                        Ok(mut memory) => {
+                            if address >= memory.len() as u64 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            let float_bytes = self.registers_f32[register as usize].to_ne_bytes();
+                            memory[address as usize] = float_bytes[0];
+                            memory[address as usize + 1] = float_bytes[1];
+                            memory[address as usize + 2] = float_bytes[2];
+                            memory[address as usize + 3] = float_bytes[3];
+                            
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => {
+                            thread::yield_now();
+                            continue;
+                        },
+                        Err(_) => return Err(Fault::CorruptedMemory),
+                    }
+                }
+
+            },
+            64 => {
+                check_registerF64!(register as usize);
+                let address = self.program[self.program_counter] as u64;
+                self.advance_by_8_bytes();
+                loop {
+                    match self.memory.try_write() {
+                        Ok(mut memory) => {
+                            if address >= memory.len() as u64 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            let float_bytes = self.registers_f64[register as usize].to_ne_bytes();
+                            memory[address as usize] = float_bytes[0];
+                            memory[address as usize + 1] = float_bytes[1];
+                            memory[address as usize + 2] = float_bytes[2];
+                            memory[address as usize + 3] = float_bytes[3];
+                            memory[address as usize + 4] = float_bytes[4];
+                            memory[address as usize + 5] = float_bytes[5];
+                            memory[address as usize + 6] = float_bytes[6];
+                            memory[address as usize + 7] = float_bytes[7];
+                            
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => {
+                            thread::yield_now();
+                            continue;
+                        },
+                        Err(_) => return Err(Fault::CorruptedMemory),
+                    }
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+
+        }
+        Ok(())
+    }
+
+    fn derefregf_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let address_register = self.program[self.program_counter] as usize;
+        check_register64!(address_register);
+        self.advance_by_1_byte();
+        let offset = self.program[self.program_counter] as i64;
+        self.advance_by_8_bytes();
+        let address = self.registers_64[address_register] as i64 + offset;
+        let address = address as u64;
+
+        match size {
+            32 => {
+                check_registerF32!(register);
+                loop {
+                    match self.memory.try_read() {
+                        Ok(memory) => {
+                            if address >= memory.len() as u64 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            let mut bytes = 0.0f32.to_ne_bytes();
+                            bytes[0] = memory[address as usize];
+                            bytes[1] = memory[address as usize + 1];
+                            bytes[2] = memory[address as usize + 2];
+                            bytes[3] = memory[address as usize + 3];
+
+                            self.registers_f32[register] = f32::from_ne_bytes(bytes);
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => {
+                            continue;
+                        },
+                        Err(_) => return Err(Fault::CorruptedMemory),
+                    }
+
+                }
+            },
+            64 => {
+                check_registerF64!(register);
+                loop {
+                    match self.memory.try_read() {
+                        Ok(memory) => {
+                            if address >= memory.len() as u64 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            let mut bytes = 0.0f64.to_ne_bytes();
+                            bytes[0] = memory[address as usize];
+                            bytes[1] = memory[address as usize + 1];
+                            bytes[2] = memory[address as usize + 2];
+                            bytes[3] = memory[address as usize + 3];
+                            bytes[4] = memory[address as usize + 4];
+                            bytes[5] = memory[address as usize + 5];
+                            bytes[6] = memory[address as usize + 6];
+                            bytes[7] = memory[address as usize + 7];
+
+                            self.registers_f64[register] = f64::from_ne_bytes(bytes);
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => {
+                            continue;
+                        },
+                        Err(_) => return Err(Fault::CorruptedMemory),
+                    }
+
+                }
+            },
+            _ => {
+                return Err(Fault::InvalidSize);
+            }
+
+        }
+
+        Ok(())
+        
+    }
+
         
     
 }
@@ -6310,6 +6564,23 @@ mod tests {
         
         //std::io::stdout().flush().unwrap();
         
+    }
+
+    #[test]
+    fn test_dereff_opcode() {
+        let program = vec![27,0,32,0,1,0,0,0,0,0,0,0];
+        let memory = vec![0, 0x00,0x00,0xb8,0x41];
+        let memory = Arc::new(RwLock::new(memory));
+        let mut core = Core::new(memory.clone(), Arc::new(program));
+
+        core.run(0).unwrap();
+
+        println!("{}", core.registers_f32[0]);
+        println!("{:?}", 23.0f32.to_ne_bytes());
+        println!("{}", f32::from_ne_bytes([0x00,0x00,0xb8,0x41]));
+        println!("{}", f32::from_ne_bytes([0x41,0xb8,0x00,0x00]));
+
+        assert_eq!(core.registers_f32[0], f32::from_ne_bytes([0x00,0x00,0xb8,0x41]));
     }
 
 
