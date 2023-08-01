@@ -268,6 +268,16 @@ impl Core {
             DeRefF => self.dereff_opcode()?,
             MoveF => self.movef_opcode()?,
             SetF => self.setf_opcode()?,
+            AddF => self.addf_opcode()?,
+            SubF => self.subf_opcode()?,
+            MulF => self.mulf_opcode()?,
+            DivF => self.divf_opcode()?,
+            EqF => self.eqf_opcode()?,
+            NeqF => self.neqf_opcode()?,
+            LtF => self.ltf_opcode()?,
+            GtF => self.gtf_opcode()?,
+            LeqF => self.leqf_opcode()?,
+            GeqF => self.geqf_opcode()?,
             
             
 
@@ -750,15 +760,15 @@ impl Core {
                 }
                 else {
                     self.zero_flag = false;
+                    if new_value < 0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
                 }
                 if new_value % 2 != 0 {
                     self.odd_flag = true;
-                }
-                if new_value < 0 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
                 }
 
                 self.registers_64[register1] = new_value as u64;
@@ -778,15 +788,15 @@ impl Core {
                 }
                 else {
                     self.zero_flag = false;
+                    if new_value < 0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
                 }
                 if new_value % 2 != 0 {
                     self.odd_flag = true;
-                }
-                if new_value < 0 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
                 }
 
                 self.registers_64[register1] = new_value as u64;
@@ -807,15 +817,15 @@ impl Core {
                 }
                 else {
                     self.zero_flag = false;
+                    if new_value < 0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
                 }
                 if new_value % 2 != 0 {
                     self.odd_flag = true;
-                }
-                if new_value < 0 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
                 }
 
                 self.registers_64[register1] = new_value as u64;
@@ -837,14 +847,20 @@ impl Core {
                 else {
                     self.zero_flag = false;
                 }
-                if new_value % 2 != 0 {
-                    self.odd_flag = true;
-                }
-                if new_value > 0 {
-                    self.sign_flag = Sign::Positive;
+                if new_value == 0 {
+                    self.zero_flag = true;
                 }
                 else {
-                    self.sign_flag = Sign::Negative;
+                    self.zero_flag = false;
+                    if new_value < 0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
+                }
+                if new_value % 2 != 0 {
+                    self.odd_flag = true;
                 }
 
                 self.registers_64[register1] = new_value as u64;
@@ -865,15 +881,15 @@ impl Core {
                 }
                 else {
                     self.zero_flag = false;
+                    if new_value < 0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
                 }
                 if new_value % 2 != 0 {
                     self.odd_flag = true;
-                }
-                if new_value > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
                 }
 
                 self.registers_128[register1] = new_value as u128;
@@ -909,15 +925,15 @@ impl Core {
                 }
                 else {
                     self.zero_flag = false;
+                    if new_value < 0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
                 }
                 if new_value % 2 != 0 {
                     self.odd_flag = true;
-                }
-                if new_value < 0 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
                 }
 
                 self.registers_64[register1] = new_value as u64;
@@ -937,15 +953,15 @@ impl Core {
                 }
                 else {
                     self.zero_flag = false;
+                    if new_value < 0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
                 }
                 if new_value % 2 != 0 {
                     self.odd_flag = true;
-                }
-                if new_value < 0 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
                 }
 
                 self.registers_64[register1] = new_value as u64;
@@ -965,15 +981,15 @@ impl Core {
                 }
                 else {
                     self.zero_flag = false;
+                    if new_value < 0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
                 }
                 if new_value % 2 != 0 {
                     self.odd_flag = true;
-                }
-                if new_value < 0 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
                 }
 
                 self.registers_64[register1] = new_value as u64;
@@ -994,15 +1010,15 @@ impl Core {
                 }
                 else {
                     self.zero_flag = false;
+                    if new_value < 0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
                 }
                 if new_value % 2 != 0 {
                     self.odd_flag = true;
-                }
-                if new_value > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
                 }
 
                 self.registers_64[register1] = new_value as u64;
@@ -1023,15 +1039,15 @@ impl Core {
                 }
                 else {
                     self.zero_flag = false;
+                    if new_value < 0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
                 }
                 if new_value % 2 != 0 {
                     self.odd_flag = true;
-                }
-                if new_value > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
                 }
 
                 self.registers_128[register1] = new_value as u128;
@@ -1067,15 +1083,15 @@ impl Core {
                 }
                 else {
                     self.zero_flag = false;
+                    if new_value < 0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
                 }
                 if new_value % 2 != 0 {
                     self.odd_flag = true;
-                }
-                if new_value < 0 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
                 }
 
                 self.registers_64[register1] = new_value as u64;
@@ -1095,15 +1111,15 @@ impl Core {
                 }
                 else {
                     self.zero_flag = false;
+                    if new_value < 0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
                 }
                 if new_value % 2 != 0 {
                     self.odd_flag = true;
-                }
-                if new_value < 0 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
                 }
 
                 self.registers_64[register1] = new_value as u64;
@@ -1124,15 +1140,15 @@ impl Core {
                 }
                 else {
                     self.zero_flag = false;
+                    if new_value < 0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
                 }
                 if new_value % 2 != 0 {
                     self.odd_flag = true;
-                }
-                if new_value < 0 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
                 }
 
                 self.registers_64[register1] = new_value as u64;
@@ -1153,15 +1169,15 @@ impl Core {
                 }
                 else {
                     self.zero_flag = false;
+                    if new_value < 0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
                 }
                 if new_value % 2 != 0 {
                     self.odd_flag = true;
-                }
-                if new_value > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
                 }
 
                 self.registers_64[register1] = new_value as u64;
@@ -1182,15 +1198,15 @@ impl Core {
                 }
                 else {
                     self.zero_flag = false;
+                    if new_value < 0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
                 }
                 if new_value % 2 != 0 {
                     self.odd_flag = true;
-                }
-                if new_value > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
                 }
 
                 self.registers_128[register1] = new_value as u128;
@@ -1232,15 +1248,15 @@ impl Core {
                 }
                 else {
                     self.zero_flag = false;
+                    if new_value < 0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
                 }
                 if new_value % 2 != 0 {
                     self.odd_flag = true;
-                }
-                if new_value < 0 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
                 }
 
                 self.registers_64[register1] = new_value as u64;
@@ -1266,15 +1282,15 @@ impl Core {
                 }
                 else {
                     self.zero_flag = false;
+                    if new_value < 0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
                 }
                 if new_value % 2 != 0 {
                     self.odd_flag = true;
-                }
-                if new_value < 0 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
                 }
 
                 self.registers_64[register1] = new_value as u64;
@@ -1300,15 +1316,15 @@ impl Core {
                 }
                 else {
                     self.zero_flag = false;
+                    if new_value < 0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
                 }
                 if new_value % 2 != 0 {
                     self.odd_flag = true;
-                }
-                if new_value < 0 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
                 }
 
                 self.registers_64[register1] = new_value as u64;
@@ -1335,15 +1351,15 @@ impl Core {
                 }
                 else {
                     self.zero_flag = false;
+                    if new_value < 0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
                 }
                 if new_value % 2 != 0 {
                     self.odd_flag = true;
-                }
-                if new_value > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
                 }
 
                 self.registers_64[register1] = new_value as u64;
@@ -1370,15 +1386,15 @@ impl Core {
                 }
                 else {
                     self.zero_flag = false;
+                    if new_value < 0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
                 }
                 if new_value % 2 != 0 {
                     self.odd_flag = true;
-                }
-                if new_value > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
                 }
 
                 self.registers_128[register1] = new_value as u128;
@@ -1410,13 +1426,6 @@ impl Core {
                 else {
                     self.comparison_flag = Comparison::Equal;
                 }
-
-                if reg1_value == 0 && reg2_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
             },
             16 => {
                 check_register64!(register1, register2);
@@ -1429,13 +1438,6 @@ impl Core {
                 }
                 else {
                     self.comparison_flag = Comparison::Equal;
-                }
-
-                if reg1_value == 0 && reg2_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
                 }
             },
             32 => {
@@ -1450,13 +1452,6 @@ impl Core {
                 else {
                     self.comparison_flag = Comparison::Equal;
                 }
-
-                if reg1_value == 0 && reg2_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
             },
             64 => {
                 check_register64!(register1, register2);
@@ -1470,13 +1465,6 @@ impl Core {
                 else {
                     self.comparison_flag = Comparison::Equal;
                 }
-
-                if reg1_value == 0 && reg2_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
             },
             128 => {
                 check_register128!(register1, register2);
@@ -1489,13 +1477,6 @@ impl Core {
                 }
                 else {
                     self.comparison_flag = Comparison::Equal;
-                }
-
-                if reg1_value == 0 && reg2_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
                 }
             },
 
@@ -1527,13 +1508,6 @@ impl Core {
                 else {
                     self.comparison_flag = Comparison::NotEqual;
                 }
-
-                if reg1_value == 0 && reg2_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
             },
             16 => {
                 check_register64!(register1, register2);
@@ -1546,13 +1520,6 @@ impl Core {
                 }
                 else {
                     self.comparison_flag = Comparison::NotEqual;
-                }
-
-                if reg1_value == 0 && reg2_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
                 }
             },
             32 => {
@@ -1567,13 +1534,6 @@ impl Core {
                 else {
                     self.comparison_flag = Comparison::NotEqual;
                 }
-
-                if reg1_value == 0 && reg2_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
             },
             64 => {
                 check_register64!(register1, register2);
@@ -1587,13 +1547,6 @@ impl Core {
                 else {
                     self.comparison_flag = Comparison::NotEqual;
                 }
-
-                if reg1_value == 0 && reg2_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
             },
             128 => {
                 check_register128!(register1, register2);
@@ -1606,13 +1559,6 @@ impl Core {
                 }
                 else {
                     self.comparison_flag = Comparison::NotEqual;
-                }
-
-                if reg1_value == 0 && reg2_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
                 }
             },
 
@@ -1642,7 +1588,7 @@ impl Core {
                     self.comparison_flag = Comparison::LessThan;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotLessThan;
+                    self.comparison_flag = Comparison::GreaterThanOrEqual;
                 }
             },
             16 => {
@@ -1655,7 +1601,7 @@ impl Core {
                     self.comparison_flag = Comparison::LessThan;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotLessThan;
+                    self.comparison_flag = Comparison::GreaterThanOrEqual;
                 }
             },
             32 => {
@@ -1668,7 +1614,7 @@ impl Core {
                     self.comparison_flag = Comparison::LessThan;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotLessThan;
+                    self.comparison_flag = Comparison::GreaterThanOrEqual;
                 }
             },
             64 => {
@@ -1681,7 +1627,7 @@ impl Core {
                     self.comparison_flag = Comparison::LessThan;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotLessThan;
+                    self.comparison_flag = Comparison::GreaterThanOrEqual;
                 }
             },
             128 => {
@@ -1694,7 +1640,7 @@ impl Core {
                     self.comparison_flag = Comparison::LessThan;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotLessThan;
+                    self.comparison_flag = Comparison::GreaterThanOrEqual;
                 }
             },
             _ => return Err(Fault::InvalidSize),
@@ -1723,7 +1669,7 @@ impl Core {
                     self.comparison_flag = Comparison::GreaterThan;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotGreaterThan;
+                    self.comparison_flag = Comparison::LessThanOrEqual;
                 }
             },
             16 => {
@@ -1736,7 +1682,7 @@ impl Core {
                     self.comparison_flag = Comparison::GreaterThan;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotGreaterThan;
+                    self.comparison_flag = Comparison::LessThanOrEqual;
                 }
             },
             32 => {
@@ -1749,7 +1695,7 @@ impl Core {
                     self.comparison_flag = Comparison::GreaterThan;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotGreaterThan;
+                    self.comparison_flag = Comparison::LessThanOrEqual;
                 }
             },
             64 => {
@@ -1762,7 +1708,7 @@ impl Core {
                     self.comparison_flag = Comparison::GreaterThan;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotGreaterThan;
+                    self.comparison_flag = Comparison::LessThanOrEqual;
                 }
             },
             128 => {
@@ -1775,7 +1721,7 @@ impl Core {
                     self.comparison_flag = Comparison::GreaterThan;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotGreaterThan;
+                    self.comparison_flag = Comparison::LessThanOrEqual;
                 }
             },
             _ => return Err(Fault::InvalidSize),
@@ -2536,13 +2482,6 @@ impl Core {
                 else {
                     self.comparison_flag = Comparison::Equal;
                 }
-
-                if reg1_value == 0 && reg2_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
             },
             16 => {
                 check_register64!(register1, register2);
@@ -2555,13 +2494,6 @@ impl Core {
                 }
                 else {
                     self.comparison_flag = Comparison::Equal;
-                }
-
-                if reg1_value == 0 && reg2_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
                 }
             },
             32 => {
@@ -2576,13 +2508,6 @@ impl Core {
                 else {
                     self.comparison_flag = Comparison::Equal;
                 }
-
-                if reg1_value == 0 && reg2_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
             },
             64 => {
                 check_register64!(register1, register2);
@@ -2596,13 +2521,6 @@ impl Core {
                 else {
                     self.comparison_flag = Comparison::Equal;
                 }
-
-                if reg1_value == 0 && reg2_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
             },
             128 => {
                 check_register128!(register1, register2);
@@ -2615,13 +2533,6 @@ impl Core {
                 }
                 else {
                     self.comparison_flag = Comparison::Equal;
-                }
-
-                if reg1_value == 0 && reg2_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
                 }
             },
 
@@ -2653,13 +2564,6 @@ impl Core {
                 else {
                     self.comparison_flag = Comparison::NotEqual;
                 }
-
-                if reg1_value == 0 && reg2_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
             },
             16 => {
                 check_register64!(register1, register2);
@@ -2672,13 +2576,6 @@ impl Core {
                 }
                 else {
                     self.comparison_flag = Comparison::NotEqual;
-                }
-
-                if reg1_value == 0 && reg2_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
                 }
             },
             32 => {
@@ -2693,13 +2590,6 @@ impl Core {
                 else {
                     self.comparison_flag = Comparison::NotEqual;
                 }
-
-                if reg1_value == 0 && reg2_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
             },
             64 => {
                 check_register64!(register1, register2);
@@ -2713,13 +2603,6 @@ impl Core {
                 else {
                     self.comparison_flag = Comparison::NotEqual;
                 }
-
-                if reg1_value == 0 && reg2_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
             },
             128 => {
                 check_register128!(register1, register2);
@@ -2732,13 +2615,6 @@ impl Core {
                 }
                 else {
                     self.comparison_flag = Comparison::NotEqual;
-                }
-
-                if reg1_value == 0 && reg2_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
                 }
             },
 
@@ -2768,7 +2644,7 @@ impl Core {
                     self.comparison_flag = Comparison::LessThan;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotLessThan;
+                    self.comparison_flag = Comparison::GreaterThanOrEqual;
                 }
             },
             16 => {
@@ -2781,7 +2657,7 @@ impl Core {
                     self.comparison_flag = Comparison::LessThan;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotLessThan;
+                    self.comparison_flag = Comparison::GreaterThanOrEqual;
                 }
             },
             32 => {
@@ -2794,7 +2670,7 @@ impl Core {
                     self.comparison_flag = Comparison::LessThan;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotLessThan;
+                    self.comparison_flag = Comparison::GreaterThanOrEqual;
                 }
             },
             64 => {
@@ -2807,7 +2683,7 @@ impl Core {
                     self.comparison_flag = Comparison::LessThan;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotLessThan;
+                    self.comparison_flag = Comparison::GreaterThanOrEqual;
                 }
             },
             128 => {
@@ -2820,7 +2696,7 @@ impl Core {
                     self.comparison_flag = Comparison::LessThan;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotLessThan;
+                    self.comparison_flag = Comparison::GreaterThanOrEqual;
                 }
             },
             _ => return Err(Fault::InvalidSize),
@@ -2849,7 +2725,7 @@ impl Core {
                     self.comparison_flag = Comparison::GreaterThan;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotGreaterThan;
+                    self.comparison_flag = Comparison::LessThanOrEqual;
                 }
             },
             16 => {
@@ -2862,7 +2738,7 @@ impl Core {
                     self.comparison_flag = Comparison::GreaterThan;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotGreaterThan;
+                    self.comparison_flag = Comparison::LessThanOrEqual;
                 }
             },
             32 => {
@@ -2875,7 +2751,7 @@ impl Core {
                     self.comparison_flag = Comparison::GreaterThan;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotGreaterThan;
+                    self.comparison_flag = Comparison::LessThanOrEqual;
                 }
             },
             64 => {
@@ -2888,7 +2764,7 @@ impl Core {
                     self.comparison_flag = Comparison::GreaterThan;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotGreaterThan;
+                    self.comparison_flag = Comparison::LessThanOrEqual;
                 }
             },
             128 => {
@@ -2901,7 +2777,7 @@ impl Core {
                     self.comparison_flag = Comparison::GreaterThan;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotGreaterThan;
+                    self.comparison_flag = Comparison::LessThanOrEqual;
                 }
             },
             _ => return Err(Fault::InvalidSize),
@@ -4350,6 +4226,11 @@ impl Core {
             32 => {
                 check_registerF32!(float_register as usize);
 
+                if self.registers_f64[int_register as usize] == 0.0 {
+                    return Err(Fault::DivideByZero);
+                }
+                
+
                 self.registers_f32[float_register as usize] /= self.registers_64[int_register as usize] as f32;
 
                 if self.registers_f32[float_register as usize].is_nan() {
@@ -4374,6 +4255,10 @@ impl Core {
             },
             64 => {
                 check_registerF64!(float_register as usize);
+
+                if self.registers_f64[int_register as usize] == 0.0 {
+                    return Err(Fault::DivideByZero);
+                }
 
                 self.registers_f64[float_register as usize] /= self.registers_64[int_register as usize] as f64;
 
@@ -5074,6 +4959,10 @@ impl Core {
 
                 };
 
+                if float_value == 0 {
+                    return Err(Fault::DivideByZero);
+                }
+
                 self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
 
                 let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
@@ -5113,6 +5002,10 @@ impl Core {
                     _ => return Err(Fault::InvalidSize),
 
                 };
+
+                if float_value == 0 {
+                    return Err(Fault::DivideByZero);
+                }
 
                 self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
 
@@ -5154,6 +5047,10 @@ impl Core {
 
                 };
 
+                if float_value == 0 {
+                    return Err(Fault::DivideByZero);
+                }
+
                 self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
 
                 let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
@@ -5194,6 +5091,10 @@ impl Core {
 
                 };
 
+                if float_value == 0 {
+                    return Err(Fault::DivideByZero);
+                }
+
                 self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
 
                 let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
@@ -5233,6 +5134,11 @@ impl Core {
                     _ => return Err(Fault::InvalidSize),
 
                 };
+                
+                if float_value == 0 {
+                    return Err(Fault::DivideByZero);
+                }
+                
                 self.remainder_128 = (Wrapping(int_value) % Wrapping(float_value)).0 as u128;
 
                 let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
@@ -5935,6 +5841,10 @@ impl Core {
 
                 };
 
+                if float_value == 0 {
+                    return Err(Fault::DivideByZero);
+                }
+
                 self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
 
                 let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
@@ -5974,6 +5884,10 @@ impl Core {
                     _ => return Err(Fault::InvalidSize),
 
                 };
+
+                if float_value == 0 {
+                    return Err(Fault::DivideByZero);
+                }
 
                 self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
 
@@ -6015,6 +5929,10 @@ impl Core {
 
                 };
 
+                if float_value == 0 {
+                    return Err(Fault::DivideByZero);
+                }
+
                 self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
 
                 let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
@@ -6055,6 +5973,10 @@ impl Core {
 
                 };
 
+                if float_value == 0 {
+                    return Err(Fault::DivideByZero);
+                }
+
                 self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
 
                 let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
@@ -6094,6 +6016,10 @@ impl Core {
                     _ => return Err(Fault::InvalidSize),
 
                 };
+
+                if float_value == 0 {
+                    return Err(Fault::DivideByZero);
+                }
                 self.remainder_128 = (Wrapping(int_value) % Wrapping(float_value)).0 as u128;
 
                 let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
@@ -6183,10 +6109,6 @@ impl Core {
                             bytes[1] = memory[address as usize + 1];
                             bytes[2] = memory[address as usize + 2];
                             bytes[3] = memory[address as usize + 3];
-
-                            println!("Program counter: {}", self.program_counter);
-                            println!("Address: {}", address);
-                            println!("Dereffing {:?} into {}", bytes, register);
 
                             self.registers_f32[register] = f32::from_ne_bytes(bytes);
                             break;
@@ -6376,10 +6298,522 @@ impl Core {
         }
 
         Ok(())
-        
     }
 
+    fn addf_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let register2 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register1, register2);
+                self.registers_f32[register1] += self.registers_f32[register2];
+
+                if self.registers_f32[register1].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f32[register1].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f32[register1] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                    if self.registers_f32[register1] < 0.0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
+                }
+            },
+            64 => {
+                check_registerF64!(register1, register2);
+                self.registers_f64[register1] += self.registers_f64[register2];
+
+                if self.registers_f64[register1].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f64[register1].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f64[register1] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                    if self.registers_f64[register1] < 0.0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
+                }
+                
+                
+                
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+
+    fn subf_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let register2 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register1, register2);
+                self.registers_f32[register1] -= self.registers_f32[register2];
+
+                if self.registers_f32[register1].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f32[register1].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f32[register1] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                    if self.registers_f32[register1] < 0.0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
+                }
+            },
+            64 => {
+                check_registerF64!(register1, register2);
+                self.registers_f64[register1] -= self.registers_f64[register2];
+
+                if self.registers_f64[register1].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f64[register1].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f64[register1] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                    if self.registers_f64[register1] < 0.0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
+                }
+                
+                
+                
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
         
+    fn mulf_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let register2 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register1, register2);
+                self.registers_f32[register1] *= self.registers_f32[register2];
+
+                if self.registers_f32[register1].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f32[register1].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f32[register1] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                    if self.registers_f32[register1] < 0.0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
+                }
+            },
+            64 => {
+                check_registerF64!(register1, register2);
+                self.registers_f64[register1] *= self.registers_f64[register2];
+
+                if self.registers_f64[register1].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f64[register1].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f64[register1] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                    if self.registers_f64[register1] < 0.0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
+                }
+                
+                
+                
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+
+
+    fn divf_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let register2 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register1, register2);
+
+                if self.registers_f32[register2] == 0.0 {
+                    return Err(Fault::DivideByZero);
+                }
+                
+                self.registers_f32[register1] /= self.registers_f32[register2];
+
+                if self.registers_f32[register1].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f32[register1].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f32[register1] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                    if self.registers_f32[register1] < 0.0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
+                }
+            },
+            64 => {
+                check_registerF64!(register1, register2);
+
+                if self.registers_f64[register2] == 0.0 {
+                    return Err(Fault::DivideByZero);
+                }
+                
+                self.registers_f64[register1] /= self.registers_f64[register2];
+
+                if self.registers_f64[register1].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f64[register1].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f64[register1] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                    if self.registers_f64[register1] < 0.0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
+                }
+                
+                
+                
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+
+
+    fn eqf_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let register2 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register1, register2);
+                if self.registers_f32[register1] == self.registers_f32[register2] {
+                    self.comparison_flag = Comparison::Equal;
+                }
+                else {
+                    self.comparison_flag = Comparison::NotEqual;
+                }
+            },
+            64 => {
+                check_registerF64!(register1, register2);
+                if self.registers_f64[register1] == self.registers_f64[register2] {
+                    self.comparison_flag = Comparison::Equal;
+                }
+                else {
+                    self.comparison_flag = Comparison::NotEqual;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+
+    fn neqf_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let register2 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register1, register2);
+                if self.registers_f32[register1] != self.registers_f32[register2] {
+                    self.comparison_flag = Comparison::NotEqual
+                }
+                else {
+                    self.comparison_flag = Comparison::Equal;
+                }
+            },
+            64 => {
+                check_registerF64!(register1, register2);
+                if self.registers_f64[register1] != self.registers_f64[register2] {
+                    self.comparison_flag = Comparison::NotEqual;
+                }
+                else {
+                    self.comparison_flag = Comparison::Equal;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+
+    fn ltf_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let register2 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register1, register2);
+                if self.registers_f32[register1] < self.registers_f32[register2] {
+                    self.comparison_flag = Comparison::LessThan;
+                }
+                else {
+                    self.comparison_flag = Comparison::GreaterThanOrEqual;
+                }
+            },
+            64 => {
+                check_registerF64!(register1, register2);
+                if self.registers_f64[register1] < self.registers_f64[register2] {
+                    self.comparison_flag = Comparison::LessThan;
+                }
+                else {
+                    self.comparison_flag = Comparison::GreaterThanOrEqual;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+
+    fn gtf_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let register2 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register1, register2);
+                if self.registers_f32[register1] > self.registers_f32[register2] {
+                    self.comparison_flag = Comparison::GreaterThan;
+                }
+                else {
+                    self.comparison_flag = Comparison::LessThanOrEqual;
+                }
+            },
+            64 => {
+                check_registerF64!(register1, register2);
+                if self.registers_f64[register1] > self.registers_f64[register2] {
+                    self.comparison_flag = Comparison::GreaterThan;
+                }
+                else {
+                    self.comparison_flag = Comparison::LessThanOrEqual;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+
+    fn leqf_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let register2 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register1, register2);
+                if self.registers_f32[register1] <= self.registers_f32[register2] {
+                    self.comparison_flag = Comparison::LessThanOrEqual;
+                }
+                else {
+                    self.comparison_flag = Comparison::GreaterThan;
+                }
+            },
+            64 => {
+                check_registerF64!(register1, register2);
+                if self.registers_f64[register1] <= self.registers_f64[register2] {
+                    self.comparison_flag = Comparison::LessThanOrEqual;
+                }
+                else {
+                    self.comparison_flag = Comparison::GreaterThan;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+
+    fn geqf_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let register2 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register1, register2);
+                if self.registers_f32[register1] >= self.registers_f32[register2] {
+                    self.comparison_flag = Comparison::GreaterThanOrEqual;
+                }
+                else {
+                    self.comparison_flag = Comparison::LessThan;
+                }
+            },
+            64 => {
+                check_registerF64!(register1, register2);
+                if self.registers_f64[register1] >= self.registers_f64[register2] {
+                    self.comparison_flag = Comparison::GreaterThanOrEqual;
+                }
+                else {
+                    self.comparison_flag = Comparison::LessThan;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+    
     
 }
 
