@@ -119,6 +119,8 @@ pub struct Core {
     zero_flag: bool,
     sign_flag: Sign,
     overflow_flag: bool,
+    infinity_flag: bool,
+    nan_flag: bool,
     /* other */
     remainder_64: usize,
     remainder_128: u128,
@@ -143,6 +145,8 @@ impl Core {
             zero_flag: false,
             sign_flag: Sign::Positive,
             overflow_flag: false,
+            infinity_flag: false,
+            nan_flag: false,
             program_counter: 0,
             stack: Vec::new(),
             program,
@@ -252,6 +256,19 @@ impl Core {
             Int32ToFloat32 => self.int32_to_float32_opcode()?,
             Int64ToFloat64 => self.int64_to_float64_opcode()?,
             Remainder => self.remainder_opcode()?,
+            AddFI => self.addfi_opcode()?,
+            SubFI => self.subfi_opcode()?,
+            MulFI => self.mulfi_opcode()?,
+            DivFI => self.divfi_opcode()?,
+            AddIF => self.addif_opcode()?,
+            SubIF => self.subif_opcode()?,
+            MulIF => self.mulif_opcode()?,
+            DivIF => self.divif_opcode()?,
+            AddUF => self.adduf_opcode()?,
+            SubUF => self.subuf_opcode()?,
+            MulUF => self.muluf_opcode()?,
+            DivUF => self.divuf_opcode()?,
+            
             
 
             _ => return Err(Fault::InvalidOperation),
@@ -3986,75 +4003,6 @@ impl Core {
         Ok(())
     }
 
-    fn float32_to_int32_opcode(&mut self) -> Result<(), Fault> {
-        let float_register = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-        let int_register = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-
-        check_register64!(int_register as usize);
-        check_registerF32!(float_register as usize);
-
-        let reg_value = self.registers_64[float_register as usize] as f32;
-
-        
-        self.registers_64[int_register as usize] = reg_value as u64;
-
-        Ok(())
-    }
-
-    fn float64_to_int64_opcode(&mut self) -> Result<(), Fault> {
-        let float_register = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-        let int_register = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-
-        check_register64!(int_register as usize);
-        check_registerF64!(float_register as usize);
-
-        let reg_value = self.registers_64[float_register as usize] as f64;
-
-        
-        self.registers_64[int_register as usize] = reg_value as u64;
-
-        Ok(())
-    }
-
-    fn int32_to_float32_opcode(&mut self) -> Result<(), Fault> {
-        let int_register = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-        let float_register = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-
-        check_register64!(int_register as usize);
-        check_registerF32!(float_register as usize);
-
-        let reg_value = self.registers_64[int_register as usize] as u32;
-
-        
-        self.registers_64[float_register as usize] = reg_value as u64;
-
-        Ok(())
-    }
-
-    fn int64_to_float64_opcode(&mut self) -> Result<(), Fault> {
-        let int_register = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-        let float_register = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-
-        check_register64!(int_register as usize);
-        check_registerF64!(float_register as usize);
-
-        let reg_value = self.registers_64[int_register as usize] as u64;
-
-        
-        self.registers_64[float_register as usize] = reg_value as u64;
-
-        Ok(())
-    }
-    
-
     fn writebyte_opcode(&mut self) -> Result<(),Fault> {
         let fd_register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
@@ -4155,6 +4103,1996 @@ impl Core {
 
         Ok(())
     }
+
+    fn addfi_opcode(&mut self) -> Result<(), Fault> {
+        let float_size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        let float_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let int_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(int_register as usize);
+
+        match float_size {
+            32 => {
+                check_registerF32!(float_register as usize);
+
+                self.registers_f32[float_register as usize] += self.registers_64[int_register as usize] as f32;
+
+                if self.registers_f32[float_register as usize].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f32[float_register as usize].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f32[float_register as usize] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                
+            },
+            64 => {
+                check_registerF64!(float_register as usize);
+
+                self.registers_f64[float_register as usize] += self.registers_64[int_register as usize] as f64;
+
+                if self.registers_f64[float_register as usize].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f64[float_register as usize].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f64[float_register as usize] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+        Ok(())
+
+    }
+
+    fn subfi_opcode(&mut self) -> Result<(), Fault> {
+        let float_size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        let float_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let int_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(int_register as usize);
+
+        match float_size {
+            32 => {
+                check_registerF32!(float_register as usize);
+
+                self.registers_f32[float_register as usize] -= self.registers_64[int_register as usize] as f32;
+
+                if self.registers_f32[float_register as usize].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f32[float_register as usize].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f32[float_register as usize] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                
+            },
+            64 => {
+                check_registerF64!(float_register as usize);
+
+                self.registers_f64[float_register as usize] -= self.registers_64[int_register as usize] as f64;
+
+                if self.registers_f64[float_register as usize].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f64[float_register as usize].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f64[float_register as usize] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+        Ok(())
+
+    }
+
+    fn mulfi_opcode(&mut self) -> Result<(), Fault> {
+        let float_size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        let float_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let int_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(int_register as usize);
+
+        match float_size {
+            32 => {
+                check_registerF32!(float_register as usize);
+
+                self.registers_f32[float_register as usize] *= self.registers_64[int_register as usize] as f32;
+
+                if self.registers_f32[float_register as usize].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f32[float_register as usize].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f32[float_register as usize] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                
+            },
+            64 => {
+                check_registerF64!(float_register as usize);
+
+                self.registers_f64[float_register as usize] *= self.registers_64[int_register as usize] as f64;
+
+                if self.registers_f64[float_register as usize].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f64[float_register as usize].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f64[float_register as usize] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+        Ok(())
+
+    }
+
+    fn divfi_opcode(&mut self) -> Result<(), Fault> {
+        let float_size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        let float_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let int_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(int_register as usize);
+
+        match float_size {
+            32 => {
+                check_registerF32!(float_register as usize);
+
+                self.registers_f32[float_register as usize] /= self.registers_64[int_register as usize] as f32;
+
+                if self.registers_f32[float_register as usize].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f32[float_register as usize].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f32[float_register as usize] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                
+            },
+            64 => {
+                check_registerF64!(float_register as usize);
+
+                self.registers_f64[float_register as usize] /= self.registers_64[int_register as usize] as f64;
+
+                if self.registers_f64[float_register as usize].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f64[float_register as usize].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f64[float_register as usize] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+        Ok(())
+    }
+
+    fn addif_opcode(&mut self) -> Result<(), Fault> {
+        let int_size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let float_size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let int_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let float_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(int_register as usize);
+
+        match int_size {
+            8 => {
+                let int_value = self.program[self.program_counter] as i8;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as i8
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as i8
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) + Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u8 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as i8 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            16 => {
+                let int_value = self.program[self.program_counter] as i16;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as i16
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as i16
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) + Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u16 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as i16 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            32 => {
+                let int_value = self.program[self.program_counter] as i32;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as i32
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as i32
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) + Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u32 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as i32 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            64 => {
+                let int_value = self.program[self.program_counter] as i64;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as i64
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as i64
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) + Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            128 => {
+                let int_value = self.program[self.program_counter] as i128;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as i128
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as i128
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+                let new_value = (Wrapping(int_value) + Wrapping(float_value)).0;
+
+                self.registers_128[int_register as usize] = new_value as u128;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_128[int_register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_128[int_register as usize] > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+            
+
+        }
+        Ok(())
+    }
+
+    fn subif_opcode(&mut self) -> Result<(), Fault> {
+        let int_size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let float_size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let int_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let float_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(int_register as usize);
+
+        match int_size {
+            8 => {
+                let int_value = self.program[self.program_counter] as i8;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as i8
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as i8
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) - Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u8 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as i8 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            16 => {
+                let int_value = self.program[self.program_counter] as i16;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as i16
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as i16
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) - Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u16 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as i16 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            32 => {
+                let int_value = self.program[self.program_counter] as i32;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as i32
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as i32
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) - Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u32 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as i32 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            64 => {
+                let int_value = self.program[self.program_counter] as i64;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as i64
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as i64
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) - Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            128 => {
+                let int_value = self.program[self.program_counter] as i128;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as i128
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as i128
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+                let new_value = (Wrapping(int_value) - Wrapping(float_value)).0;
+
+                self.registers_128[int_register as usize] = new_value as u128;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_128[int_register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_128[int_register as usize] > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+            
+
+        }
+        Ok(())
+    }
+
+    fn mulif_opcode(&mut self) -> Result<(), Fault> {
+        let int_size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let float_size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let int_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let float_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(int_register as usize);
+
+        match int_size {
+            8 => {
+                let int_value = self.program[self.program_counter] as i8;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as i8
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as i8
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) * Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u8 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as i8 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            16 => {
+                let int_value = self.program[self.program_counter] as i16;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as i16
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as i16
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) * Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u16 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as i16 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            32 => {
+                let int_value = self.program[self.program_counter] as i32;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as i32
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as i32
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) * Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u32 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as i32 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            64 => {
+                let int_value = self.program[self.program_counter] as i64;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as i64
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as i64
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) * Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            128 => {
+                let int_value = self.program[self.program_counter] as i128;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as i128
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as i128
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+                let new_value = (Wrapping(int_value) * Wrapping(float_value)).0;
+
+                self.registers_128[int_register as usize] = new_value as u128;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_128[int_register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_128[int_register as usize] > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+            
+
+        }
+        Ok(())
+    }
+
+    fn divif_opcode(&mut self) -> Result<(), Fault> {
+        let int_size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let float_size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let int_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let float_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(int_register as usize);
+
+        match int_size {
+            8 => {
+                let int_value = self.program[self.program_counter] as i8;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as i8
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as i8
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+                self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
+
+                let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u8 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as i8 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            16 => {
+                let int_value = self.program[self.program_counter] as i16;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as i16
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as i16
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+                self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
+
+                let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u16 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as i16 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            32 => {
+                let int_value = self.program[self.program_counter] as i32;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as i32
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as i32
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+                self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
+
+                let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u32 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as i32 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            64 => {
+                let int_value = self.program[self.program_counter] as i64;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as i64
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as i64
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+                self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
+
+                let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            128 => {
+                let int_value = self.program[self.program_counter] as i128;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as i128
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as i128
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+                self.remainder_128 = (Wrapping(int_value) % Wrapping(float_value)).0 as u128;
+
+                let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_128[int_register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_128[int_register as usize] > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+            
+
+        }
+        Ok(())
+    }
+        
+    fn adduf_opcode(&mut self) -> Result<(), Fault> {
+        let int_size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let float_size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let int_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let float_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(int_register as usize);
+
+        match int_size {
+            8 => {
+                let int_value = self.program[self.program_counter] as u8;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as u8
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as u8
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) + Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u8 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as u8 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            16 => {
+                let int_value = self.program[self.program_counter] as u16;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as u16
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as u16
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) + Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u16 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as u16 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            32 => {
+                let int_value = self.program[self.program_counter] as u32;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as u32
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as u32
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) + Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u32 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as u32 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            64 => {
+                let int_value = self.program[self.program_counter] as u64;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as u64
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as u64
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) + Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            128 => {
+                let int_value = self.program[self.program_counter] as u128;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as u128
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as u128
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+                let new_value = (Wrapping(int_value) + Wrapping(float_value)).0;
+
+                self.registers_128[int_register as usize] = new_value as u128;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_128[int_register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_128[int_register as usize] > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+            
+
+        }
+        Ok(())
+    }
+
+    fn subuf_opcode(&mut self) -> Result<(), Fault> {
+        let int_size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let float_size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let int_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let float_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(int_register as usize);
+
+        match int_size {
+            8 => {
+                let int_value = self.program[self.program_counter] as u8;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as u8
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as u8
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) - Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u8 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as u8 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            16 => {
+                let int_value = self.program[self.program_counter] as u16;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as u16
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as u16
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) - Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u16 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as u16 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            32 => {
+                let int_value = self.program[self.program_counter] as u32;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as u32
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as u32
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) - Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u32 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as u32 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            64 => {
+                let int_value = self.program[self.program_counter] as u64;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as u64
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as u64
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) - Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            128 => {
+                let int_value = self.program[self.program_counter] as u128;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as u128
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as u128
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+                let new_value = (Wrapping(int_value) - Wrapping(float_value)).0;
+
+                self.registers_128[int_register as usize] = new_value as u128;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_128[int_register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_128[int_register as usize] > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+            
+
+        }
+        Ok(())
+    }
+
+    fn muluf_opcode(&mut self) -> Result<(), Fault> {
+        let int_size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let float_size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let int_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let float_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(int_register as usize);
+
+        match int_size {
+            8 => {
+                let int_value = self.program[self.program_counter] as u8;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as u8
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as u8
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) * Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u8 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as u8 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            16 => {
+                let int_value = self.program[self.program_counter] as u16;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as u16
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as u16
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) * Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u16 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as u16 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            32 => {
+                let int_value = self.program[self.program_counter] as u32;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as u32
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as u32
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) * Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u32 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as u32 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            64 => {
+                let int_value = self.program[self.program_counter] as u64;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as u64
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as u64
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+
+                let new_value = (Wrapping(int_value) * Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            128 => {
+                let int_value = self.program[self.program_counter] as u128;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as u128
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as u128
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+                let new_value = (Wrapping(int_value) * Wrapping(float_value)).0;
+
+                self.registers_128[int_register as usize] = new_value as u128;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_128[int_register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_128[int_register as usize] > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+            
+
+        }
+        Ok(())
+    }
+
+    fn divuf_opcode(&mut self) -> Result<(), Fault> {
+        let int_size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let float_size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let int_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let float_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(int_register as usize);
+
+        match int_size {
+            8 => {
+                let int_value = self.program[self.program_counter] as u8;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as u8
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as u8
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+                self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
+
+                let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u8 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as u8 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            16 => {
+                let int_value = self.program[self.program_counter] as u16;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as u16
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as u16
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+                self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
+
+                let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u16 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as u16 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            32 => {
+                let int_value = self.program[self.program_counter] as u32;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as u32
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as u32
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+                self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
+
+                let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] as u32 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] as u32 > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            64 => {
+                let int_value = self.program[self.program_counter] as u64;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as u64
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as u64
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+
+                self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
+
+                let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_64[int_register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_64[int_register as usize] > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            128 => {
+                let int_value = self.program[self.program_counter] as u128;
+                
+                let float_value = match float_size {
+                    32 => {
+                        check_registerF32!(float_register as usize);
+
+                        self.registers_f32[float_register as usize] as u128
+                    },
+                    64 => {
+                        check_registerF64!(float_register as usize);
+
+                        self.registers_f64[float_register as usize] as u128
+                    },
+                    _ => return Err(Fault::InvalidSize),
+
+                };
+                self.remainder_128 = (Wrapping(int_value) % Wrapping(float_value)).0 as u128;
+
+                let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
+
+                self.registers_64[int_register as usize] = new_value as u64;
+
+                if new_value > int_value {
+                    self.overflow_flag = true;
+                }
+                if self.registers_128[int_register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+                if self.registers_128[int_register as usize] > 0 {
+                    self.sign_flag = Sign::Positive;
+                }
+                else {
+                    self.sign_flag = Sign::Negative;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+            
+
+        }
+        Ok(())
+    }
+        
     
 }
 

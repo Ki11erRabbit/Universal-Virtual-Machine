@@ -97,6 +97,14 @@ pub enum Opcode {
     JumpOdd,
     JumpBack,
     JumpForward,
+    JumpInfinity,
+    JumpNotInfinity,
+    JumpOverflow,
+    JumpUnderflow,
+    JumpNotOverflow,
+    JumpNotUnderflow,
+    JumpNaN,
+    JumpNotNaN,
 
     /* Instructions for function calls */
     Call,
@@ -154,20 +162,20 @@ pub enum Opcode {
     Remainder,
     /* Instruction for clearing flags */
     Clear,
-    /* Instructions for going from floats to ints and back */
-    Float32ToInt32,
-    Int32ToFloat32,
-    Float64ToInt64,
-    Int64ToFloat64,
-    /* Instructions for adding integers to floats */
-    AddF32I32,
-    SubF32I32,
-    MulF32I32,
-    DivF32I32,
-    AddF64I64,
-    SubF64I64,
-    MulF64I64,
-    DivF64I64,
+    /* Instructions operation on integers and floats */
+    AddFI,
+    SubFI,
+    MulFI,
+    DivFI,
+    AddIF,
+    SubIF,
+    MulIF,
+    DivIF,
+    AddUF,
+    SubUF,
+    MulUF,
+    DivUF,
+    
     
     
     
@@ -274,6 +282,15 @@ impl From<u16> for Opcode {
             82 => JumpOdd,
             83 => JumpBack,
             84 => JumpForward,
+            85 => JumpInfinity,
+            86 => JumpNotInfinity,
+            87 => JumpOverflow,
+            88 => JumpUnderflow,
+            89 => JumpNotOverflow,
+            90 => JumpNotUnderflow,
+            91 => JumpNaN,
+            92 => JumpNotNaN,
+            
             // Block of reserved opcodes for future use
             /* Instructions for function calls */
             109 => Call,
@@ -327,12 +344,19 @@ impl From<u16> for Opcode {
             151 => Remainder,
             /* Instruction for clearing flags */
             152 => Clear,
-            /* Instructions for going from floats to ints and back */
-            153 => Float32ToInt32,
-            154 => Int32ToFloat32,
-            155 => Float64ToInt64,
-            156 => Int64ToFloat64,
-            
+            /* Instructions operation on integers and floats */
+            153 => AddFI,
+            154 => SubFI,
+            155 => MulFI,
+            156 => DivFI,
+            157 => AddIF,
+            158 => SubIF,
+            159 => MulIF,
+            160 => DivIF,
+            161 => AddUF,
+            162 => SubUF,
+            163 => MulUF,
+            164 => DivUF,
             
             
             /* Instructions illegal instruction */
