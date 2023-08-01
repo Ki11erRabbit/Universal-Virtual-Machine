@@ -331,45 +331,79 @@ impl Core {
         self.advance_by_8_bytes();
         match size {
             8 => {
-                //TODO: Check to see if we can even read from memory so we don't panic
-                let memory = self.memory.read().unwrap();
-                if address >= memory.len() as u64 {
-                    return Err(Fault::InvalidAddress(address));
+                loop {
+                    match self.memory.try_read() {
+                        Ok(memory) => {
+                            if address >= memory.len() as u64 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            self.registers_64[register] = (memory[address as usize] as u8) as u64;
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => continue,
+                        Err(_) => return Err(Fault::CorruptedMemory),
+                    }
                 }
-                self.registers_64[register] = (memory[address as usize] as u8) as u64;
-                drop(memory);
             },
             16 => {
-                let memory = self.memory.read().unwrap();
-                if address >= memory.len() as u64 - 1 {
-                    return Err(Fault::InvalidAddress(address));
+                loop {
+                    match self.memory.try_read() {
+                        Ok(memory) => {
+                            if address >= memory.len() as u64 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            self.registers_64[register] = (memory[address as usize] as u16) as u64;
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => continue,
+                        Err(_) => return Err(Fault::CorruptedMemory),
+                    }
                 }
-                self.registers_64[register] = (memory[address as usize] as u16) as u64;
-                drop(memory);
             },
             32 => {
-                let memory = self.memory.read().unwrap();
-                if address >= memory.len() as u64 - 3 {
-                    return Err(Fault::InvalidAddress(address));
+                loop {
+                    match self.memory.try_read() {
+                        Ok(memory) => {
+                            if address >= memory.len() as u64 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            self.registers_64[register] = (memory[address as usize] as u32) as u64;
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => continue,
+                        Err(_) => return Err(Fault::CorruptedMemory),
+                    }
                 }
-                self.registers_64[register] = (memory[address as usize] as u32) as u64;
-                drop(memory);
             },
             64 => {
-                let memory = self.memory.read().unwrap();
-                if address >= memory.len() as u64 - 7 {
-                    return Err(Fault::InvalidAddress(address));
+                loop {
+                    match self.memory.try_read() {
+                        Ok(memory) => {
+                            if address >= memory.len() as u64 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            self.registers_64[register] = memory[address as usize] as u64;
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => continue,
+                        Err(_) => return Err(Fault::CorruptedMemory),
+                    }
                 }
-                self.registers_64[register] = (memory[address as usize] as u64) as u64;
-                drop(memory);
             },
             128 => {
-                let memory = self.memory.read().unwrap();
-                if address >= memory.len() as u64 - 15 {
-                    return Err(Fault::InvalidAddress(address));
+                loop {
+                    match self.memory.try_read() {
+                        Ok(memory) => {
+                            if address >= memory.len() as u64 {
+                                return Err(Fault::InvalidAddress(address));
+                            }
+                            self.registers_128[register] = memory[address as usize] as u128;
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => continue,
+                        Err(_) => return Err(Fault::CorruptedMemory),
+                    }
                 }
-                self.registers_128[register] = (memory[address as usize] as u128) as u128;
-                drop(memory);
             },
             _ => return Err(Fault::InvalidSize),
         }
