@@ -1,7 +1,6 @@
 use chumsky::prelude::*;
 use std::collections::HashMap;
 
-use crate::instruction::Opcode;
 
 
 enum Number {
@@ -439,7 +438,7 @@ where
                         },
                         //regmove opcode
                         [MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
-                            let temp = vec![6,0];
+                            let temp = vec![160,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -519,7 +518,7 @@ where
                         },
                         //regmove opcode
                         [MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
-                            let temp = vec![167,0];
+                            let temp = vec![161,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -589,7 +588,7 @@ where
                         },
                         //regmove opcode
                         [MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
-                            let temp = vec![168,0];
+                            let temp = vec![162,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -661,6 +660,557 @@ where
                 "jumpnrmdr" => return parse_jump(vec![94,0], args, pos_setter),
                 "call" => return parse_jump(vec![109,0], args, pos_setter),
                 "ret" => return Ok(vec![110,0]),
+                "movestack" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Number(n) => {
+                                bytes.append(&mut n.to_bytes());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            Ast::Label(l) => {
+                                let pos = pos_setter(l.to_owned());
+                                bytes.append(&mut pos.to_le_bytes().to_vec());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Address(a) => {
+                                bytes.append(&mut a.to_le_bytes().to_vec());
+                                ops.push(MoveOps::Address);
+                            },
+                            _ => return Err("Expected number, register or label".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        //move opcode
+                        [MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
+                            let temp = vec![120,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //deref opcode
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Address] => {
+                            let temp = vec![119,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //derefreg
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
+                            let temp = vec![118,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for movestack".to_owned()),
+                    }
+                },
+                "movestackf" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Number(n) => {
+                                bytes.append(&mut n.to_bytes());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            Ast::Label(l) => {
+                                let pos = pos_setter(l.to_owned());
+                                bytes.append(&mut pos.to_le_bytes().to_vec());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Address(a) => {
+                                bytes.append(&mut a.to_le_bytes().to_vec());
+                                ops.push(MoveOps::Address);
+                            },
+                            _ => return Err("Expected number, register or label".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        //move opcode
+                        [MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
+                            let temp = vec![123,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //deref opcode
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Address] => {
+                            let temp = vec![122,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //derefreg
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
+                            let temp = vec![121,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for movestackf".to_owned()),
+                    }
+                },
+                "movestacka" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Number(n) => {
+                                bytes.append(&mut n.to_bytes());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            Ast::Label(l) => {
+                                let pos = pos_setter(l.to_owned());
+                                bytes.append(&mut pos.to_le_bytes().to_vec());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Address(a) => {
+                                bytes.append(&mut a.to_le_bytes().to_vec());
+                                ops.push(MoveOps::Address);
+                            },
+                            _ => return Err("Expected number, register or label".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        //move opcode
+                        [MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
+                            let temp = vec![126,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //deref opcode
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Address] => {
+                            let temp = vec![125,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //derefreg
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
+                            let temp = vec![124,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for movestacka".to_owned()),
+                    }
+                },
+                "movecstack" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Number(n) => {
+                                bytes.append(&mut n.to_bytes());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            Ast::Label(l) => {
+                                let pos = pos_setter(l.to_owned());
+                                bytes.append(&mut pos.to_le_bytes().to_vec());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Address(a) => {
+                                bytes.append(&mut a.to_le_bytes().to_vec());
+                                ops.push(MoveOps::Address);
+                            },
+                            _ => return Err("Expected number, register or label".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        //move opcode
+                        [MoveOps::Number, MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
+                            let temp = vec![129,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //deref opcode
+                        [MoveOps::Number, MoveOps::Number, MoveOps::Register, MoveOps::Address] => {
+                            let temp = vec![128,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //derefreg
+                        [MoveOps::Number, MoveOps::Number, MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
+                            let temp = vec![127,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for movecstack".to_owned()),
+                    }
+                },
+                "movecstackf" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Number(n) => {
+                                bytes.append(&mut n.to_bytes());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            Ast::Label(l) => {
+                                let pos = pos_setter(l.to_owned());
+                                bytes.append(&mut pos.to_le_bytes().to_vec());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Address(a) => {
+                                bytes.append(&mut a.to_le_bytes().to_vec());
+                                ops.push(MoveOps::Address);
+                            },
+                            _ => return Err("Expected number, register or label".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        //move opcode
+                        [MoveOps::Number, MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
+                            let temp = vec![132,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //deref opcode
+                        [MoveOps::Number, MoveOps::Number, MoveOps::Register, MoveOps::Address] => {
+                            let temp = vec![131,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //derefreg
+                        [MoveOps::Number, MoveOps::Number, MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
+                            let temp = vec![130,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for movecstackf".to_owned()),
+                    }
+                },
+                "movecorestacka" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Number(n) => {
+                                bytes.append(&mut n.to_bytes());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            Ast::Label(l) => {
+                                let pos = pos_setter(l.to_owned());
+                                bytes.append(&mut pos.to_le_bytes().to_vec());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Address(a) => {
+                                bytes.append(&mut a.to_le_bytes().to_vec());
+                                ops.push(MoveOps::Address);
+                            },
+                            _ => return Err("Expected number, register or label".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        //move opcode
+                        [MoveOps::Number, MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
+                            let temp = vec![135,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //deref opcode
+                        [MoveOps::Number, MoveOps::Number, MoveOps::Register, MoveOps::Address] => {
+                            let temp = vec![134,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //derefreg
+                        [MoveOps::Number, MoveOps::Number, MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
+                            let temp = vec![133,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for movecstacka".to_owned()),
+                    }
+                },
+                "malloc" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected only registers".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Register, MoveOps::Register] => {
+                            let temp = vec![136,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for malloc".to_owned()),
+                    }
+                },
+                "free" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected only registers".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Register] => {
+                            let temp = vec![137,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for free".to_owned()),
+                    }
+                },
+                "readbyte" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected only registers".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Register, MoveOps::Register] => {
+                            let temp = vec![138,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for readbyte".to_owned()),
+                    }
+                },
+                "read" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected only registers".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Register, MoveOps::Register, MoveOps::Register] => {
+                            let temp = vec![139,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for read".to_owned()),
+                    }
+                },
+                "writebyte" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected only registers".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Register, MoveOps::Register] => {
+                            let temp = vec![140,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for writebyte".to_owned()),
+                    }
+                },
+                "write" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected only registers".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Register, MoveOps::Register, MoveOps::Register] => {
+                            let temp = vec![141,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for write".to_owned()),
+                    }
+                },
+                "open" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected only registers".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Register, MoveOps::Register] => {
+                            let temp = vec![142,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for open".to_owned()),
+                    }
+                },
+                "close" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected only registers".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Register] => {
+                            let temp = vec![143,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for close".to_owned()),
+                    }
+                },
+                "flush" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected only registers".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Register] => {
+                            let temp = vec![144,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for flush".to_owned()),
+                    }
+                },
+                "threadspawn" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected only registers".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Register] => {
+                            let temp = vec![145,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for threadspawn".to_owned()),
+                    }
+                },
+                "remainder" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Number(n) => {
+                                bytes.append(&mut n.to_bytes());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected a size and a register".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Number, MoveOps::Register] => {
+                            let temp = vec![146,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for threadspawn".to_owned()),
+                    }
+                },
+                "clear" => return Ok(vec![147,0]),
+                "addfi" => parse_arithmetic(vec![148,0], args),
+                "subfi" => parse_arithmetic(vec![149,0], args),
+                "mulfi" => parse_arithmetic(vec![150,0], args),
+                "divfi" => parse_arithmetic(vec![151,0], args),
+                "addif" => parse_arithmetic(vec![152,0], args),
+                "subif" => parse_arithmetic(vec![153,0], args),
+                "mulif" => parse_arithmetic(vec![154,0], args),
+                "divif" => parse_arithmetic(vec![155,0], args),
+                "adduf" => parse_arithmetic(vec![156,0], args),
+                "subuf" => parse_arithmetic(vec![157,0], args),
+                "muluf" => parse_arithmetic(vec![158,0], args),
+                "divuf" => parse_arithmetic(vec![159,0], args),
+                _ => return Err("Invalid instruction".to_owned()),
+                
+                    
+                
 
                 
                 
@@ -776,7 +1326,7 @@ where
 
 }
 
-pub fn parse_file(input: &str) -> Result<Vec<u8>, String> {
+pub fn parse_file(input: &str) -> Result<(Vec<u8>,usize), String> {
     let mut parser = file_parser();
 
     let mut result = parser.parse(input);
@@ -787,8 +1337,7 @@ pub fn parse_file(input: &str) -> Result<Vec<u8>, String> {
     };
 
     let mut label_positions = HashMap::new();
-    let mut bytes = vec![109,0, 0,0,0,0,0,0,0,0 ];
-    //Byte 2 is the address of the main function
+    let mut bytes = Vec::new();
 
 
     match result {
@@ -818,7 +1367,12 @@ pub fn parse_file(input: &str) -> Result<Vec<u8>, String> {
         _ => (),
     }
     
-    
-    
-    Ok(bytes)
+    let main_pos = label_positions.get("main");
+
+    match main_pos {
+        Some(pos) => {
+            Ok((bytes, *pos))
+        },
+        None => return Err("No main function".to_owned()),
+    }
 }
