@@ -293,8 +293,8 @@ impl From<u16> for Opcode {
             90 => JumpNotUnderflow,
             91 => JumpNaN,
             92 => JumpNotNaN,
-            92 => JumpRemainder,
-            93 => JumpNotRemainder,
+            93 => JumpRemainder,
+            94 => JumpNotRemainder,
             
             // Block of reserved opcodes for future use
             /* Instructions for function calls */
