@@ -91,9 +91,9 @@ impl Machine {
     }
 
     
-    pub fn run(&mut self) {
+    pub fn run(&mut self, program_counter: usize) {
         //TODO: change print to log
-        self.run_core(0,0);
+        self.run_core(0, program_counter);
         let mut finished_cores = Vec::new();
         loop {
             for (core_num, core_thread) in self.core_threads.iter().enumerate() {

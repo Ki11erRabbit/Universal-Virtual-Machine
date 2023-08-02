@@ -459,7 +459,7 @@ impl Core {
             8 => {
                 let register = self.program[self.program_counter] as u8 as usize;
                 check_register64!(register);
-                self.advance_by_1_bytes();
+                self.advance_by_1_byte();
                 loop {
                     match self.memory.try_write() {
                         Ok(mut memory) => {
@@ -482,7 +482,7 @@ impl Core {
             16 => {
                 let register = self.program[self.program_counter] as u8 as usize;
                 check_register64!(register);
-                self.advance_by_1_bytes();
+                self.advance_by_1_byte();
                 loop {
                     match self.memory.try_write() {
                         Ok(mut memory) => {
@@ -506,7 +506,7 @@ impl Core {
             32 => {
                 let register = self.program[self.program_counter] as u8 as usize;
                 check_register64!(register);
-                self.advance_by_1_bytes();
+                self.advance_by_1_byte();
                 loop {
                     match self.memory.try_write() {
                         Ok(mut memory) => {
@@ -532,7 +532,7 @@ impl Core {
             64 => {
                 let register = self.program[self.program_counter] as u8 as usize;
                 check_register64!(register);
-                self.advance_by_1_bytes();
+                self.advance_by_1_byte();
                 loop {
                     match self.memory.try_write() {
                         Ok(mut memory) => {
