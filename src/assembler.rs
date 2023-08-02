@@ -438,7 +438,7 @@ where
                         },
                         //regmove opcode
                         [MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
-                            let temp = vec![160,0];
+                            let temp = vec![159,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -518,7 +518,7 @@ where
                         },
                         //regmove opcode
                         [MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
-                            let temp = vec![161,0];
+                            let temp = vec![160,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -588,7 +588,7 @@ where
                         },
                         //regmove opcode
                         [MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
-                            let temp = vec![162,0];
+                            let temp = vec![161,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -660,6 +660,162 @@ where
                 "jumpnrmdr" => return parse_jump(vec![94,0], args, pos_setter),
                 "call" => return parse_jump(vec![109,0], args, pos_setter),
                 "ret" => return Ok(vec![110,0]),
+                "pop" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Number(n) => {
+                                bytes.append(&mut n.to_bytes());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected number or register".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Number, MoveOps::Register] => {
+                            let temp = vec![112,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for pop".to_owned()),
+                    }
+                },
+                "push" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Number(n) => {
+                                bytes.append(&mut n.to_bytes());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected number or register".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Number, MoveOps::Register] => {
+                            let temp = vec![112,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for push".to_owned()),
+                    }
+                },
+                "popf" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Number(n) => {
+                                bytes.append(&mut n.to_bytes());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected number or register".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Number, MoveOps::Register] => {
+                            let temp = vec![113,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for popf".to_owned()),
+                    }
+                },
+                "pushf" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Number(n) => {
+                                bytes.append(&mut n.to_bytes());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected number or register".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Number, MoveOps::Register] => {
+                            let temp = vec![114,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for pushf".to_owned()),
+                    }
+                },
+                "popa" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Number(n) => {
+                                bytes.append(&mut n.to_bytes());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected number or register".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Number, MoveOps::Register] => {
+                            let temp = vec![115,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for popa".to_owned()),
+                    }
+                },
+                "pusha" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Number(n) => {
+                                bytes.append(&mut n.to_bytes());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected number or register".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Number, MoveOps::Register] => {
+                            let temp = vec![116,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for pushf".to_owned()),
+                    }
+                },
                 "movestack" => {
                     let mut bytes: Vec<u8> = Vec::new();
                     let mut ops: Vec<MoveOps> = Vec::new();
@@ -689,19 +845,19 @@ where
                     match ops.as_slice() {
                         //move opcode
                         [MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
-                            let temp = vec![120,0];
+                            let temp = vec![119,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
                         //deref opcode
                         [MoveOps::Number, MoveOps::Register, MoveOps::Address] => {
-                            let temp = vec![119,0];
+                            let temp = vec![118,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
                         //derefreg
                         [MoveOps::Number, MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
-                            let temp = vec![118,0];
+                            let temp = vec![117,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -737,19 +893,19 @@ where
                     match ops.as_slice() {
                         //move opcode
                         [MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
-                            let temp = vec![123,0];
+                            let temp = vec![122,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
                         //deref opcode
                         [MoveOps::Number, MoveOps::Register, MoveOps::Address] => {
-                            let temp = vec![122,0];
+                            let temp = vec![121,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
                         //derefreg
                         [MoveOps::Number, MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
-                            let temp = vec![121,0];
+                            let temp = vec![120,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -785,19 +941,19 @@ where
                     match ops.as_slice() {
                         //move opcode
                         [MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
-                            let temp = vec![126,0];
+                            let temp = vec![125,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
                         //deref opcode
                         [MoveOps::Number, MoveOps::Register, MoveOps::Address] => {
-                            let temp = vec![125,0];
+                            let temp = vec![124,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
                         //derefreg
                         [MoveOps::Number, MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
-                            let temp = vec![124,0];
+                            let temp = vec![123,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -833,19 +989,19 @@ where
                     match ops.as_slice() {
                         //move opcode
                         [MoveOps::Number, MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
-                            let temp = vec![129,0];
+                            let temp = vec![128,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
                         //deref opcode
                         [MoveOps::Number, MoveOps::Number, MoveOps::Register, MoveOps::Address] => {
-                            let temp = vec![128,0];
+                            let temp = vec![127,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
                         //derefreg
                         [MoveOps::Number, MoveOps::Number, MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
-                            let temp = vec![127,0];
+                            let temp = vec![126,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -881,19 +1037,19 @@ where
                     match ops.as_slice() {
                         //move opcode
                         [MoveOps::Number, MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
-                            let temp = vec![132,0];
+                            let temp = vec![131,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
                         //deref opcode
                         [MoveOps::Number, MoveOps::Number, MoveOps::Register, MoveOps::Address] => {
-                            let temp = vec![131,0];
+                            let temp = vec![130,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
                         //derefreg
                         [MoveOps::Number, MoveOps::Number, MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
-                            let temp = vec![130,0];
+                            let temp = vec![129,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -929,19 +1085,19 @@ where
                     match ops.as_slice() {
                         //move opcode
                         [MoveOps::Number, MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
-                            let temp = vec![135,0];
+                            let temp = vec![134,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
                         //deref opcode
                         [MoveOps::Number, MoveOps::Number, MoveOps::Register, MoveOps::Address] => {
-                            let temp = vec![134,0];
+                            let temp = vec![133,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
                         //derefreg
                         [MoveOps::Number, MoveOps::Number, MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
-                            let temp = vec![133,0];
+                            let temp = vec![132,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -963,7 +1119,7 @@ where
 
                     match ops.as_slice() {
                         [MoveOps::Register, MoveOps::Register] => {
-                            let temp = vec![136,0];
+                            let temp = vec![135,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -985,7 +1141,7 @@ where
 
                     match ops.as_slice() {
                         [MoveOps::Register] => {
-                            let temp = vec![137,0];
+                            let temp = vec![136,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -1007,7 +1163,7 @@ where
 
                     match ops.as_slice() {
                         [MoveOps::Register, MoveOps::Register] => {
-                            let temp = vec![138,0];
+                            let temp = vec![137,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -1029,7 +1185,7 @@ where
 
                     match ops.as_slice() {
                         [MoveOps::Register, MoveOps::Register, MoveOps::Register] => {
-                            let temp = vec![139,0];
+                            let temp = vec![138,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -1051,7 +1207,7 @@ where
 
                     match ops.as_slice() {
                         [MoveOps::Register, MoveOps::Register] => {
-                            let temp = vec![140,0];
+                            let temp = vec![139,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -1073,7 +1229,7 @@ where
 
                     match ops.as_slice() {
                         [MoveOps::Register, MoveOps::Register, MoveOps::Register] => {
-                            let temp = vec![141,0];
+                            let temp = vec![140,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -1095,7 +1251,7 @@ where
 
                     match ops.as_slice() {
                         [MoveOps::Register, MoveOps::Register] => {
-                            let temp = vec![142,0];
+                            let temp = vec![141,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -1117,7 +1273,7 @@ where
 
                     match ops.as_slice() {
                         [MoveOps::Register] => {
-                            let temp = vec![143,0];
+                            let temp = vec![142,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -1139,7 +1295,7 @@ where
 
                     match ops.as_slice() {
                         [MoveOps::Register] => {
-                            let temp = vec![144,0];
+                            let temp = vec![143,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -1161,7 +1317,7 @@ where
 
                     match ops.as_slice() {
                         [MoveOps::Register] => {
-                            let temp = vec![145,0];
+                            let temp = vec![144,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
@@ -1187,26 +1343,26 @@ where
 
                     match ops.as_slice() {
                         [MoveOps::Number, MoveOps::Register] => {
-                            let temp = vec![146,0];
+                            let temp = vec![145,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
                         _ => return Err("Invalid arguments for threadspawn".to_owned()),
                     }
                 },
-                "clear" => return Ok(vec![147,0]),
-                "addfi" => parse_arithmetic(vec![148,0], args),
-                "subfi" => parse_arithmetic(vec![149,0], args),
-                "mulfi" => parse_arithmetic(vec![150,0], args),
-                "divfi" => parse_arithmetic(vec![151,0], args),
-                "addif" => parse_arithmetic(vec![152,0], args),
-                "subif" => parse_arithmetic(vec![153,0], args),
-                "mulif" => parse_arithmetic(vec![154,0], args),
-                "divif" => parse_arithmetic(vec![155,0], args),
-                "adduf" => parse_arithmetic(vec![156,0], args),
-                "subuf" => parse_arithmetic(vec![157,0], args),
-                "muluf" => parse_arithmetic(vec![158,0], args),
-                "divuf" => parse_arithmetic(vec![159,0], args),
+                "clear" => return Ok(vec![146,0]),
+                "addfi" => parse_arithmetic(vec![147,0], args),
+                "subfi" => parse_arithmetic(vec![148,0], args),
+                "mulfi" => parse_arithmetic(vec![149,0], args),
+                "divfi" => parse_arithmetic(vec![150,0], args),
+                "addif" => parse_arithmetic(vec![151,0], args),
+                "subif" => parse_arithmetic(vec![152,0], args),
+                "mulif" => parse_arithmetic(vec![153,0], args),
+                "divif" => parse_arithmetic(vec![154,0], args),
+                "adduf" => parse_arithmetic(vec![155,0], args),
+                "subuf" => parse_arithmetic(vec![156,0], args),
+                "muluf" => parse_arithmetic(vec![157,0], args),
+                "divuf" => parse_arithmetic(vec![158,0], args),
                 _ => return Err("Invalid instruction".to_owned()),
                 
                     
