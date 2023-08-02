@@ -6844,7 +6844,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len()|| line <= 0 {
+        if line >= self.program.len()|| line < 0 {
             return Err(Fault::InvalidJump);
         }
         
@@ -6857,7 +6857,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -6872,7 +6872,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -6887,7 +6887,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -6902,7 +6902,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -6917,7 +6917,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -6932,7 +6932,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -6947,7 +6947,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -6962,7 +6962,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -6977,7 +6977,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -6995,7 +6995,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -7013,7 +7013,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -7028,7 +7028,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -7043,7 +7043,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if self.program_counter - line >= self.program.len() || self.program_counter - line <= 0 {
+        if self.program_counter - line >= self.program.len() || self.program_counter - line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -7056,7 +7056,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if self.program_counter + line >= self.program.len() || self.program_counter + line <= 0 {
+        if self.program_counter + line >= self.program.len() || self.program_counter + line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -7069,7 +7069,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -7085,7 +7085,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -7100,7 +7100,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -7116,7 +7116,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -7131,7 +7131,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -7147,7 +7147,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -7162,7 +7162,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -7178,7 +7178,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -7193,7 +7193,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -7210,7 +7210,7 @@ impl Core {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() || line <= 0 {
+        if line >= self.program.len() || line < 0 {
             return Err(Fault::InvalidJump);
         }
 
@@ -7456,5 +7456,22 @@ mod tests {
         assert_eq!(core.registers_f32[0], f32::from_ne_bytes([0x00,0x00,0xb8,0x41]));
     }
 
+    #[test]
+    fn test_jumps() {
+        let program = vec![20,0, 8,0,2, 71,0, 26,0,0,0,0,0,0,0, 16,0,8,0,1, 70,0, 0,0,0,0,0,0,0,0];
+        let memory = Arc::new(RwLock::new(vec![]));
+        let mut core = Core::new(memory.clone(), Arc::new(program));
+
+        core.registers_64[0] = 0;
+        core.registers_64[1] = 2;
+        core.registers_64[2] = 8;
+
+        core.run(0).unwrap();
+
+        assert_eq!(core.registers_64[0], 8);
+        
+    }
+
 
 }
+
