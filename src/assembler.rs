@@ -1,6 +1,10 @@
 use chumsky::prelude::*;
+use std::collections::HashMap;
 
-pub enum Number {
+use crate::instruction::Opcode;
+
+
+enum Number {
     I8(i8),
     I16(i16),
     I32(i32),
@@ -15,11 +19,31 @@ pub enum Number {
     F64(f64),
 }
 
+impl Number {
+    pub fn to_bytes(self) -> Vec<u8> {
+        match self {
+            Number::I8(i) => i.to_le_bytes().to_vec(),
+            Number::I16(i) => i.to_le_bytes().to_vec(),
+            Number::I32(i) => i.to_le_bytes().to_vec(),
+            Number::I64(i) => i.to_le_bytes().to_vec(),
+            Number::I128(i) => i.to_le_bytes().to_vec(),
+            Number::U8(i) => i.to_le_bytes().to_vec(),
+            Number::U16(i) => i.to_le_bytes().to_vec(),
+            Number::U32(i) => i.to_le_bytes().to_vec(),
+            Number::U64(i) => i.to_le_bytes().to_vec(),
+            Number::U128(i) => i.to_le_bytes().to_vec(),
+            Number::F32(i) => i.to_le_bytes().to_vec(),
+            Number::F64(i) => i.to_le_bytes().to_vec(),
+        }
+    }
+}
 
-pub enum Ast {
+
+enum Ast {
     Instruction(String, Vec<Ast>),
     Register(u8),
     Number(Number),
+    Address(u64),
     Label(String),
     Comment(String),
     String(String),
@@ -77,7 +101,7 @@ fn memory_parser() -> impl Parser<char, Ast, Error = Simple<char>> {
 
 fn op_parser() -> impl Parser<char, Ast, Error = Simple<char>> {
     let instruction = one_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ").repeated().at_least(3).padded()
-        .then(choice((register_parser(), label_parser(), number_parser())).padded()
+        .then(choice((register_parser(), label_parser(), number_parser(), address_parser())).padded()
             .separated_by(just(",").padded()))
         .map(|(chars, args)| Ast::Instruction(chars.into_iter().collect(), args));
 
@@ -89,15 +113,27 @@ fn register_parser() -> impl Parser<char, Ast, Error = Simple<char>> {
     let register = just("$")
         .ignore_then(raw_number_parser())
         .map(|n| match n {
-            Number::U8(i) => Ast::Register(i),
-            Number::U16(i) => Ast::Register(i as u8),
-            Number::U32(i) => Ast::Register(i as u8),
-            Number::U64(i) => Ast::Register(i as u8),
-            Number::U128(i) => Ast::Register(i as u8),
+            Number::U64(i) => Ast::Address(i as u64),
+            Number::I64(i) => Ast::Address(i as u64),
             _ => panic!("Invalid register"),
         });
 
     register
+}
+
+fn address_parser() -> impl Parser<char, Ast, Error = Simple<char>> {
+    let address = just("#")
+        .ignore_then(raw_number_parser())
+        .map(|n| match n {
+            Number::U8(i) => Ast::Address(i as u64),
+            Number::U16(i) => Ast::Address(i as u64),
+            Number::U32(i) => Ast::Address(i as u64),
+            Number::U64(i) => Ast::Address(i as u64),
+            Number::U128(i) => Ast::Address(i as u64),
+            _ => panic!("Invalid address"),
+        });
+
+    address
 }
 
 fn label_parser() -> impl Parser<char, Ast, Error = Simple<char>> {
@@ -241,7 +277,7 @@ fn raw_number_parser() -> impl Parser<char, Number, Error = Simple<char>> {
             "u128" => Number::U128(i.parse::<u128>().unwrap()),
             "f32" => Number::F32(i.parse::<f32>().unwrap()),
             "f64" => Number::F64(i.parse::<f64>().unwrap()),
-            _ => Number::I64(i.parse::<i64>().unwrap()),
+            _ => Number::U8(i.parse::<u8>().unwrap()),
         });
     
 
@@ -307,4 +343,482 @@ fn file_parser() -> impl Parser<char, Ast, Error = Simple<char>> {
         .map(|i| Ast::File(i));
 
     parser
+}
+
+enum MoveOps {
+    Number,
+    Register,
+    Address,
+}
+
+fn parse_arithmetic(opcode: Vec<u8>, args: &Vec<Ast>) -> Result<Vec<u8>, String> {
+    let mut bytes = opcode;
+    
+    for arg in args {
+        match arg {
+            Ast::Number(n) => {
+                bytes.append(&mut n.to_bytes());
+            },
+            Ast::Register(r) => {
+                bytes.push(*r);
+            },
+            _ => return Err("Only registers are allowed in this op".to_owned()),
+        }
+    }
+
+    Ok(bytes)
+}
+
+fn parse_jump<F>(opcode: Vec<u8>, args: &Vec<Ast>, pos_setter: F) -> Result<Vec<u8>, String>
+where
+    F: Fn(String) -> u64,{
+    let mut bytes = opcode;
+    
+    for arg in args {
+        match arg {
+            Ast::Number(n) => {
+                bytes.append(&mut n.to_bytes());
+            },
+            Ast::Label(l) => {
+                bytes.append(&mut pos_setter(l.to_owned()).to_le_bytes().to_vec());
+            },
+            _ => return Err("Only numbers are allowed in this op".to_owned()),
+        }
+    }
+
+    Ok(bytes)
+}
+
+/// This function is used to parse an instruction into an opcode
+fn parse_instruction<F>(ast: &Ast, pos_setter: F) -> Result<Vec<u8>, String>
+where
+    F: Fn(String) -> u64, {
+    match ast {
+        Ast::Instruction(name, args) => {
+            match name.as_str() {
+                "halt" => Ok(vec![0x00]),
+                "noop" => Ok(vec![0x01]),
+                "move" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Number(n) => {
+                                bytes.append(&mut n.to_bytes());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            Ast::Label(l) => {
+                                let pos = pos_setter(l.to_owned());
+                                bytes.append(&mut pos.to_le_bytes().to_vec());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Address(a) => {
+                                bytes.append(&mut a.to_le_bytes().to_vec());
+                                ops.push(MoveOps::Address);
+                            },
+                            _ => return Err("Expected number, register or label".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        //move opcode
+                        [MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
+                            let temp = vec![4,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //set opcode
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Number] => {
+                            let temp = vec![5,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //regmove opcode
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
+                            let temp = vec![6,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //deref opcode
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Address] => {
+                            let temp = vec![3,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //derefreg
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
+                            let temp = vec![2,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for move".to_owned()),
+                    }
+                },
+                "addi" => return parse_arithmetic(vec![6,0], args),
+                "subi" => return parse_arithmetic(vec![7,0], args),
+                "muli" => return parse_arithmetic(vec![8,0], args),
+                "divi" => return parse_arithmetic(vec![9,0], args),
+                "eqi" => return parse_arithmetic(vec![10,0], args),
+                "neqi" => return parse_arithmetic(vec![11,0], args),
+                "lti" => return parse_arithmetic(vec![12,0], args),
+                "gti" => return parse_arithmetic(vec![13,0], args),
+                "leqi" => return parse_arithmetic(vec![14,0], args),
+                "geqi" => return parse_arithmetic(vec![15,0], args),
+                "addu" => return parse_arithmetic(vec![16,0], args),
+                "subu" => return parse_arithmetic(vec![17,0], args),
+                "mulu" => return parse_arithmetic(vec![18,0], args),
+                "divu" => return parse_arithmetic(vec![19,0], args),
+                "equ" => return parse_arithmetic(vec![20,0], args),
+                "nequ" => return parse_arithmetic(vec![21,0], args),
+                "ltu" => return parse_arithmetic(vec![22,0], args),
+                "gtu" => return parse_arithmetic(vec![23,0], args),
+                "lequ" => return parse_arithmetic(vec![24,0], args),
+                "gequ" => return parse_arithmetic(vec![25,0], args),
+                "movef" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Number(n) => {
+                                bytes.append(&mut n.to_bytes());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            Ast::Label(l) => {
+                                let pos = pos_setter(l.to_owned());
+                                bytes.append(&mut pos.to_le_bytes().to_vec());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Address(a) => {
+                                bytes.append(&mut a.to_le_bytes().to_vec());
+                                ops.push(MoveOps::Address);
+                            },
+                            _ => return Err("Expected number, register or label".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        //move opcode
+                        [MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
+                            let temp = vec![28,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //set opcode
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Number] => {
+                            let temp = vec![29,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //regmove opcode
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
+                            let temp = vec![167,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //deref opcode
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Address] => {
+                            let temp = vec![27,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //derefreg
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
+                            let temp = vec![26,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for move".to_owned()),
+                    }
+                },
+                "addf" => return parse_arithmetic(vec![30,0], args),
+                "subf" => return parse_arithmetic(vec![31,0], args),
+                "mulf" => return parse_arithmetic(vec![32,0], args),
+                "divf" => return parse_arithmetic(vec![33,0], args),
+                "eqf" => return parse_arithmetic(vec![34,0], args),
+                "neqf" => return parse_arithmetic(vec![35,0], args),
+                "ltf" => return parse_arithmetic(vec![36,0], args),
+                "gtf" => return parse_arithmetic(vec![37,0], args),
+                "leqf" => return parse_arithmetic(vec![38,0], args),
+                "geqf" => return parse_arithmetic(vec![39,0], args),
+                "movea" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Number(n) => {
+                                bytes.append(&mut n.to_bytes());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            Ast::Label(l) => {
+                                let pos = pos_setter(l.to_owned());
+                                bytes.append(&mut pos.to_le_bytes().to_vec());
+                                ops.push(MoveOps::Number);
+                            },
+                            Ast::Address(a) => {
+                                bytes.append(&mut a.to_le_bytes().to_vec());
+                                ops.push(MoveOps::Address);
+                            },
+                            _ => return Err("Expected number, register or label".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        //move opcode
+                        [MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
+                            let temp = vec![42,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //set opcode
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Number] => {
+                            let temp = vec![43,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //regmove opcode
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
+                            let temp = vec![168,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //deref opcode
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Address] => {
+                            let temp = vec![41,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        //derefreg
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
+                            let temp = vec![40,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for move".to_owned()),
+                    }
+                },
+                "addai" => return parse_arithmetic(vec![44,0], args),
+                "subai" => return parse_arithmetic(vec![45,0], args),
+                "mulai" => return parse_arithmetic(vec![46,0], args),
+                "divai" => return parse_arithmetic(vec![47,0], args),
+                "eqai" => return parse_arithmetic(vec![48,0], args),
+                "neqai" => return parse_arithmetic(vec![49,0], args),
+                "ltai" => return parse_arithmetic(vec![50,0], args),
+                "gtai" => return parse_arithmetic(vec![51,0], args),
+                "leqai" => return parse_arithmetic(vec![52,0], args),
+                "geqai" => return parse_arithmetic(vec![53,0], args),
+                "addau" => return parse_arithmetic(vec![54,0], args),
+                "subau" => return parse_arithmetic(vec![55,0], args),
+                "mulau" => return parse_arithmetic(vec![56,0], args),
+                "divau" => return parse_arithmetic(vec![57,0], args),
+                "eqau" => return parse_arithmetic(vec![58,0], args),
+                "neqau" => return parse_arithmetic(vec![59,0], args),
+                "ltau" => return parse_arithmetic(vec![60,0], args),
+                "gtau" => return parse_arithmetic(vec![61,0], args),
+                "leqau" => return parse_arithmetic(vec![62,0], args),
+                "geqau" => return parse_arithmetic(vec![63,0], args),
+                "and" => return parse_arithmetic(vec![64,0], args),
+                "or" => return parse_arithmetic(vec![65,0], args),
+                "xor" => return parse_arithmetic(vec![66,0], args),
+                "not" => return parse_arithmetic(vec![67,0], args),
+                "shl" => return parse_arithmetic(vec![68,0], args),
+                "shr" => return parse_arithmetic(vec![69,0], args),
+                "jump" => return parse_jump(vec![70,0], args, pos_setter),
+                "jumpeq" => return parse_jump(vec![71,0], args, pos_setter),
+                "jumpneq" => return parse_jump(vec![72,0], args, pos_setter),
+                "jumplt" => return parse_jump(vec![73,0], args, pos_setter),
+                "jumpgt" => return parse_jump(vec![74,0], args, pos_setter),
+                "jumpleq" => return parse_jump(vec![75,0], args, pos_setter),
+                "jumpgeq" => return parse_jump(vec![76,0], args, pos_setter),
+                "jumpzero" => return parse_jump(vec![77,0], args, pos_setter),
+                "jumpnzero" => return parse_jump(vec![78,0], args, pos_setter),
+                "jumpneg" => return parse_jump(vec![79,0], args, pos_setter),
+                "jumppos" => return parse_jump(vec![80,0], args, pos_setter),
+                "jumpeven" => return parse_jump(vec![81,0], args, pos_setter),
+                "jumpodd" => return parse_jump(vec![82,0], args, pos_setter),
+                "jumpback" => return parse_jump(vec![83,0], args, pos_setter),
+                "jumpforward" => return parse_jump(vec![84,0], args, pos_setter),
+                "jumpinf" => return parse_jump(vec![85,0], args, pos_setter),
+                "jumpninf" => return parse_jump(vec![86,0], args, pos_setter),
+                "jumpoverflow" => return parse_jump(vec![87,0], args, pos_setter),
+                "jumpunderflow" => return parse_jump(vec![88,0], args, pos_setter),
+                "jumpnoverflow" => return parse_jump(vec![89,0], args, pos_setter),
+                "jumpnunderflow" => return parse_jump(vec![90,0], args, pos_setter),
+                "jumpnan" => return parse_jump(vec![91,0], args, pos_setter),
+                "jumpnnan" => return parse_jump(vec![92,0], args, pos_setter),
+                "jumprmdr" => return parse_jump(vec![93,0], args, pos_setter),
+                "jumpnrmdr" => return parse_jump(vec![94,0], args, pos_setter),
+                "call" => return parse_jump(vec![109,0], args, pos_setter),
+                "ret" => return Ok(vec![110,0]),
+
+                
+                
+                
+            }
+        },
+        Ast::MemorySet(qualifier, value) => {
+            match qualifier.as_str() {
+                "string" => {
+                    match value.as_ref() {
+                        Ast::String(s) => {
+                            let bytes = s.as_bytes().to_vec();
+                            Ok(bytes)
+                        },
+                        _ => Err("Expected string".to_owned()),
+                    }
+                },
+                "u8" => {
+                    match value.as_ref() {
+                        Ast::Number(n) => {
+                            match n {
+                                Number::U8(n) => {
+                                    let bytes = vec![*n];
+                                    Ok(bytes)
+                                },
+                                Number::I8(n) => {
+                                    let bytes = vec![n.to_le_bytes()[0]];
+                                    Ok(bytes)
+                                },
+                                _ => Err("Expected number".to_owned()),
+                            }
+                        },
+                        _ => Err("Expected number".to_owned()),
+                    }
+                },
+                "u16" => {
+                    match value.as_ref() {
+                        Ast::Number(n) => {
+                            match n {
+                                Number::U16(n) => {
+                                    let bytes = n.to_le_bytes().to_vec();
+                                    Ok(bytes)
+                                },
+                                Number::I16(n) => {
+                                    let bytes = n.to_le_bytes().to_vec();
+                                    Ok(bytes)
+                                },
+                                _ => Err("Expected number".to_owned()),
+                            }
+                        },
+                        _ => Err("Expected number".to_owned()),
+                    }
+                },
+                "u32" => {
+                    match value.as_ref() {
+                        Ast::Number(n) => {
+                            match n {
+                                Number::U32(n) => {
+                                    let bytes = n.to_le_bytes().to_vec();
+                                    Ok(bytes)
+                                },
+                                Number::I32(n) => {
+                                    let bytes = n.to_le_bytes().to_vec();
+                                    Ok(bytes)
+                                },
+                                _ => Err("Expected number".to_owned()),
+                            }
+                        },
+                        _ => Err("Expected number".to_owned()),
+                    }
+                },
+                "u64" => {
+                    match value.as_ref() {
+                        Ast::Number(n) => {
+                            match n {
+                                Number::U64(n) => {
+                                    let bytes = n.to_le_bytes().to_vec();
+                                    Ok(bytes)
+                                },
+                                Number::I64(n) => {
+                                    let bytes = n.to_le_bytes().to_vec();
+                                    Ok(bytes)
+                                },
+                                _ => Err("Expected number".to_owned()),
+                            }
+                        },
+                        _ => Err("Expected number".to_owned()),
+                    }
+                },
+                "u128" => {
+                    match value.as_ref() {
+                        Ast::Number(n) => {
+                            match n {
+                                Number::U128(n) => {
+                                    let bytes = n.to_le_bytes().to_vec();
+                                    Ok(bytes)
+                                },
+                                Number::I128(n) => {
+                                    let bytes = n.to_le_bytes().to_vec();
+                                    Ok(bytes)
+                                },
+                                _ => Err("Expected number".to_owned()),
+                            }
+                        },
+                        _ => Err("Expected number".to_owned()),
+                    }
+                },
+                _ => Err("Expected qualifier".to_owned()),
+            }
+        }
+        _ => Err("Expected instruction".to_owned()),
+    }
+
+}
+
+pub fn parse_file(input: &str) -> Result<Vec<u8>, String> {
+    let mut parser = file_parser();
+
+    let mut result = parser.parse(input);
+
+    let mut result = match result {
+        Ok(ast) => ast,
+        Err(_) => return Err("Error parsing file".to_owned()),
+    };
+
+    let mut label_positions = HashMap::new();
+    let mut bytes = vec![109,0, 0,0,0,0,0,0,0,0 ];
+    //Byte 2 is the address of the main function
+
+
+    match result {
+        Ast::File(ref mut ast) => {
+            for i in ast.iter_mut() {
+                match i {
+                    Ast::Labelled(label, instructions) => {
+                        match label.as_ref() {
+                            Ast::Label(name) => {
+                                label_positions.insert(name.to_owned(), bytes.len());
+
+                                for instruction in instructions.iter_mut() {
+                                    let mut instruction_bytes = parse_instruction(instruction, |label| {
+                                        label_positions.get(&label).unwrap().to_owned() as u64
+                                    })?;
+                                    bytes.append(&mut instruction_bytes);
+                                }
+                            },
+                            _ => panic!("Expected label"),
+                        }
+                        
+                    },
+                    _ => (),
+                }
+            }
+        },
+        _ => (),
+    }
+    
+    
+    
+    Ok(bytes)
 }

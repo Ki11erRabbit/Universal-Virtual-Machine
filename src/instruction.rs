@@ -178,6 +178,9 @@ pub enum Opcode {
     SubUF,
     MulUF,
     DivUF,
+    RegMove,
+    RegMoveF,
+    RegMoveA,
     
     
     
@@ -362,6 +365,9 @@ impl From<u16> for Opcode {
             162 => SubUF,
             163 => MulUF,
             164 => DivUF,
+            166 => RegMove,
+            167 => RegMoveF,
+            168 => RegMoveA,
             
             
             /* Instructions illegal instruction */
@@ -370,6 +376,201 @@ impl From<u16> for Opcode {
     }
 }
 
+
+impl From<Opcode> for u16 {
+    fn from(v: Opcode) -> Self {
+        use Opcode::*;
+        match v {
+            Halt => 0,
+            NoOp => 1,
+            /* Instruction for loading values */
+            DeRefReg => 2,
+            DeRef => 3,
+            Move => 4,
+            Set => 5,
+            /* Instructions for signed integers */
+            AddI => 6,
+            SubI => 7,
+            MulI => 8,
+            DivI => 9,
+            EqI => 10,
+            NeqI => 11,
+            LtI => 12,
+            GtI => 13,
+            LeqI => 14,
+            GeqI => 15,
+            /* Instructions for unsigned integers */
+            AddU => 16,
+            SubU => 17,
+            MulU => 18,
+            DivU => 19,
+            EqU => 20,
+            NeqU => 21,
+            LtU => 22,
+            GtU => 23,
+            LeqU => 24,
+            GeqU => 25,
+            /* Instructions for floating point numbers */
+            DeRefRegF => 26,
+            DeRefF => 27,
+            MoveF => 28,
+            SetF => 29,
+            AddF => 30,
+            SubF => 31,
+            MulF => 32,
+            DivF => 33,
+            EqF => 34,
+            NeqF => 35,
+            LtF => 36,
+            GtF => 37,
+            LeqF => 38,
+            GeqF => 39,
+            /* Instructions for Atomic Integers */
+            DeRefRegA => 40,
+            DeRefA => 41,
+            MoveA => 42,
+            SetA => 43,
+            /* Instructions for signed Atomic Integers */
+            AddAI => 44,
+            SubAI => 45,
+            MulAI => 46,
+            DivAI => 47,
+            EqAI => 48,
+            NeqAI => 49,
+            LtAI => 50,
+            GtAI => 51,
+            LeqAI => 52,
+            GeqAI => 53,
+            /* Instructions for unsigned Atomic Integers */
+            AddAU => 54,
+            SubAU => 55,
+            MulAU => 56,
+            DivAU => 57,
+            EqAU => 58,
+            NeqAU => 59,
+            LtAU => 60,
+            GtAU => 61,
+            LeqAU => 62,
+            GeqAU => 63,
+            /* Instructions for bitwise operations */
+            And => 64,
+            Or => 65,
+            Xor => 66,
+            Not => 67,
+            ShiftLeft => 68,
+            ShiftRight => 69,
+            /* Instructions for jumping */
+            Jump => 70,
+            JumpEq => 71,
+            JumpNeq => 72,
+            JumpLt => 73,
+            JumpGt => 74,
+            JumpLeq => 75,
+            JumpGeq => 76,
+            JumpZero => 77,
+            JumpNotZero => 78,
+            JumpNeg => 79,
+            JumpPos => 80,
+            JumpEven => 81,
+            JumpOdd => 82,
+            JumpBack => 83,
+            JumpForward => 84,
+            JumpInfinity => 85,
+            JumpNotInfinity => 86,
+            JumpOverflow => 87,
+            JumpUnderflow => 88,
+            JumpNotOverflow => 89,
+            JumpNotUnderflow => 90,
+            JumpNaN => 91,
+            JumpNotNaN => 92,
+            JumpRemainder => 93,
+            JumpNotRemainder => 94,
+            // Gap for future instructions
+
+            /* Instructions for function calls */
+            Call => 109,
+            Return => 110,
+            /* Instructions for stack management */
+            Pop => 112,
+            Push => 113,
+            PopF => 114,
+            PushF => 115,
+            PopA => 116,
+            PushA => 117,
+            /* Instructions for accessing the stack */
+            DeRefRegStack => 118,
+            DeRefStack => 119,
+            MoveStack => 120,
+            SetStack => 121,
+            DeRefRegStackF => 122,
+            DeRefStackF => 123,
+            MoveStackF => 124,
+            SetStackF => 125,
+            DeRefRegStackA => 126,
+            DeRefStackA => 127,
+            MoveStackA => 128,
+            SetStackA => 129,
+            /* Instructions for accessing the stack accross cores */
+            DeRefRegStackC => 130,
+            DeRefStackC => 131,
+            MoveStackC => 132,
+            SetStackC => 133,
+            DeRefRegStackCF => 134,
+            DeRefStackCF => 135,
+            MoveStackCF => 136,
+            SetStackCF => 137,
+            DeRefRegStackCA => 138,
+            DeRefStackCA => 139,
+            MoveStackCA => 140,
+            SetStackCA => 141,
+            /* Instructions for memory management */
+            Malloc => 142,
+            Free => 143,
+            /* IO instructions */
+            ReadByte => 144,
+            /* Takes a string pointer and a length */
+            Read => 145,
+            WriteByte => 146,
+            /* Takes a string pointer and a length */
+            Write => 147,
+            /* Takes a string pointer and a length */
+            Open => 148,
+            Close => 149,
+            /* Takes a file descriptor */
+            Flush => 150,
+            /* Instructions for threads */
+            ThreadSpawn => 151,
+            Remainder => 152,
+            /* Instruction for clearing flags */
+            Clear => 153,
+            /* Instructions operation on integers and floats */
+            AddFI => 154,
+            SubFI => 155,
+            MulFI => 156,
+            DivFI => 157,
+            AddIF => 158,
+            SubIF => 159,
+            MulIF => 160,
+            DivIF => 161,
+            AddUF => 162,
+            SubUF => 163,
+            MulUF => 164,
+            DivUF => 165,
+            RegMove => 166,
+            RegMoveF => 167,
+            RegMoveA => 168,
+            
+
+
+
+
+
+            /* Instructions illegal instruction */
+            Illegal => 65535,
+        }
+    }
+}
+            
 
 
 #[derive(Debug, Clone, PartialEq)]

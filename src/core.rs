@@ -453,13 +453,13 @@ impl Core {
     fn move_opcode(&mut self) -> Result<(), Fault> {
         let size = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as usize;
-        self.advance_by_1_byte();
+        let address = self.program[self.program_counter] as u64;
+        self.advance_by_8_bytes();
         match size {
             8 => {
+                let register = self.program[self.program_counter] as u8 as usize;
                 check_register64!(register);
-                let address = self.program[self.program_counter] as u64;
-                self.advance_by_8_bytes();
+                self.advance_by_1_bytes();
                 loop {
                     match self.memory.try_write() {
                         Ok(mut memory) => {
@@ -480,9 +480,9 @@ impl Core {
                 }
             },
             16 => {
+                let register = self.program[self.program_counter] as u8 as usize;
                 check_register64!(register);
-                let address = self.program[self.program_counter] as u64;
-                self.advance_by_8_bytes();
+                self.advance_by_1_bytes();
                 loop {
                     match self.memory.try_write() {
                         Ok(mut memory) => {
@@ -504,9 +504,9 @@ impl Core {
                 }
             },
             32 => {
+                let register = self.program[self.program_counter] as u8 as usize;
                 check_register64!(register);
-                let address = self.program[self.program_counter] as u64;
-                self.advance_by_8_bytes();
+                self.advance_by_1_bytes();
                 loop {
                     match self.memory.try_write() {
                         Ok(mut memory) => {
@@ -530,9 +530,9 @@ impl Core {
                 }
             },
             64 => {
+                let register = self.program[self.program_counter] as u8 as usize;
                 check_register64!(register);
-                let address = self.program[self.program_counter] as u64;
-                self.advance_by_8_bytes();
+                self.advance_by_1_bytes();
                 loop {
                     match self.memory.try_write() {
                         Ok(mut memory) => {
@@ -560,9 +560,9 @@ impl Core {
                 }
             },
             128 => {
+                let register = self.program[self.program_counter] as u8 as usize;
                 check_register128!(register);
-                let address = self.program[self.program_counter] as u64;
-                self.advance_by_8_bytes();
+                self.advance_by_1_byte();
                 loop {
                     match self.memory.try_write() {
                         Ok(mut memory) => {
