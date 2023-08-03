@@ -1,5 +1,6 @@
 use chumsky::prelude::*;
 use std::collections::HashMap;
+use crate::binary::Binary;
 
 
 #[derive(Debug, Clone)]
@@ -1597,11 +1598,17 @@ pub fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, HashMap<Str
 }
 
 
-pub fn generate_binary(input: &str) -> Result<Vec<u8>, String> {
+pub fn generate_binary(input: &str) -> Result<Binary, String> {
     let (bytes, main_pos,label, label_pos) = parse_file(input)?;
     let mut bytes = bytes;
+    let mut label = label;
+    let mut label_pos = label_pos;
 
+    label.push("start".to_owned());
+    label_pos.insert("start".to_owned(), bytes.len());
+    
     let entry_address = bytes.len().to_le_bytes();
+    let entry_addresst = bytes.len();
     let entry_address_size = entry_address.len();
 
     bytes.push(109);
@@ -1631,19 +1638,26 @@ pub fn generate_binary(input: &str) -> Result<Vec<u8>, String> {
     let mut section_header = Vec::new();
 
 
+    let mut label_addresses = Vec::new();
     for label in label.iter() {
         section_names.extend_from_slice(label.as_bytes());
         section_names.push(0);
 
         section_header.extend_from_slice(&label_pos.get(label).unwrap().to_le_bytes());
+        label_addresses.push(label_pos.get(label).unwrap().to_owned());
     }
 
 
 
     file.extend_from_slice(&section_names);
     file.extend_from_slice(&section_header);
+
+    let shebang = "#!/usr/bin/env vm\n";
+
+
+    Ok(Binary::new(shebang,entry_addresst,bytes,label,label_addresses))
     
-    Ok(file)
+    //Ok(file)
 }
 
 
