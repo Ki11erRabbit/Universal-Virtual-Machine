@@ -1557,8 +1557,13 @@ pub fn parse_file(input: &str) -> Result<(Vec<u8>,usize), String> {
     let main_pos = label_positions.get("main");
 
     match main_pos {
-        Some(pos) => {
-            Ok((bytes, *pos))
+        Some(main_pos) => {
+            let pos = bytes.len();
+            bytes.push(109);
+            bytes.push(0);
+            bytes.extend_from_slice(&main_pos.to_le_bytes());
+            
+            Ok((bytes, pos))
         },
         None => return Err("No main function".to_owned()),
     }
@@ -1595,7 +1600,6 @@ ret}";
         let memory = Arc::new(RwLock::new(memory));
 
         let mut core = Core::new(memory);
-        core.set_program_counter(main_pos);
         core.add_program(Arc::new(bytes));
 
         core.run(main_pos).unwrap();

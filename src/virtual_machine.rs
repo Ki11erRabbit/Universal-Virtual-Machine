@@ -42,6 +42,7 @@ pub enum Fault {
     InvalidFileDescriptor,
     InvalidJump,
     StackOverflow,
+    StackUnderflow,
 
 }
 
@@ -59,6 +60,7 @@ impl fmt::Display for Fault {
             Fault::InvalidFileDescriptor => write!(f, "Invalid File Descriptor"),
             Fault::InvalidJump => write!(f, "Invalid Jump"),
             Fault::StackOverflow => write!(f, "Stack Overflow"),
+            Fault::StackUnderflow => write!(f, "Stack Underflow"),
         }
     }
 }

@@ -150,7 +150,7 @@ impl Core {
             infinity_flag: false,
             nan_flag: false,
             program_counter: 0,
-            stack: Vec::new(),
+            stack: vec![0],
             program: Arc::new(Vec::new()),
             memory,
         }
@@ -160,8 +160,22 @@ impl Core {
         self.program = program;
     }
 
-    pub fn set_program_counter(&mut self, program_counter: usize) {
-        self.program_counter = program_counter;
+    fn push_stack(&mut self, value: &[u8]) {
+        self.stack.extend_from_slice(value);
+    }
+
+    fn pop_stack(&mut self, size: u8) -> Result<Vec<u8>,Fault> {
+        let size = size / 8;
+        if self.stack.len() < size as usize {
+            return Err(Fault::StackUnderflow);
+        }
+
+        let mut value = Vec::with_capacity(size as usize);
+        for _ in 0..size {
+            value.push(self.stack.pop().unwrap());
+        }
+
+        Ok(value)
     }
 
     #[inline]
@@ -313,6 +327,8 @@ impl Core {
             JumpNotNaN => self.jumpnotnan_opcode()?,
             JumpRemainder => self.jumpremainder_opcode()?,
             JumpNotRemainder => self.jumpnotremainder_opcode()?,
+            Call => self.call_opcode()?,
+            Return => self.return_opcode()?,
             
             
 
@@ -331,7 +347,6 @@ impl Core {
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
-        println!("Set: size: {}, register: {}", size, register);
         match size {
             8 => {
                 let value = self.program[self.program_counter] as u8;
@@ -7213,6 +7228,28 @@ impl Core {
         if self.remainder_64 == 0 && self.remainder_128 == 0 {
             self.program_counter = line;
         }
+
+        Ok(())
+    }
+
+    fn call_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.program[self.program_counter] as u64 as usize;
+        self.advance_by_8_bytes();
+
+        if line >= self.program.len() {
+            return Err(Fault::InvalidJump);
+        }
+        self.push_stack(&self.program_counter.to_le_bytes());
+        self.program_counter = line;
+
+        Ok(())
+    }
+
+    fn return_opcode(&mut self) -> Result<(), Fault> {
+        let line = self.pop_stack(64)?;
+        let mut address = [0; 8];
+        address.copy_from_slice(&line);
+        self.program_counter = u64::from_le_bytes(address) as usize;
 
         Ok(())
     }
