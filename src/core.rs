@@ -104,6 +104,7 @@ pub enum Comparison {
     GreaterThanOrEqual,
 }
 
+#[derive(Debug)]
 pub struct Core {
     /* 64-bit registers */
     registers_64: [u64; REGISTER_64_COUNT],
@@ -157,6 +158,10 @@ impl Core {
 
     pub fn add_program(&mut self, program: Arc<Vec<u8>>) {
         self.program = program;
+    }
+
+    pub fn set_program_counter(&mut self, program_counter: usize) {
+        self.program_counter = program_counter;
     }
 
     #[inline]
@@ -326,6 +331,7 @@ impl Core {
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
+        println!("Set: size: {}, register: {}", size, register);
         match size {
             8 => {
                 let value = self.program[self.program_counter] as u8;

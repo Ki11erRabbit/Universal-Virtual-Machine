@@ -1571,27 +1571,36 @@ pub fn parse_file(input: &str) -> Result<(Vec<u8>,usize), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::virtual_machine::Machine;
+    //use crate::virtual_machine::Machine;
+    use crate::core::Core;
+    use std::sync::{Arc, RwLock};
 
     #[test]
     fn test_hello_world_assembly() {
         let input = "LC{
  .string \"Hello, world!\"}
 main{
-move 64, $0, 1
+move 64, $0, 1u64
 move 64, $1, LC
-move 64, $2, 13
+move 64, $2, 13u64
 write $0, $1, $2
 flush $0
 ret}";
         let (bytes, main_pos) = parse_file(input).unwrap();
 
-        let mut vm = Machine::new_with_cores(1);
-
-        vm.add_program(bytes);
-
-        vm.run(main_pos);
+        println!("{:?}", bytes);
+        println!("main: {}", main_pos);
         
+        let memory = vec![72, 101, 108, 108, 111, 44, 32, 119, 111, 114, 108, 100, 33];
+        let memory = Arc::new(RwLock::new(memory));
+
+        let mut core = Core::new(memory);
+        core.set_program_counter(main_pos);
+        core.add_program(Arc::new(bytes));
+
+        core.run(main_pos).unwrap();
+
+        println!("{:?}", core);
         
     }
 
