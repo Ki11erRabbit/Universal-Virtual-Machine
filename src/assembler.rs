@@ -1515,7 +1515,7 @@ where
 
 }
 
-pub fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, HashMap<String,usize>), String> {
+fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, HashMap<String,usize>), String> {
 
     let parser = file_parser();
 
@@ -1601,7 +1601,7 @@ pub fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, HashMap<Str
 }
 
 
-pub fn generate_binary(input: &str) -> Result<Binary, String> {
+pub fn generate_binary(input: &str, program_name: &str) -> Result<Binary, String> {
     let (bytes, main_pos,label, label_pos) = parse_file(input)?;
     let mut bytes = bytes;
     let mut label = label;
@@ -1610,55 +1610,22 @@ pub fn generate_binary(input: &str) -> Result<Binary, String> {
     label.push("start".to_owned());
     label_pos.insert("start".to_owned(), bytes.len());
     
-    let entry_address = bytes.len().to_le_bytes();
-    let entry_addresst = bytes.len();
-    let entry_address_size = entry_address.len();
+    let entry_address = bytes.len();
 
     bytes.push(109);
     bytes.push(0);
     bytes.extend_from_slice(&main_pos.to_le_bytes());
-    
-
-    let shebang = "#!/usr/bin/env vm\n".as_bytes().to_vec();
-    let shebang_size = shebang.len();
-    let program_section_size = bytes.len().to_le_bytes();
-    let program_section_size_size = program_section_size.len();
-    let header_size = (shebang_size + entry_address_size + 8 + program_section_size_size).to_le_bytes();
-    let header_size_size = header_size.len();
-    let program_section_offset = (shebang_size + header_size_size + program_section_size_size + entry_address_size + 8).to_le_bytes();
-    let program_section_offset_size = program_section_offset.len();
-
-    let mut file = Vec::new();
-    file.extend_from_slice(&shebang);
-    file.extend_from_slice(&header_size);
-    file.extend_from_slice(&program_section_offset);
-    file.extend_from_slice(&program_section_size);
-    file.extend_from_slice(&entry_address);
-    file.extend_from_slice(&bytes);
-
-    let mut section_names: Vec<u8> = vec![0];
-
-    let mut section_header = Vec::new();
 
 
     let mut label_addresses = Vec::new();
     for label in label.iter() {
-        section_names.extend_from_slice(label.as_bytes());
-        section_names.push(0);
-
-        section_header.extend_from_slice(&label_pos.get(label).unwrap().to_le_bytes());
         label_addresses.push(label_pos.get(label).unwrap().to_owned());
     }
 
+    let shebang = format!("#!/usr/bin/env {}\n", program_name);
 
 
-    file.extend_from_slice(&section_names);
-    file.extend_from_slice(&section_header);
-
-    let shebang = "#!/usr/bin/env vm\n";
-
-
-    Ok(Binary::new(shebang,entry_addresst,bytes,label,label_addresses))
+    Ok(Binary::new(&shebang,entry_address,bytes,label,label_addresses))
     
     //Ok(file)
 }

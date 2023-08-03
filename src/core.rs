@@ -5,6 +5,7 @@ use std::array::from_fn;
 use std::sync::atomic::AtomicU64;
 use std::thread;
 use std::io::Write;
+use std::fmt;
 
 use crate::instruction::Opcode;
 use crate::virtual_machine::Fault;
@@ -104,7 +105,31 @@ pub enum Comparison {
     GreaterThanOrEqual,
 }
 
-#[derive(Debug)]
+impl fmt::Debug for Core {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "Core:\n")?;
+        write!(f, "    registers_64: {:?}\n", self.registers_64)?;
+        write!(f, "    registers_128: {:?}\n", self.registers_128)?;
+        write!(f, "    registers_f32: {:?}\n", self.registers_f32)?;
+        write!(f, "    registers_f64: {:?}\n", self.registers_f64)?;
+        write!(f, "    registers_atomic_64: {:?}\n", self.registers_atomic_64)?;
+        write!(f, "    comparison_flag: {:?}\n", self.comparison_flag)?;
+        write!(f, "    odd_flag: {:?}\n", self.odd_flag)?;
+        write!(f, "    zero_flag: {:?}\n", self.zero_flag)?;
+        write!(f, "    sign_flag: {:?}\n", self.sign_flag)?;
+        write!(f, "    overflow_flag: {:?}\n", self.overflow_flag)?;
+        write!(f, "    infinity_flag: {:?}\n", self.infinity_flag)?;
+        write!(f, "    nan_flag: {:?}\n", self.nan_flag)?;
+        write!(f, "    remainder_64: {:?}\n", self.remainder_64)?;
+        write!(f, "    remainder_128: {:?}\n", self.remainder_128)?;
+        write!(f, "    program_counter: {:?}\n", self.program_counter)?;
+        write!(f, "    stack: {:?}\n", self.stack)?;
+        write!(f, "    program: {:?}\n", *self.program)
+
+    }
+
+}
+
 pub struct Core {
     /* 64-bit registers */
     registers_64: [u64; REGISTER_64_COUNT],
