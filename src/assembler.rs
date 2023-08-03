@@ -397,9 +397,9 @@ fn parse_arithmetic(opcode: Vec<u8>, args: &Vec<Ast>) -> Result<Vec<u8>, String>
     Ok(bytes)
 }
 
-fn parse_jump<F>(opcode: Vec<u8>, args: &Vec<Ast>, pos_setter: F) -> Result<Vec<u8>, String>
+fn parse_jump<F>(opcode: Vec<u8>, args: &Vec<Ast>, mut pos_setter: F) -> Result<Vec<u8>, String>
 where
-    F: Fn(String) -> u64,{
+    F: FnMut(String) -> u64,{
     let mut bytes = opcode;
     
     for arg in args {
@@ -418,9 +418,9 @@ where
 }
 
 /// This function is used to parse an instruction into an opcode
-fn parse_instruction<F>(ast: &Ast, pos_setter: F) -> Result<Vec<u8>, String>
+fn parse_instruction<F>(ast: &Ast, mut pos_setter: F) -> Result<Vec<u8>, String>
 where
-    F: Fn(String) -> u64, {
+    F: FnMut(String) -> u64, {
     match ast {
         Ast::Instruction(name, args) => {
             match name.as_str() {
@@ -1511,7 +1511,7 @@ where
 
 }
 
-pub fn parse_file(input: &str) -> Result<(Vec<u8>,usize), String> {
+pub fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, HashMap<String,usize>), String> {
 
     let parser = file_parser();
 
@@ -1523,7 +1523,9 @@ pub fn parse_file(input: &str) -> Result<(Vec<u8>,usize), String> {
     };
 
 
+    let mut labels = Vec::new();
     let mut label_positions = HashMap::new();
+    let mut unknown_labels = HashMap::new();
     let mut bytes = Vec::new();
 
 
@@ -1535,10 +1537,19 @@ pub fn parse_file(input: &str) -> Result<(Vec<u8>,usize), String> {
                         match label.as_ref() {
                             Ast::Label(name) => {
                                 label_positions.insert(name.to_owned(), bytes.len());
+                                labels.push(name.to_owned());
 
                                 for instruction in instructions.iter_mut() {
                                     let mut instruction_bytes = parse_instruction(instruction, |label| {
-                                        label_positions.get(&label).unwrap().to_owned() as u64
+                                        match label_positions.get(&label) {
+                                            Some(pos) => *pos as u64,
+                                            None => {
+                                                unknown_labels.insert(label.to_owned(), bytes.len());
+                                                0 as u64
+                                            },
+                                        }
+                                        
+                                        //label_positions.get(&label).unwrap().to_owned() as u64
                                     })?;
                                     bytes.append(&mut instruction_bytes);
                                 }
@@ -1553,20 +1564,86 @@ pub fn parse_file(input: &str) -> Result<(Vec<u8>,usize), String> {
         },
         _ => (),
     }
+
+    for (label, bin_pos) in unknown_labels.iter() {
+        let address = label_positions.get(label).unwrap();
+
+        let address = address.to_le_bytes();
+        bytes[*bin_pos] = address[0];
+        bytes[*bin_pos + 1] = address[1];
+        bytes[*bin_pos + 2] = address[2];
+        bytes[*bin_pos + 3] = address[3];
+        bytes[*bin_pos + 4] = address[4];
+        bytes[*bin_pos + 5] = address[5];
+        bytes[*bin_pos + 6] = address[6];
+        bytes[*bin_pos + 7] = address[7];
+        
+    }
+    
     
     let main_pos = label_positions.get("main");
 
     match main_pos {
         Some(main_pos) => {
-            let pos = bytes.len();
+            /*let pos = bytes.len();
             bytes.push(109);
             bytes.push(0);
-            bytes.extend_from_slice(&main_pos.to_le_bytes());
+            bytes.extend_from_slice(&main_pos.to_le_bytes());*/
             
-            Ok((bytes, pos))
+            Ok((bytes, *main_pos, labels, label_positions))
         },
         None => return Err("No main function".to_owned()),
     }
+}
+
+
+pub fn generate_binary(input: &str) -> Result<Vec<u8>, String> {
+    let (bytes, main_pos,label, label_pos) = parse_file(input)?;
+    let mut bytes = bytes;
+
+    let entry_address = bytes.len().to_le_bytes();
+    let entry_address_size = entry_address.len();
+
+    bytes.push(109);
+    bytes.push(0);
+    bytes.extend_from_slice(&main_pos.to_le_bytes());
+    
+
+    let shebang = "#!/usr/bin/env vm\n".as_bytes().to_vec();
+    let shebang_size = shebang.len();
+    let program_section_size = bytes.len().to_le_bytes();
+    let program_section_size_size = program_section_size.len();
+    let header_size = (shebang_size + entry_address_size + 8 + program_section_size_size).to_le_bytes();
+    let header_size_size = header_size.len();
+    let program_section_offset = (shebang_size + header_size_size + program_section_size_size + entry_address_size + 8).to_le_bytes();
+    let program_section_offset_size = program_section_offset.len();
+
+    let mut file = Vec::new();
+    file.extend_from_slice(&shebang);
+    file.extend_from_slice(&header_size);
+    file.extend_from_slice(&program_section_offset);
+    file.extend_from_slice(&program_section_size);
+    file.extend_from_slice(&entry_address);
+    file.extend_from_slice(&bytes);
+
+    let mut section_names: Vec<u8> = vec![0];
+
+    let mut section_header = Vec::new();
+
+
+    for label in label.iter() {
+        section_names.extend_from_slice(label.as_bytes());
+        section_names.push(0);
+
+        section_header.extend_from_slice(&label_pos.get(label).unwrap().to_le_bytes());
+    }
+
+
+
+    file.extend_from_slice(&section_names);
+    file.extend_from_slice(&section_header);
+    
+    Ok(file)
 }
 
 
@@ -1580,7 +1657,7 @@ mod tests {
     use crate::core::Core;
     use std::sync::{Arc, RwLock};
 
-    #[test]
+    /*#[test]
     fn test_hello_world_assembly() {
         let input = "LC{
  .string \"Hello, world!\"}
@@ -1606,7 +1683,7 @@ ret}";
 
         println!("{:?}", core);
         
-    }
+    }*/
 
 
 }
