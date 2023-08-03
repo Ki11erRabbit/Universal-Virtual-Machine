@@ -411,7 +411,10 @@ where
             Ast::Label(l) => {
                 bytes.append(&mut pos_setter(l.to_owned()).to_le_bytes().to_vec());
             },
-            _ => return Err("Only numbers are allowed in this op".to_owned()),
+            Ast::Address(a) => {
+                bytes.append(&mut a.to_le_bytes().to_vec());
+            },
+            _ => return Err("Only numbers or addresses are allowed in this op".to_owned()),
         }
     }
 
@@ -1280,7 +1283,7 @@ where
                     }
 
                     match ops.as_slice() {
-                        [MoveOps::Register, MoveOps::Register] => {
+                        [MoveOps::Register, MoveOps::Register, MoveOps::Register] => {
                             let mut temp = vec![141,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
