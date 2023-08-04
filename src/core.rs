@@ -7864,16 +7864,12 @@ impl Core {
             8 | 16 | 32 | 64 => {
                 check_register64!(register1 as usize, register2 as usize);
 
-                let temp = self.registers_64[register1 as usize];
                 self.registers_64[register1 as usize] = self.registers_64[register2 as usize];
-                self.registers_64[register2 as usize] = temp;
             },
             128 => {
                 check_register128!(register1 as usize, register2 as usize);
 
-                let temp = self.registers_128[register1 as usize];
                 self.registers_128[register1 as usize] = self.registers_128[register2 as usize];
-                self.registers_128[register2 as usize] = temp;
             },
             _ => return Err(Fault::InvalidSize),
 
@@ -7894,16 +7890,12 @@ impl Core {
             32 => {
                 check_registerF32!(register1 as usize, register2 as usize);
 
-                let temp = self.registers_f32[register1 as usize];
                 self.registers_f32[register1 as usize] = self.registers_f32[register2 as usize];
-                self.registers_f32[register2 as usize] = temp;
             },
             64 => {
                 check_registerF64!(register1 as usize, register2 as usize);
 
-                let temp = self.registers_f64[register1 as usize];
                 self.registers_f64[register1 as usize] = self.registers_f64[register2 as usize];
-                self.registers_f64[register2 as usize] = temp;
             },
             _ => return Err(Fault::InvalidSize),
 
