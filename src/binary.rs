@@ -9,30 +9,54 @@ pub struct Binary {
     header_size: usize,
     program_offset: usize,
     program_size: usize,
+    data_segment_size: usize,
     entry_address: usize,
     program: Vec<u8>,
+    data_segment: Vec<u8>,
     section_names: Vec<String>,
     section_addresses: Vec<usize>,
 }
 
 
 
+enum DeserializeState {
+    Shebang,
+    HeaderSize,
+    ProgramOffset,
+    ProgramSize,
+    DataSegmentSize,
+    EntryAddress,
+    Program,
+    DataSegment,
+    SectionNames(usize),
+    SectionAddresses,
+}
+
 impl Binary {
     pub fn new(shebang: &str,
-                entry_address: usize,
-                program: Vec<u8>,
-                section_names: Vec<String>,
+               entry_address: usize,
+               program: Vec<u8>,
+               data_segment: Vec<u8>,
+               section_names: Vec<String>,
                section_addresses: Vec<usize>) -> Binary {
-        let header_size = shebang.len() + 8 + 8 + 8;
+        // however many bytes the shebang is
+        // 8 bytes for the header size
+        // 8 bytes for the program offset
+        // 8 bytes for the program size
+        // 8 bytes for the data segment size
+        // 8 bytes for the entry address
+        let header_size = shebang.len() + 8 + 8 + 8 + 8 + 8;
           Binary {
-                shebang: shebang.to_string(),
-                header_size,
-                program_offset: header_size,
-                program_size: program.len(),
-                entry_address,
-                program,
-                section_names,
-                section_addresses,
+              shebang: shebang.to_string(),
+              header_size,
+              program_offset: header_size,
+              program_size: program.len(),
+              data_segment_size: data_segment.len(),
+              entry_address,
+              program,
+              data_segment,
+              section_names,
+              section_addresses,
           }
     }
 
@@ -43,8 +67,10 @@ impl Binary {
         binary.extend(&self.header_size.to_le_bytes());
         binary.extend(&self.program_offset.to_le_bytes());
         binary.extend(&self.program_size.to_le_bytes());
+        binary.extend(&self.data_segment_size.to_le_bytes());
         binary.extend(&self.entry_address.to_le_bytes());
         binary.extend(&self.program.clone());
+        binary.extend(&self.data_segment.clone());
         for name in &self.section_names {
             binary.extend(name.as_bytes());
             binary.push(0);
@@ -62,7 +88,9 @@ impl Binary {
         let mut shebang = String::new();
         let mut entry_address = 0;
         let mut program_size = 0;
+        let mut data_segment_size = 0;
         let mut program = Vec::new();
+        let mut data_segment = Vec::new();
         let mut section_names = Vec::new();
         let mut section_addresses = Vec::new();
 
@@ -96,6 +124,14 @@ impl Binary {
                     if buffer.len() == 8 {
                         program_size = usize::from_le_bytes(buffer.clone().try_into().unwrap());
                         buffer.clear();
+                        state = DeserializeState::DataSegmentSize;
+                    }
+                },
+                DeserializeState::DataSegmentSize => {
+                    buffer.push(byte);
+                    if buffer.len() == 8 {
+                        data_segment_size = usize::from_le_bytes(buffer.clone().try_into().unwrap());
+                        buffer.clear();
                         state = DeserializeState::EntryAddress;
                     }
                 },
@@ -111,6 +147,14 @@ impl Binary {
                     buffer.push(byte);
                     if buffer.len() == program_size {
                         program = buffer.clone();
+                        buffer.clear();
+                        state = DeserializeState::DataSegment;
+                    }
+                },
+                DeserializeState::DataSegment => {
+                    buffer.push(byte);
+                    if buffer.len() == data_segment_size {
+                        data_segment = buffer.clone();
                         buffer.clear();
                         state = DeserializeState::SectionNames(0);
                     }
@@ -147,7 +191,7 @@ impl Binary {
             }
         }
 
-       Binary::new(&shebang, entry_address, program, section_names, section_addresses)
+       Binary::new(&shebang, entry_address, program, data_segment, section_names, section_addresses)
     }
 
 
@@ -1004,7 +1048,7 @@ impl Binary {
             
             match section_positions.get(&read_head) {
                 Some(name) => {
-                    assembly.push_str(&format!("}}{}{{\n", name));
+                    assembly.push_str(&format!("}}\n{}{{\n", name));
                 },
                 None => {}
             }
@@ -1014,17 +1058,6 @@ impl Binary {
         assembly
     }
     
-}
-
-enum DeserializeState {
-    Shebang,
-    HeaderSize,
-    ProgramOffset,
-    ProgramSize,
-    EntryAddress,
-    Program,
-    SectionNames(usize),
-    SectionAddresses,
 }
 
 
@@ -1045,7 +1078,7 @@ move 64, $2, 13u64
 write $0, $1, $2
 flush $0
 ret}";
-        let binary = generate_binary(input).unwrap();
+        let binary = generate_binary(input, "vm").unwrap();
 
         //println!("{:?}", binary.serialize());
 

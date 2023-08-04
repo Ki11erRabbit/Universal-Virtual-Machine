@@ -1412,6 +1412,7 @@ where
                     match value.as_ref() {
                         Ast::String(s) => {
                             let bytes = s.as_bytes().to_vec();
+
                             Ok(bytes)
                         },
                         _ => Err("Expected string".to_owned()),
@@ -1423,10 +1424,12 @@ where
                             match n {
                                 Number::U8(n) => {
                                     let bytes = vec![*n];
+
                                     Ok(bytes)
                                 },
                                 Number::I8(n) => {
                                     let bytes = vec![n.to_le_bytes()[0]];
+
                                     Ok(bytes)
                                 },
                                 _ => Err("Expected number".to_owned()),
@@ -1441,10 +1444,12 @@ where
                             match n {
                                 Number::U16(n) => {
                                     let bytes = n.to_le_bytes().to_vec();
+
                                     Ok(bytes)
                                 },
                                 Number::I16(n) => {
                                     let bytes = n.to_le_bytes().to_vec();
+
                                     Ok(bytes)
                                 },
                                 _ => Err("Expected number".to_owned()),
@@ -1459,10 +1464,12 @@ where
                             match n {
                                 Number::U32(n) => {
                                     let bytes = n.to_le_bytes().to_vec();
+
                                     Ok(bytes)
                                 },
                                 Number::I32(n) => {
                                     let bytes = n.to_le_bytes().to_vec();
+
                                     Ok(bytes)
                                 },
                                 _ => Err("Expected number".to_owned()),
@@ -1477,10 +1484,12 @@ where
                             match n {
                                 Number::U64(n) => {
                                     let bytes = n.to_le_bytes().to_vec();
+
                                     Ok(bytes)
                                 },
                                 Number::I64(n) => {
                                     let bytes = n.to_le_bytes().to_vec();
+
                                     Ok(bytes)
                                 },
                                 _ => Err("Expected number".to_owned()),
@@ -1495,10 +1504,12 @@ where
                             match n {
                                 Number::U128(n) => {
                                     let bytes = n.to_le_bytes().to_vec();
+
                                     Ok(bytes)
                                 },
                                 Number::I128(n) => {
                                     let bytes = n.to_le_bytes().to_vec();
+
                                     Ok(bytes)
                                 },
                                 _ => Err("Expected number".to_owned()),
@@ -1515,7 +1526,7 @@ where
 
 }
 
-fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, HashMap<String,usize>), String> {
+fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, Vec<String>, HashMap<String,usize>, Vec<u8>), String> {
 
     let parser = file_parser();
 
@@ -1528,9 +1539,12 @@ fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, HashMap<String,
 
 
     let mut labels = Vec::new();
+    let mut segment_labels = Vec::new();
     let mut label_positions = HashMap::new();
     let mut unknown_labels = HashMap::new();
     let mut bytes = Vec::new();
+    let mut segment_bytes = Vec::new();
+    
 
 
     match result {
@@ -1540,22 +1554,52 @@ fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, HashMap<String,
                     Ast::Labelled(label, instructions) => {
                         match label.as_ref() {
                             Ast::Label(name) => {
-                                label_positions.insert(name.to_owned(), bytes.len());
-                                labels.push(name.to_owned());
-
                                 for instruction in instructions.iter_mut() {
-                                    let mut instruction_bytes = parse_instruction(instruction, |label| {
-                                        match label_positions.get(&label) {
-                                            Some(pos) => *pos as u64,
-                                            None => {
-                                                unknown_labels.insert(label.to_owned(), bytes.len());
-                                                0 as u64
-                                            },
-                                        }
-                                        
-                                        //label_positions.get(&label).unwrap().to_owned() as u64
-                                    })?;
-                                    bytes.append(&mut instruction_bytes);
+
+                                    match &instruction {
+                                        Ast::MemorySet(_, _) => {
+                                            match label_positions.get(name) {
+                                                None => {
+                                                    label_positions.insert(name.to_owned(), segment_bytes.len());
+                                                    segment_labels.push(name.to_owned());
+                                                },
+                                                _ => (),
+                                            }
+                                            let mut instruction_bytes = parse_instruction(instruction, |label| {
+                                                match label_positions.get(&label) {
+                                                    Some(pos) => *pos as u64,
+                                                    None => {
+                                                        unknown_labels.insert(label.to_owned(), segment_bytes.len());
+                                                        0 as u64
+                                                    },
+                                                }
+                                            })?;
+                                            segment_bytes.append(&mut instruction_bytes);
+                                        },
+                                        Ast::Instruction(_, _) => {
+                                            match label_positions.get(name) {
+                                                None => {
+                                                    label_positions.insert(name.to_owned(), bytes.len());
+                                                    labels.push(name.to_owned());
+                                                },
+                                                _ => (),
+                                            }
+                                            let mut instruction_bytes = parse_instruction(instruction, |label| {
+                                                match label_positions.get(&label) {
+                                                    Some(pos) => *pos as u64,
+                                                    None => {
+                                                        unknown_labels.insert(label.to_owned(), bytes.len());
+                                                        0 as u64
+                                                    },
+                                                }
+                                            })?;
+                                            bytes.append(&mut instruction_bytes);
+                                        },
+                                        _ => (),
+
+                                    }
+
+                                    
                                 }
                             },
                             _ => panic!("Expected label"),
@@ -1594,7 +1638,7 @@ fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, HashMap<String,
             bytes.push(0);
             bytes.extend_from_slice(&main_pos.to_le_bytes());*/
             
-            Ok((bytes, *main_pos, labels, label_positions))
+            Ok((bytes, *main_pos, labels, segment_labels,label_positions, segment_bytes))
         },
         None => return Err("No main function".to_owned()),
     }
@@ -1602,7 +1646,7 @@ fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, HashMap<String,
 
 
 pub fn generate_binary(input: &str, program_name: &str) -> Result<Binary, String> {
-    let (bytes, main_pos,label, label_pos) = parse_file(input)?;
+    let (bytes, main_pos,label, segment_labels, label_pos, data_segment) = parse_file(input)?;
     let mut bytes = bytes;
     let mut label = label;
     let mut label_pos = label_pos;
@@ -1623,9 +1667,9 @@ pub fn generate_binary(input: &str, program_name: &str) -> Result<Binary, String
     }
 
     let shebang = format!("#!/usr/bin/env {}\n", program_name);
+    
 
-
-    Ok(Binary::new(&shebang,entry_address,bytes,label,label_addresses))
+    Ok(Binary::new(&shebang,entry_address,bytes,data_segment,label,label_addresses))
     
     //Ok(file)
 }
