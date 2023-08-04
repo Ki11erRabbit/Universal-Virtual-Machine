@@ -354,6 +354,16 @@ impl Core {
             JumpNotRemainder => self.jumpnotremainder_opcode()?,
             Call => self.call_opcode()?,
             Return => self.return_opcode()?,
+            Pop => self.pop_opcode()?,
+            Push => self.push_opcode()?,
+            PopF => self.popf_opcode()?,
+            PushF => self.pushf_opcode()?,
+            DeRefRegStack => self.derefregstack_opcode()?,
+            DeRefStack => self.derefstack_opcode()?,
+            MoveStack => self.movestack_opcode()?,
+            DeRefRegStackF => self.derefregstackf_opcode()?,
+            DeRefStackF => self.derefstackf_opcode()?,
+            MoveStackF => self.movestackf_opcode()?,
             
             
 
@@ -7278,6 +7288,568 @@ impl Core {
 
         Ok(())
     }
+
+    fn pop_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        let value = self.pop_stack(size)?;
+
+
+        match size {
+            8 => {
+                check_register64!(register as usize);
+                let mut bytes = [0];
+                bytes[0] = value[0];
+                self.registers_64[register as usize] = u8::from_le_bytes(bytes) as u64;
+            },
+            16 => {
+                check_register64!(register as usize);
+                let mut bytes = [0;2];
+                bytes[0] = value[0];
+                bytes[1] = value[1];
+                
+                self.registers_64[register as usize] = u16::from_le_bytes(bytes) as u64;
+            },
+            32 => {
+                check_register64!(register as usize);
+                let mut bytes = [0;4];
+                bytes[0] = value[0];
+                bytes[1] = value[1];
+                bytes[2] = value[2];
+                bytes[3] = value[3];
+                
+                self.registers_64[register as usize] = u32::from_le_bytes(bytes) as u64;
+            },
+            64 => {
+                check_register64!(register as usize);
+                let mut bytes = [0;8];
+                bytes[0] = value[0];
+                bytes[1] = value[1];
+                bytes[2] = value[2];
+                bytes[3] = value[3];
+                bytes[4] = value[4];
+                bytes[5] = value[5];
+                bytes[6] = value[6];
+                bytes[7] = value[7];
+                
+                self.registers_64[register as usize] = u64::from_le_bytes(bytes);
+            },
+            128 => {
+                check_register128!(register as usize);
+                let mut bytes = [0;16];
+                bytes[0] = value[0];
+                bytes[1] = value[1];
+                bytes[2] = value[2];
+                bytes[3] = value[3];
+                bytes[4] = value[4];
+                bytes[5] = value[5];
+                bytes[6] = value[6];
+                bytes[7] = value[7];
+                bytes[8] = value[8];
+                bytes[9] = value[9];
+                bytes[10] = value[10];
+                bytes[11] = value[11];
+                bytes[12] = value[12];
+                bytes[13] = value[13];
+                bytes[14] = value[14];
+                bytes[15] = value[15];
+                
+                self.registers_128[register as usize] = u128::from_le_bytes(bytes);
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+
+    fn push_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        match size {
+            8 => {
+                check_register64!(register as usize);
+                let value = self.registers_64[register as usize].to_le_bytes();
+                self.push_stack(&value);
+            },
+            16 => {
+                check_register64!(register as usize);
+                let value = self.registers_64[register as usize].to_le_bytes();
+                self.push_stack(&value);
+            },
+            32 => {
+                check_register64!(register as usize);
+                let value = self.registers_64[register as usize].to_le_bytes();
+                self.push_stack(&value);
+            },
+            64 => {
+                check_register64!(register as usize);
+                let value = self.registers_64[register as usize].to_le_bytes();
+                self.push_stack(&value);
+            },
+            128 => {
+                check_register128!(register as usize);
+                let value = self.registers_128[register as usize].to_le_bytes();
+                self.push_stack(&value);
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+        Ok(())
+    }
+    
+    fn popf_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        let value = self.pop_stack(size)?;
+
+
+        match size {
+            32 => {
+                check_registerF32!(register as usize);
+                let mut bytes = [0;4];
+                bytes[0] = value[0];
+                bytes[1] = value[1];
+                bytes[2] = value[2];
+                bytes[3] = value[3];
+                
+                self.registers_f32[register as usize] = f32::from_le_bytes(bytes);
+            },
+            64 => {
+                check_registerF64!(register as usize);
+                let mut bytes = [0;8];
+                bytes[0] = value[0];
+                bytes[1] = value[1];
+                bytes[2] = value[2];
+                bytes[3] = value[3];
+                bytes[4] = value[4];
+                bytes[5] = value[5];
+                bytes[6] = value[6];
+                bytes[7] = value[7];
+                
+                self.registers_f64[register as usize] = f64::from_le_bytes(bytes);
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+
+    fn pushf_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register as usize);
+                let value = self.registers_f32[register as usize].to_le_bytes();
+                self.push_stack(&value);
+            },
+            64 => {
+                check_registerF64!(register as usize);
+                let value = self.registers_f64[register as usize].to_le_bytes();
+                self.push_stack(&value);
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+        Ok(())
+    }
+
+    fn derefstack_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let address = self.program[self.program_counter] as u64;
+        self.advance_by_8_bytes();
+        match size {
+            8 => {
+                if address >= self.stack.len() as u64 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+                self.registers_64[register] = (self.stack[address as usize] as u8) as u64;
+            },
+            16 => {
+                if address >= self.stack.len() as u64 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+                self.registers_64[register] = (self.stack[address as usize] as u16) as u64;
+            },
+            32 => {
+                if address >= self.stack.len() as u64 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+                self.registers_64[register] = (self.stack[address as usize] as u32) as u64;
+            },
+            64 => {
+                if address >= self.stack.len() as u64 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+                self.registers_64[register] = self.stack[address as usize] as u64;
+            },
+            128 => {
+                if address >= self.stack.len() as u64 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+                self.registers_128[register] = self.stack[address as usize] as u128;
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+        Ok(())
+    }
+
+    fn movestack_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let address = self.program[self.program_counter] as u64;
+        self.advance_by_8_bytes();
+        match size {
+            8 => {
+                let register = self.program[self.program_counter] as u8 as usize;
+                check_register64!(register);
+                self.advance_by_1_byte();
+
+                if address >= self.stack.len() as u64 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+
+                self.stack[address as usize] = self.registers_64[register] as u8;
+            },
+            16 => {
+                let register = self.program[self.program_counter] as u8 as usize;
+                check_register64!(register);
+                self.advance_by_1_byte();
+
+                if address >= self.stack.len() as u64 - 1 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+
+                self.stack[address as usize] = (self.registers_64[register] >> 8) as u8;
+                self.stack[address as usize + 1] = self.registers_64[register] as u8;
+            },
+            32 => {
+                let register = self.program[self.program_counter] as u8 as usize;
+                check_register64!(register);
+                self.advance_by_1_byte();
+
+                if address >= self.stack.len() as u64 - 3 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+
+                self.stack[address as usize] = (self.registers_64[register] >> 24) as u8;
+                self.stack[address as usize + 1] = (self.registers_64[register] >> 16) as u8;
+                self.stack[address as usize + 2] = (self.registers_64[register] >> 8) as u8;
+                self.stack[address as usize + 3] = self.registers_64[register] as u8;
+            },
+            64 => {
+                let register = self.program[self.program_counter] as u8 as usize;
+                check_register64!(register);
+                self.advance_by_1_byte();
+
+                if address >= self.stack.len() as u64 - 7 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+
+                self.stack[address as usize] = (self.registers_64[register] >> 56) as u8;
+                self.stack[address as usize + 1] = (self.registers_64[register] >> 48) as u8;
+                self.stack[address as usize + 2] = (self.registers_64[register] >> 40) as u8;
+                self.stack[address as usize + 3] = (self.registers_64[register] >> 32) as u8;
+                self.stack[address as usize + 4] = (self.registers_64[register] >> 24) as u8;
+                self.stack[address as usize + 5] = (self.registers_64[register] >> 16) as u8;
+                self.stack[address as usize + 6] = (self.registers_64[register] >> 8) as u8;
+                self.stack[address as usize + 7] = self.registers_64[register] as u8;
+            },
+            128 => {
+                let register = self.program[self.program_counter] as u8 as usize;
+                check_register128!(register);
+                self.advance_by_1_byte();
+
+                if address >= self.stack.len() as u64 - 15 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+
+                self.stack[address as usize] = (self.registers_128[register] >> 120) as u8;
+                self.stack[address as usize + 1] = (self.registers_128[register] >> 112) as u8;
+                self.stack[address as usize + 2] = (self.registers_128[register] >> 104) as u8;
+                self.stack[address as usize + 3] = (self.registers_128[register] >> 96) as u8;
+                self.stack[address as usize + 4] = (self.registers_128[register] >> 88) as u8;
+                self.stack[address as usize + 5] = (self.registers_128[register] >> 80) as u8;
+                self.stack[address as usize + 6] = (self.registers_128[register] >> 72) as u8;
+                self.stack[address as usize + 7] = (self.registers_128[register] >> 64) as u8;
+                self.stack[address as usize + 8] = (self.registers_128[register] >> 56) as u8;
+                self.stack[address as usize + 9] = (self.registers_128[register] >> 48) as u8;
+                self.stack[address as usize + 10] = (self.registers_128[register] >> 40) as u8;
+                self.stack[address as usize + 11] = (self.registers_128[register] >> 32) as u8;
+                self.stack[address as usize + 12] = (self.registers_128[register] >> 24) as u8;
+                self.stack[address as usize + 13] = (self.registers_128[register] >> 16) as u8;
+                self.stack[address as usize + 14] = (self.registers_128[register] >> 8) as u8;
+                self.stack[address as usize + 15] = self.registers_128[register] as u8;
+                
+            },
+            _ => return Err(Fault::InvalidSize),
+
+        }
+        Ok(())
+    }
+
+    fn derefregstack_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let address_register = self.program[self.program_counter] as usize;
+        check_register64!(address_register);
+        self.advance_by_1_byte();
+        let offset = self.program[self.program_counter] as i64;
+        self.advance_by_8_bytes();
+        let address = self.registers_64[address_register] as i64 + offset;
+        let address = address as u64;
+
+        match size {
+            8 => {
+                check_register64!(register);
+
+                if address >= self.stack.len() as u64 - 1 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+
+                self.registers_64[register] = ((self.stack[address as usize] as u8) as u64) << 8;
+                self.registers_64[register] |= (self.stack[address as usize + 1] as u8) as u64;
+                
+            },
+            16 => {
+                check_register64!(register);
+
+                if address >= self.stack.len() as u64 - 1 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+
+                self.registers_64[register] = ((self.stack[address as usize] as u8) as u64) << 8;
+                self.registers_64[register] |= (self.stack[address as usize + 1] as u8) as u64;
+                
+            },
+            32 => {
+                check_register64!(register);
+
+                if address >= self.stack.len() as u64 - 3 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+
+                self.registers_64[register] = ((self.stack[address as usize] as u8) as u64) << 24;
+                self.registers_64[register] |= ((self.stack[address as usize + 1] as u8) as u64) << 16;
+                self.registers_64[register] |= ((self.stack[address as usize + 2] as u8) as u64) << 8;
+                self.registers_64[register] |= (self.stack[address as usize + 3] as u8) as u64;
+            },
+            64 => {
+                check_register64!(register);
+
+                if address >= self.stack.len() as u64 - 7 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+
+                self.registers_64[register] = ((self.stack[address as usize] as u8) as u64) << 56;
+                self.registers_64[register] |= ((self.stack[address as usize + 1] as u8) as u64) << 48;
+                self.registers_64[register] |= ((self.stack[address as usize + 2] as u8) as u64) << 40;
+                self.registers_64[register] |= ((self.stack[address as usize + 3] as u8) as u64) << 32;
+                self.registers_64[register] |= ((self.stack[address as usize + 4] as u8) as u64) << 24;
+                self.registers_64[register] |= ((self.stack[address as usize + 5] as u8) as u64) << 16;
+                self.registers_64[register] |= ((self.stack[address as usize + 6] as u8) as u64) << 8;
+                self.registers_64[register] |= (self.stack[address as usize + 7] as u8) as u64;
+            },
+            128 => {
+                check_register128!(register);
+
+                if address >= self.stack.len() as u64 - 15 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+
+                self.registers_128[register] = ((self.stack[address as usize] as u8) as u128) << 120;
+                self.registers_128[register] |= ((self.stack[address as usize + 1] as u8) as u128) << 112;
+                self.registers_128[register] |= ((self.stack[address as usize + 2] as u8) as u128) << 104;
+                self.registers_128[register] |= ((self.stack[address as usize + 3] as u8) as u128) << 96;
+                self.registers_128[register] |= ((self.stack[address as usize + 4] as u8) as u128) << 88;
+                self.registers_128[register] |= ((self.stack[address as usize + 5] as u8) as u128) << 80;
+                self.registers_128[register] |= ((self.stack[address as usize + 6] as u8) as u128) << 72;
+                self.registers_128[register] |= ((self.stack[address as usize + 7] as u8) as u128) << 64;
+                self.registers_128[register] |= ((self.stack[address as usize + 8] as u8) as u128) << 56;
+                self.registers_128[register] |= ((self.stack[address as usize + 9] as u8) as u128) << 48;
+                self.registers_128[register] |= ((self.stack[address as usize + 10] as u8) as u128) << 40;
+                self.registers_128[register] |= ((self.stack[address as usize + 11] as u8) as u128) << 32;
+                self.registers_128[register] |= ((self.stack[address as usize + 12] as u8) as u128) << 24;
+                self.registers_128[register] |= ((self.stack[address as usize + 13] as u8) as u128) << 16;
+                self.registers_128[register] |= ((self.stack[address as usize + 14] as u8) as u128) << 8;
+                self.registers_128[register] |= (self.stack[address as usize + 15] as u8) as u128;
+                
+            }
+            _ => {
+                return Err(Fault::InvalidSize);
+            }
+
+        }
+
+        Ok(())
+        
+    }
+
+    fn derefstackf_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as u8 as usize;
+        self.advance_by_1_byte();
+        let address = self.program[self.program_counter] as u64;
+        self.advance_by_8_bytes();
+        match size {
+            32 => {
+                check_registerF32!(register);
+                
+                if address >= self.stack.len() as u64 - 3 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+
+                let mut bytes = 0.0f32.to_le_bytes();
+                bytes[0] = self.stack[address as usize];
+                bytes[1] = self.stack[address as usize + 1];
+                bytes[2] = self.stack[address as usize + 2];
+                bytes[3] = self.stack[address as usize + 3];
+                
+            }
+            64 => {
+                check_registerF64!(register);
+                
+                if address >= self.stack.len() as u64 - 7 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+
+                let mut bytes = 0.0f64.to_le_bytes();
+                bytes[0] = self.stack[address as usize];
+                bytes[1] = self.stack[address as usize + 1];
+                bytes[2] = self.stack[address as usize + 2];
+                bytes[3] = self.stack[address as usize + 3];
+                bytes[4] = self.stack[address as usize + 4];
+                bytes[5] = self.stack[address as usize + 5];
+                bytes[6] = self.stack[address as usize + 6];
+                bytes[7] = self.stack[address as usize + 7];
+                
+            }
+            _ => return Err(Fault::InvalidSize),
+        }
+        Ok(())
+    }
+
+    fn movestackf_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8 as usize;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as u8 as usize;
+        self.advance_by_1_byte();
+        match size {
+            32 => {
+                check_registerF32!(register as usize);
+                let address = self.program[self.program_counter] as u64;
+                self.advance_by_8_bytes();
+
+                if address >= self.stack.len() as u64 - 3 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+
+                let float_bytes = self.registers_f32[register as usize].to_le_bytes();
+                self.stack[address as usize] = float_bytes[0];
+                self.stack[address as usize + 1] = float_bytes[1];
+                self.stack[address as usize + 2] = float_bytes[2];
+                self.stack[address as usize + 3] = float_bytes[3];
+            },
+            64 => {
+                check_registerF64!(register as usize);
+                let address = self.program[self.program_counter] as u64;
+                self.advance_by_8_bytes();
+
+                if address >= self.stack.len() as u64 - 7 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+
+                let float_bytes = self.registers_f64[register as usize].to_le_bytes();
+
+                self.stack[address as usize] = float_bytes[0];
+                self.stack[address as usize + 1] = float_bytes[1];
+                self.stack[address as usize + 2] = float_bytes[2];
+                self.stack[address as usize + 3] = float_bytes[3];
+                self.stack[address as usize + 4] = float_bytes[4];
+                self.stack[address as usize + 5] = float_bytes[5];
+                self.stack[address as usize + 6] = float_bytes[6];
+                self.stack[address as usize + 7] = float_bytes[7];
+                
+            },
+            _ => return Err(Fault::InvalidSize),
+
+        }
+        Ok(())
+    }
+
+    fn derefregstackf_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let address_register = self.program[self.program_counter] as usize;
+        check_register64!(address_register);
+        self.advance_by_1_byte();
+        let offset = self.program[self.program_counter] as i64;
+        self.advance_by_8_bytes();
+        let address = self.registers_64[address_register] as i64 + offset;
+        let address = address as u64;
+
+        match size {
+            32 => {
+                check_registerF32!(register);
+
+                if address >= self.stack.len() as u64 - 3 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+
+                let mut bytes = 0.0f32.to_le_bytes();
+                bytes[0] = self.stack[address as usize];
+                bytes[1] = self.stack[address as usize + 1];
+                bytes[2] = self.stack[address as usize + 2];
+                bytes[3] = self.stack[address as usize + 3];
+
+                self.registers_f32[register] = f32::from_le_bytes(bytes);
+            },
+            64 => {
+                check_registerF64!(register);
+
+                if address >= self.stack.len() as u64 - 7 {
+                    return Err(Fault::InvalidAddress(address));
+                }
+
+                let mut bytes = 0.0f64.to_le_bytes();
+                bytes[0] = self.stack[address as usize];
+                bytes[1] = self.stack[address as usize + 1];
+                bytes[2] = self.stack[address as usize + 2];
+                bytes[3] = self.stack[address as usize + 3];
+                bytes[4] = self.stack[address as usize + 4];
+                bytes[5] = self.stack[address as usize + 5];
+                bytes[6] = self.stack[address as usize + 6];
+                bytes[7] = self.stack[address as usize + 7];
+
+                self.registers_f64[register] = f64::from_le_bytes(bytes);
+            },
+            _ => {
+                return Err(Fault::InvalidSize);
+            }
+
+        }
+
+        Ok(())
+    }
+
     
 }
 
