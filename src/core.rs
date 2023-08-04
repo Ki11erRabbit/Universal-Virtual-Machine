@@ -364,6 +364,8 @@ impl Core {
             DeRefRegStackF => self.derefregstackf_opcode()?,
             DeRefStackF => self.derefstackf_opcode()?,
             MoveStackF => self.movestackf_opcode()?,
+            RegMove => self.regmove_opcode()?,
+            RegMoveF => self.regmovef_opcode()?,
             
             
 
@@ -7850,6 +7852,65 @@ impl Core {
         Ok(())
     }
 
+    fn regmove_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register2 = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        match size {
+            8 | 16 | 32 | 64 => {
+                check_register64!(register1 as usize, register2 as usize);
+
+                let temp = self.registers_64[register1 as usize];
+                self.registers_64[register1 as usize] = self.registers_64[register2 as usize];
+                self.registers_64[register2 as usize] = temp;
+            },
+            128 => {
+                check_register128!(register1 as usize, register2 as usize);
+
+                let temp = self.registers_128[register1 as usize];
+                self.registers_128[register1 as usize] = self.registers_128[register2 as usize];
+                self.registers_128[register2 as usize] = temp;
+            },
+            _ => return Err(Fault::InvalidSize),
+
+        }
+        
+        Ok(())
+    }
+
+    fn regmovef_opcode(&mut self) -> Result<(), Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register2 = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register1 as usize, register2 as usize);
+
+                let temp = self.registers_f32[register1 as usize];
+                self.registers_f32[register1 as usize] = self.registers_f32[register2 as usize];
+                self.registers_f32[register2 as usize] = temp;
+            },
+            64 => {
+                check_registerF64!(register1 as usize, register2 as usize);
+
+                let temp = self.registers_f64[register1 as usize];
+                self.registers_f64[register1 as usize] = self.registers_f64[register2 as usize];
+                self.registers_f64[register2 as usize] = temp;
+            },
+            _ => return Err(Fault::InvalidSize),
+
+        }
+        
+        Ok(())
+    }
     
 }
 
