@@ -60,6 +60,18 @@ impl Binary {
           }
     }
 
+    pub fn data_segment(&self) -> Vec<u8> {
+        self.data_segment.clone()
+    }
+
+    pub fn program(&self) -> Vec<u8> {
+        self.program.clone()
+    }
+
+    pub fn entry_address(&self) -> usize {
+        self.entry_address
+    }
+
 
     pub fn serialize(&self) -> Vec<u8> {
         let mut binary = Vec::new();

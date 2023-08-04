@@ -4,6 +4,7 @@ use std::sync::{Arc, RwLock};
 use std::thread::{self,JoinHandle};
 use std::fmt;
 
+use crate::binary::Binary;
 use crate::core::Core;
 
 
@@ -71,6 +72,7 @@ pub struct Machine {
     cores: Vec<Core>,
     core_threads: Vec<JoinHandle<Result<(),Fault>>>,
     program: Option<Arc<Vec<u8>>>,
+    entry_point: Option<usize>,
 }
 
 impl Machine {
@@ -81,6 +83,7 @@ impl Machine {
             cores: Vec::new(),
             core_threads: Vec::new(),
             program: None,
+            entry_point: None,
         }
     }
 
@@ -92,9 +95,15 @@ impl Machine {
         machine
     }
 
+    pub fn run_at(&mut self, program_counter: usize) {
+        self.entry_point = Some(program_counter);
+        self.run();
+    }
+
     
-    pub fn run(&mut self, program_counter: usize) {
+    pub fn run(&mut self) {
         //TODO: change print to log
+        let program_counter = self.entry_point.expect("Entry point not set");
         self.run_core(0, program_counter);
         let mut finished_cores = Vec::new();
         loop {
@@ -155,6 +164,11 @@ impl Machine {
         self.core_threads.len()
     }
 
+    pub fn load_binary(&mut self, binary: &Binary) {
+        self.program = Some(Arc::new(binary.program().clone()));
+        self.memory.write().unwrap().extend_from_slice(&self.program.as_ref().unwrap()[0..]);
+        self.entry_point = Some(binary.entry_address());
+    }
 
 
 
