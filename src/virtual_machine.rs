@@ -389,8 +389,10 @@ move 64, $2, 4u64
 addu 64, $1, $2 ; pointer to 2nd element
 move 32, $4, 6u32; end condition 
 move 32, $5, 2u32; i variable
+}
+loop{
 equ 32, $4, $5
-jumpeq 116u64
+jumpeq end
 move 32, $6, $0, 0i64
 move 32, $7, $1, 0i64
 addu 32, $6, $7
@@ -399,7 +401,9 @@ addu 64, $1, $2
 move 32, $1, $6
 move 32, $3, 1u32
 addu 32, $5, $3
-jumpback 68u64
+jump loop
+}
+end{
 ret}
 ";
         
@@ -408,6 +412,10 @@ ret}
         let mut machine = Machine::new();
 
         machine.load_binary(&binary);
+
+        println!("{}", binary.assembly());
+
+        println!("{:?}", binary.program());
 
         println!("{:?}", machine.memory.read().unwrap());
         machine.add_core();

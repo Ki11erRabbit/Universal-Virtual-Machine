@@ -405,7 +405,9 @@ impl Core {
             
             
 
-            _ => return Err(Fault::InvalidOperation),
+            x => {
+                println!("Invalid opcode: {:?}", x);
+                return Err(Fault::InvalidOperation)},
             
 
         }

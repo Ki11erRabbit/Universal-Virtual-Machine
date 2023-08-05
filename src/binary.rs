@@ -279,19 +279,34 @@ impl Binary {
                     let reg = self.program[read_head];
                     read_head += 1;
                     let num_bytes = match &size {
-                        8 => 1,
-                        16 => 2,
-                        32 => 4,
-                        64 => 8,
-                        128 => 16,
+                        8 => {
+                            let number = u8::from_le_bytes(self.program[read_head..read_head + 1].try_into().unwrap());
+                            read_head += 1;
+                            assembly.push_str(&format!("{}, ${}, {}u8\n", size, reg, number));
+                        },
+                        16 => {
+                            let number = u16::from_le_bytes(self.program[read_head..read_head + 2].try_into().unwrap());
+                            read_head += 2;
+                            assembly.push_str(&format!("{}, ${}, {}u16\n", size, reg, number));
+                        },
+                        32 => {
+                            let number = u32::from_le_bytes(self.program[read_head..read_head + 4].try_into().unwrap());
+                            read_head += 4;
+                            assembly.push_str(&format!("{}, ${}, {}u32\n", size, reg, number));
+                        },
+                        64 => {
+                            let number = u64::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
+                            read_head += 8;
+                            assembly.push_str(&format!("{}, ${}, {}u64\n", size, reg, number));
+                        },
+                        128 => {
+                            let number = u128::from_le_bytes(self.program[read_head..read_head + 16].try_into().unwrap());
+                            read_head += 16;
+                            assembly.push_str(&format!("{}, ${}, {}u128\n", size, reg, number));
+                        },
                         _ => panic!("Invalid size"),
                     };
 
-                    //TODO: make this work with 128 bit numbers
-                    let number = u64::from_le_bytes(self.program[read_head..read_head + num_bytes].try_into().unwrap());
-                    read_head += num_bytes;
-
-                    assembly.push_str(&format!("{}, ${}, {}u{}\n", size, reg, number, size));
                 },
                 RegMove => {
                     assembly.push_str("move ");

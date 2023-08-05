@@ -400,7 +400,7 @@ fn parse_arithmetic(opcode: Vec<u8>, args: &Vec<Ast>) -> Result<Vec<u8>, String>
 
 fn parse_jump<F>(opcode: Vec<u8>, args: &Vec<Ast>, mut pos_setter: F) -> Result<Vec<u8>, String>
 where
-    F: FnMut(String) -> u64,{
+    F: FnMut(String,&Vec<u8>) -> u64,{
     let mut bytes = opcode;
     
     for arg in args {
@@ -409,7 +409,7 @@ where
                 bytes.append(&mut n.to_bytes());
             },
             Ast::Label(l) => {
-                bytes.append(&mut pos_setter(l.to_owned()).to_le_bytes().to_vec());
+                bytes.append(&mut pos_setter(l.to_owned(), &bytes).to_le_bytes().to_vec());
             },
             Ast::Address(a) => {
                 bytes.append(&mut a.to_le_bytes().to_vec());
@@ -424,7 +424,7 @@ where
 /// This function is used to parse an instruction into an opcode
 fn parse_instruction<F>(ast: &Ast, mut pos_setter: F) -> Result<Vec<u8>, String>
 where
-    F: FnMut(String) -> u64, {
+    F: FnMut(String, &Vec<u8>) -> u64, {
     match ast {
         Ast::Instruction(name, args) => {
             match name.as_str() {
@@ -444,7 +444,7 @@ where
                                 ops.push(MoveOps::Register);
                             },
                             Ast::Label(l) => {
-                                let pos = pos_setter(l.to_owned());
+                                let pos = pos_setter(l.to_owned(), &bytes);
                                 bytes.append(&mut pos.to_le_bytes().to_vec());
                                 ops.push(MoveOps::Number);
                             },
@@ -524,7 +524,7 @@ where
                                 ops.push(MoveOps::Register);
                             },
                             Ast::Label(l) => {
-                                let pos = pos_setter(l.to_owned());
+                                let pos = pos_setter(l.to_owned(), &bytes);
                                 bytes.append(&mut pos.to_le_bytes().to_vec());
                                 ops.push(MoveOps::Number);
                             },
@@ -538,7 +538,7 @@ where
 
                     match ops.as_slice() {
                         //move opcode
-                        [MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
                             let mut temp = vec![28,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
@@ -594,7 +594,7 @@ where
                                 ops.push(MoveOps::Register);
                             },
                             Ast::Label(l) => {
-                                let pos = pos_setter(l.to_owned());
+                                let pos = pos_setter(l.to_owned(), &bytes);
                                 bytes.append(&mut pos.to_le_bytes().to_vec());
                                 ops.push(MoveOps::Number);
                             },
@@ -608,7 +608,7 @@ where
 
                     match ops.as_slice() {
                         //move opcode
-                        [MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
                             let mut temp = vec![42,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
@@ -863,7 +863,7 @@ where
                                 ops.push(MoveOps::Register);
                             },
                             Ast::Label(l) => {
-                                let pos = pos_setter(l.to_owned());
+                                let pos = pos_setter(l.to_owned(), &bytes);
                                 bytes.append(&mut pos.to_le_bytes().to_vec());
                                 ops.push(MoveOps::Number);
                             },
@@ -877,7 +877,7 @@ where
 
                     match ops.as_slice() {
                         //move opcode
-                        [MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
                             let mut temp = vec![119,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
@@ -911,7 +911,7 @@ where
                                 ops.push(MoveOps::Register);
                             },
                             Ast::Label(l) => {
-                                let pos = pos_setter(l.to_owned());
+                                let pos = pos_setter(l.to_owned(), &bytes);
                                 bytes.append(&mut pos.to_le_bytes().to_vec());
                                 ops.push(MoveOps::Number);
                             },
@@ -925,7 +925,7 @@ where
 
                     match ops.as_slice() {
                         //move opcode
-                        [MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
                             let mut temp = vec![122,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
@@ -959,7 +959,7 @@ where
                                 ops.push(MoveOps::Register);
                             },
                             Ast::Label(l) => {
-                                let pos = pos_setter(l.to_owned());
+                                let pos = pos_setter(l.to_owned(), &bytes);
                                 bytes.append(&mut pos.to_le_bytes().to_vec());
                                 ops.push(MoveOps::Number);
                             },
@@ -973,7 +973,7 @@ where
 
                     match ops.as_slice() {
                         //move opcode
-                        [MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
                             let mut temp = vec![125,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
@@ -1007,7 +1007,7 @@ where
                                 ops.push(MoveOps::Register);
                             },
                             Ast::Label(l) => {
-                                let pos = pos_setter(l.to_owned());
+                                let pos = pos_setter(l.to_owned(), &bytes);
                                 bytes.append(&mut pos.to_le_bytes().to_vec());
                                 ops.push(MoveOps::Number);
                             },
@@ -1021,7 +1021,7 @@ where
 
                     match ops.as_slice() {
                         //move opcode
-                        [MoveOps::Number, MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
+                        [MoveOps::Number, MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
                             let mut temp = vec![128,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
@@ -1055,7 +1055,7 @@ where
                                 ops.push(MoveOps::Register);
                             },
                             Ast::Label(l) => {
-                                let pos = pos_setter(l.to_owned());
+                                let pos = pos_setter(l.to_owned(), &bytes);
                                 bytes.append(&mut pos.to_le_bytes().to_vec());
                                 ops.push(MoveOps::Number);
                             },
@@ -1069,7 +1069,7 @@ where
 
                     match ops.as_slice() {
                         //move opcode
-                        [MoveOps::Number, MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
+                        [MoveOps::Number, MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
                             let mut temp = vec![131,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
@@ -1103,7 +1103,7 @@ where
                                 ops.push(MoveOps::Register);
                             },
                             Ast::Label(l) => {
-                                let pos = pos_setter(l.to_owned());
+                                let pos = pos_setter(l.to_owned(), &bytes);
                                 bytes.append(&mut pos.to_le_bytes().to_vec());
                                 ops.push(MoveOps::Number);
                             },
@@ -1117,7 +1117,7 @@ where
 
                     match ops.as_slice() {
                         //move opcode
-                        [MoveOps::Number, MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
+                        [MoveOps::Number, MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
                             let mut temp = vec![134,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
@@ -1537,6 +1537,7 @@ fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, Vec<String>, Ha
         Err(_) => return Err("Error parsing file".to_owned()),
     };
 
+    println!("{:#?}", result);
 
     let mut labels = Vec::new();
     let mut segment_labels = Vec::new();
@@ -1563,7 +1564,7 @@ fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, Vec<String>, Ha
                                                 },
                                                 _ => (),
                                             }
-                                            let mut instruction_bytes = parse_instruction(instruction, |label| {
+                                            let mut instruction_bytes = parse_instruction(instruction, |label, extra_bytes| {
                                                 match label_positions.get(&label) {
                                                     Some(pos) => *pos as u64,
                                                     None => {
@@ -1582,11 +1583,11 @@ fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, Vec<String>, Ha
                                                 },
                                                 _ => (),
                                             }
-                                            let mut instruction_bytes = parse_instruction(instruction, |label| {
+                                            let mut instruction_bytes = parse_instruction(instruction, |label, extra_bytes| {
                                                 match label_positions.get(&label) {
                                                     Some(pos) => *pos as u64,
                                                     None => {
-                                                        unknown_labels.insert(label.to_owned(), bytes.len());
+                                                        unknown_labels.insert(label.to_owned(), bytes.len() + extra_bytes.len());
                                                         0 as u64
                                                     },
                                                 }
@@ -1611,11 +1612,18 @@ fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, Vec<String>, Ha
         _ => (),
     }
 
+    println!("bytes: {:?}", bytes);
+
     for (label, bin_pos) in unknown_labels.iter() {
+        println!("Unknown label: {}", label);
+        
         let address = label_positions.get(label).unwrap();
+
+        println!("Address: {}", address);
 
         let address = address.to_le_bytes();
         bytes[*bin_pos] = address[0];
+        println!("bytes: {:?}", bytes);
         bytes[*bin_pos + 1] = address[1];
         bytes[*bin_pos + 2] = address[2];
         bytes[*bin_pos + 3] = address[3];
@@ -1625,6 +1633,8 @@ fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, Vec<String>, Ha
         bytes[*bin_pos + 7] = address[7];
         
     }
+
+    println!("bytes: {:?}", bytes);
     
     
     let main_pos = label_positions.get("main");
