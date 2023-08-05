@@ -366,7 +366,7 @@ fn labelled_parser() -> impl Parser<char, Ast, Error = Simple<char>> {
 }
 
 fn file_parser() -> impl Parser<char, Ast, Error = Simple<char>> {
-    let parser = labelled_parser().repeated().padded()
+    let parser = labelled_parser().padded().repeated()
         .map(|i| Ast::File(i))
         .labelled("file parser");
 
@@ -458,7 +458,7 @@ where
 
                     match ops.as_slice() {
                         //move opcode
-                        [MoveOps::Number, MoveOps::Address, MoveOps::Register] => {
+                        [MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
                             let mut temp = vec![4,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
@@ -1544,8 +1544,6 @@ fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, Vec<String>, Ha
     let mut unknown_labels = HashMap::new();
     let mut bytes = Vec::new();
     let mut segment_bytes = Vec::new();
-    
-
 
     match result {
         Ast::File(ref mut ast) => {

@@ -326,7 +326,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_write_hello_world() {
+    fn test_file_hello_world() {
         let input = "File{
 .string \"hello.txt\"}
 Msg{
@@ -363,4 +363,57 @@ ret
         assert_eq!(contents, "Hello World!");
     }
 
+    #[test]
+    fn test_dp_fibonacci() {
+        let input = "array{
+.u32 0u32
+.u32 1u32
+.u32 0u32
+.u32 0u32
+.u32 0u32
+.u32 0u32
+.u32 0u32
+.u32 0u32
+.u32 0u32
+.u32 0u32
+.u32 0u32
+.u32 0u32
+.u32 0u32
+.u32 0u32
+.u32 0u32
+.u32 0u32}
+main{
+move 64, $0, array ; pointer to first element
+move 64, $1, $0
+move 64, $2, 4u64
+addu 64, $1, $2 ; pointer to 2nd element
+move 32, $4, 6u32; end condition 
+move 32, $5, 2u32; i variable
+equ 32, $4, $5
+jumpeq 116u64
+move 32, $6, $0, 0i64
+move 32, $7, $1, 0i64
+addu 32, $6, $7
+addu 64, $0, $2
+addu 64, $1, $2
+move 32, $1, $6
+move 32, $3, 1u32
+addu 32, $5, $3
+jumpback 68u64
+ret}
+";
+        
+        let binary = generate_binary(input, "test").unwrap();
+
+        let mut machine = Machine::new();
+
+        machine.load_binary(&binary);
+
+        println!("{:?}", machine.memory.read().unwrap());
+        machine.add_core();
+
+        machine.run();
+
+        println!("{:?}", machine.memory.read().unwrap());
+    }
 }

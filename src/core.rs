@@ -545,10 +545,15 @@ impl Core {
     }
 
     fn move_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.program[self.program_counter] as usize;
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let address = self.program[self.program_counter] as u64;
-        self.advance_by_8_bytes();
+        let address_register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(address_register as usize);
+
+        let address = self.registers_64[address_register as usize];
+        
         match size {
             8 => {
                 let register = self.program[self.program_counter] as u8 as usize;
@@ -4044,16 +4049,17 @@ impl Core {
         let fd = self.registers_64[fd_register as usize] as i64;
         let value = self.registers_64[value_register as usize] as u8;
 
-        //TODO: check if fd is valid. Make it used a shared memory object for non-std fds
-        match fd {
-            1 => {
-                std::io::stdout().write(&[value]).unwrap();
-            },
-            2 => {
-                std::io::stderr().write(&[value]).unwrap();
-            },
-            _ => return Err(Fault::InvalidFileDescriptor),
+        let message = Message::WriteFile(fd, vec![value]);
+
+        self.send_message(message)?;
+
+        let response = self.recv_message()?;
+
+        match response {
+            Message::Success => {},
+            _ => return Err(Fault::InvalidMessage),
         }
+        
         Ok(())
     }
 
@@ -4086,20 +4092,6 @@ impl Core {
 
 
         Ok(())
-
-            /*
-
-        //TODO: check if fd is valid. Make it used a shared memory object for non-std fds
-        match fd {
-            1 => {
-                std::io::stdout().write(&memory[pointer as usize..pointer as usize + length as usize]).unwrap();
-            },
-            2 => {
-                std::io::stderr().write(&memory[pointer as usize..pointer as usize + length as usize]).unwrap();
-            },
-            _ => return Err(Fault::InvalidFileDescriptor),
-        }
-        Ok(())*/
     }
 
     fn flush_opcode(&mut self) -> Result<(), Fault> {

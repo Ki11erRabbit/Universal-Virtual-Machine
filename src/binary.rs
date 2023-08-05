@@ -265,12 +265,12 @@ impl Binary {
                     assembly.push_str("move ");
                     let size = self.program[read_head];
                     read_head += 1;
-                    let address = usize::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
-                    read_head += 8;
+                    let address_reg = self.program[read_head];
+                    read_head += 1;
                     let reg = self.program[read_head];
                     read_head += 1;
 
-                    assembly.push_str(&format!("{}, #{}, ${}\n", size, address, reg));
+                    assembly.push_str(&format!("{}, ${}, ${}\n", size, address_reg, reg));
                 },
                 Set => {
                     assembly.push_str("move ");
