@@ -149,7 +149,7 @@ fn address_parser() -> impl Parser<char, Ast, Error = Simple<char>> {
 }
 
 fn label_parser() -> impl Parser<char, Ast, Error = Simple<char>> {
-    let cant_start_with = none_of("0123456789 \n\t\r'\"\\,()[]{}@;:");
+    let cant_start_with = none_of("0123456789 \n\t\r'\"\\,()[]{}@;:-");
     let cant_contain = none_of(" \n\t\r'\"\\,()[]{}@;:");
 
 
@@ -215,6 +215,7 @@ fn raw_number_parser() -> impl Parser<char, Number, Error = Simple<char>> {
     let sign = choice((
         just("+").to("+"),
         just("-").to("-"),
+        just("").to(""),
     ));
 
     let hex_prefix = choice((
@@ -470,7 +471,7 @@ where
                             return Ok(temp);
                         },
                         //regmove opcode
-                        [MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
+                        [MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
                             let mut temp = vec![159,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
@@ -550,7 +551,7 @@ where
                             return Ok(temp);
                         },
                         //regmove opcode
-                        [MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
+                        [MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
                             let mut temp = vec![160,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
@@ -620,7 +621,7 @@ where
                             return Ok(temp);
                         },
                         //regmove opcode
-                        [MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
+                        [MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
                             let mut temp = vec![161,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
@@ -1537,7 +1538,6 @@ fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, Vec<String>, Ha
         Err(_) => return Err("Error parsing file".to_owned()),
     };
 
-    println!("{:#?}", result);
 
     let mut labels = Vec::new();
     let mut segment_labels = Vec::new();
@@ -1612,18 +1612,14 @@ fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, Vec<String>, Ha
         _ => (),
     }
 
-    println!("bytes: {:?}", bytes);
 
     for (label, bin_pos) in unknown_labels.iter() {
-        println!("Unknown label: {}", label);
         
         let address = label_positions.get(label).unwrap();
 
-        println!("Address: {}", address);
 
         let address = address.to_le_bytes();
         bytes[*bin_pos] = address[0];
-        println!("bytes: {:?}", bytes);
         bytes[*bin_pos + 1] = address[1];
         bytes[*bin_pos + 2] = address[2];
         bytes[*bin_pos + 3] = address[3];
@@ -1633,9 +1629,6 @@ fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, Vec<String>, Ha
         bytes[*bin_pos + 7] = address[7];
         
     }
-
-    println!("bytes: {:?}", bytes);
-    
     
     let main_pos = label_positions.get("main");
 

@@ -297,7 +297,7 @@ impl Core {
 
         let opcode = self.decode_opcode();
 
-        
+       
         match opcode {
             Halt | NoOp => return Ok(true),
             Set => self.set_opcode()?,
@@ -708,15 +708,29 @@ impl Core {
     fn derefreg_opcode(&mut self) -> Result<(), Fault> {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as usize;
+        let register = self.program[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
-        let address_register = self.program[self.program_counter] as usize;
+        let address_register = self.program[self.program_counter] as u8 as usize;
         check_register64!(address_register);
         self.advance_by_1_byte();
-        let offset = self.program[self.program_counter] as i64;
+        let mut offset_bytes = [0u8; 8];
+        offset_bytes[0] = self.program[self.program_counter];
+        offset_bytes[1] = self.program[self.program_counter + 1];
+        offset_bytes[2] = self.program[self.program_counter + 2];
+        offset_bytes[3] = self.program[self.program_counter + 3];
+        offset_bytes[4] = self.program[self.program_counter + 4];
+        offset_bytes[5] = self.program[self.program_counter + 5];
+        offset_bytes[6] = self.program[self.program_counter + 6];
+        offset_bytes[7] = self.program[self.program_counter + 7];
+        let offset = i64::from_le_bytes(offset_bytes);
         self.advance_by_8_bytes();
-        let address = self.registers_64[address_register] as i64 + offset;
-        let address = address as u64;
+        let sign = if offset < 0 { -1 } else { 1 };
+        let offset = offset.abs() as u64;
+        let address = match sign {
+            -1 => self.registers_64[address_register] - offset,
+            1 => self.registers_64[address_register] + offset,
+            _ => unreachable!(),
+        };
 
         match size {
             8 => {
@@ -778,6 +792,7 @@ impl Core {
                             self.registers_64[register] |= ((memory[address as usize + 1] as u8) as u64) << 16;
                             self.registers_64[register] |= ((memory[address as usize + 2] as u8) as u64) << 8;
                             self.registers_64[register] |= (memory[address as usize + 3] as u8) as u64;
+
                             break;
                         },
                         Err(TryLockError::WouldBlock) => {

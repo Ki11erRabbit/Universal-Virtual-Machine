@@ -384,23 +384,22 @@ ret
 .u32 0u32}
 main{
 move 64, $0, array ; pointer to first element
-move 64, $1, $0
-move 64, $2, 4u64
-addu 64, $1, $2 ; pointer to 2nd element
-move 32, $4, 6u32; end condition 
-move 32, $5, 2u32; i variable
+move 64, $1, 4u64
+addu 64, $0, $1
+addu 64, $0, $1 ; pointer is now in 3rd element
+move 32, $3, 10u32; end condition 
+move 32, $4, 2u32; i variable
+move 32, $10, 1u32
 }
 loop{
-equ 32, $4, $5
+equ 32, $3, $4
 jumpeq end
-move 32, $6, $0, 0i64
-move 32, $7, $1, 0i64
-addu 32, $6, $7
-addu 64, $0, $2
-addu 64, $1, $2
-move 32, $1, $6
-move 32, $3, 1u32
-addu 32, $5, $3
+move 32, $5, $0, -4i64
+move 32, $6, $0, -8i64
+addu 32, $5, $6
+move 32, $0, $5
+addu 64, $0, $1
+addu 32, $4, $10
 jump loop
 }
 end{
@@ -413,15 +412,10 @@ ret}
 
         machine.load_binary(&binary);
 
-        println!("{}", binary.assembly());
-
-        println!("{:?}", binary.program());
-
-        println!("{:?}", machine.memory.read().unwrap());
         machine.add_core();
 
         machine.run();
 
-        println!("{:?}", machine.memory.read().unwrap());
+        assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 21, 0, 0, 0, 34, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     }
 }
