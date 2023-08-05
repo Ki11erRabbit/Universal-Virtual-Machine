@@ -988,8 +988,10 @@ impl Binary {
                     read_head += 1;
                     let reg3 = self.program[read_head];
                     read_head += 1;
+                    let reg4 = self.program[read_head];
+                    read_head += 1;
 
-                    assembly.push_str(&format!("${}, ${}, ${}\n", reg1, reg2, reg3));
+                    assembly.push_str(&format!("${}, ${}, ${}, ${}\n", reg1, reg2, reg3, reg4));
                 },
                 Close => {
                     assembly.push_str("close ");

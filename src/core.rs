@@ -1,15 +1,15 @@
 
-use std::sync::{Arc,RwLock,TryLockError,TryLockResult};
+use std::sync::{Arc,RwLock,TryLockError};
 use std::num::Wrapping;
 use std::array::from_fn;
 use std::sync::atomic::AtomicU64;
 use std::thread;
 use std::io::Write;
 use std::fmt;
+use std::sync::mpsc::{Sender,Receiver};
 
 use crate::instruction::Opcode;
-use crate::virtual_machine::Fault;
-use crate::virtual_machine::RegisterType;
+use crate::virtual_machine::{Fault, Message, RegisterType};
 
 
 macro_rules! check_register64 {
@@ -155,10 +155,12 @@ pub struct Core {
     stack: Vec<u8>,
     program: Arc<Vec<u8>>,
     memory: Arc<RwLock<Vec<u8>>>,
+    send_channel: Sender<Message>,
+    recv_channel: Receiver<Message>,
 }
     
 impl Core {
-    pub fn new(memory: Arc<RwLock<Vec<u8>>>) -> Core {
+    pub fn new(memory: Arc<RwLock<Vec<u8>>>, send: Sender<Message>, recv: Receiver<Message>) -> Core {
         Core {
             registers_64: [0; 16],
             registers_128: [0; 8],
@@ -178,11 +180,43 @@ impl Core {
             stack: vec![0],
             program: Arc::new(Vec::new()),
             memory,
+            send_channel: send,
+            recv_channel: recv,
         }
     }
 
     pub fn add_program(&mut self, program: Arc<Vec<u8>>) {
         self.program = program;
+    }
+
+    fn send_message(&self, message: Message) -> Result<(), Fault> {
+        match self.send_channel.send(message) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(Fault::MachineCrash),
+        }
+    }
+
+    fn recv_message(&self) -> Result<Message, Fault> {
+        match self.recv_channel.recv() {
+            Ok(message) => Ok(message),
+            Err(_) => Err(Fault::MachineCrash),
+        }
+    }
+
+    fn get_string(&mut self, address: u64, size: u64) -> Result<Vec<u8>,Fault> {
+        loop {
+            match self.memory.try_read() {
+                Ok(memory) => {
+                    return Ok(memory[address as usize..address as usize + size as usize].to_vec());
+                },
+                Err(TryLockError::WouldBlock) => {
+                    thread::yield_now();
+                },
+                Err(TryLockError::Poisoned(_)) => {
+                    return Err(Fault::CorruptedMemory);
+                }
+            }
+        }
     }
 
     fn push_stack(&mut self, value: &[u8]) {
@@ -366,6 +400,8 @@ impl Core {
             MoveStackF => self.movestackf_opcode()?,
             RegMove => self.regmove_opcode()?,
             RegMoveF => self.regmovef_opcode()?,
+            Open => self.open_opcode()?,
+            Close => self.close_opcode()?,
             
             
 
@@ -4033,10 +4069,25 @@ impl Core {
 
         let fd = self.registers_64[fd_register as usize] as i64;
         let pointer = self.registers_64[pointer_register as usize] as u64;
-        let length = self.registers_64[length_register as usize] as usize;
+        let length = self.registers_64[length_register as usize] as u64;
 
-        let memory = self.memory.read().unwrap();
+        let string = self.get_string(pointer, length)?;
 
+        let message = Message::WriteFile(fd, string);
+
+        self.send_message(message)?;
+
+        let response = self.recv_message()?;
+
+        match response {
+            Message::Success => {},
+            _ => return Err(Fault::InvalidMessage),
+        }
+
+
+        Ok(())
+
+            /*
 
         //TODO: check if fd is valid. Make it used a shared memory object for non-std fds
         match fd {
@@ -4048,7 +4099,7 @@ impl Core {
             },
             _ => return Err(Fault::InvalidFileDescriptor),
         }
-        Ok(())
+        Ok(())*/
     }
 
     fn flush_opcode(&mut self) -> Result<(), Fault> {
@@ -4059,14 +4110,15 @@ impl Core {
 
         let fd = self.registers_64[fd_register as usize] as i64;
 
-        match fd {
-            1 => {
-                std::io::stdout().flush().unwrap();
-            },
-            2 => {
-                std::io::stderr().flush().unwrap();
-            },
-            _ => return Err(Fault::InvalidFileDescriptor),
+        let message = Message::Flush(fd);
+
+        self.send_message(message)?;
+
+        let response = self.recv_message()?;
+
+        match response {
+            Message::Success => {},
+            _ => return Err(Fault::InvalidMessage),
         }
 
         Ok(())
@@ -7903,6 +7955,73 @@ impl Core {
         
         Ok(())
     }
+
+    fn open_opcode(&mut self) -> Result<(), Fault> {
+        let pointer_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let size_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let flag_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let fd_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(pointer_reg as usize, size_reg as usize, flag_reg as usize, fd_reg as usize);
+
+        let pointer = self.registers_64[pointer_reg as usize] as u64;
+        let size = self.registers_64[size_reg as usize] as u64;
+        let flags = self.registers_64[flag_reg as usize] as u8;
+
+        let file_name = self.get_string(pointer, size)?;
+
+        let message = Message::OpenFile(file_name, flags);
+
+        self.send_message(message)?;
+
+        let message = self.recv_message()?;
+
+        match message {
+            Message::FileDescriptor(fd) => {
+                self.registers_64[fd_reg as usize] = fd as u64;
+            },
+            Message::Error(fault) => {
+                return Err(fault);
+            },
+            _ => {
+                return Err(Fault::InvalidMessage);
+            }
+        }
+        
+        Ok(())
+    }
+
+    fn close_opcode(&mut self) -> Result<(), Fault> {
+        let fd_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(fd_reg as usize);
+
+        let fd = self.registers_64[fd_reg as usize] as i64;
+
+        let message = Message::CloseFile(fd);
+
+        self.send_message(message)?;
+
+        let message = self.recv_message()?;
+
+        match message {
+            Message::Success => {
+                return Ok(());
+            },
+            Message::Error(fault) => {
+                return Err(fault);
+            },
+            _ => {
+                return Err(Fault::InvalidMessage);
+            }
+        }
+    }
+    
     
 }
 
@@ -7913,12 +8032,14 @@ impl Core {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::mpsc::channel;
 
     #[test]
     fn test_addi() {
         let program = Arc::new(vec![6,0,64,0,1]);
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory);
+        let (sender, receiver) = channel();
+        let mut core = Core::new(memory, sender, receiver);
         core.add_program(program);
 
         core.registers_64[0] = 1;
@@ -7933,7 +8054,8 @@ mod tests {
     fn test_subi() {
         let program = vec![7,0,64,0,1];
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory);
+        let (sender, receiver) = channel();
+        let mut core = Core::new(memory, sender, receiver);
         core.add_program(Arc::new(program));
 
         core.registers_64[0] = 1;
@@ -7949,7 +8071,8 @@ mod tests {
     fn test_muli() {
         let program = vec![8,0,64,0,1];
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory);
+        let (sender, receiver) = channel();
+        let mut core = Core::new(memory, sender, receiver);
         core.add_program(Arc::new(program));
 
         core.registers_64[0] = 2;
@@ -7965,7 +8088,8 @@ mod tests {
     fn test_divi() {
         let program = vec![9,0,64,0,1];
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory);
+        let (sender, receiver) = channel();
+        let mut core = Core::new(memory, sender, receiver);
         core.add_program(Arc::new(program));
 
         core.registers_64[0] = 4;
@@ -7982,7 +8106,8 @@ mod tests {
     fn test_divi_by_zero() {
         let program = vec![9,0,64,0,1];
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory.clone());
+        let (sender, receiver) = channel();
+        let mut core = Core::new(memory, sender, receiver);
         core.add_program(Arc::new(program));
 
         core.registers_64[0] = 4;
@@ -8002,7 +8127,8 @@ mod tests {
     fn test_addi_overflow() {
         let program = vec![6,0,8,0,1];
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory);
+        let (sender, receiver) = channel();
+        let mut core = Core::new(memory, sender, receiver);
         core.add_program(Arc::new(program));
 
         core.registers_64[0] = 127;
@@ -8018,7 +8144,8 @@ mod tests {
     fn test_eqi() {
         let program = vec![10,0,64,0,1];
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory.clone());
+        let (sender, receiver) = channel();
+        let mut core = Core::new(memory, sender, receiver);
         core.add_program(Arc::new(program));
 
         core.registers_64[0] = 1;
@@ -8033,7 +8160,8 @@ mod tests {
     fn test_lti() {
         let program = vec![12,0,64,0,1];
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory.clone());
+        let (sender, receiver) = channel();
+        let mut core = Core::new(memory, sender, receiver);
         core.add_program(Arc::new(program));
 
         core.registers_64[0] = 1;
@@ -8048,7 +8176,8 @@ mod tests {
     fn test_geqi() {
         let program = vec![15,0,64,0,1];
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory.clone());
+        let (sender, receiver) = channel();
+        let mut core = Core::new(memory, sender, receiver);
         core.add_program(Arc::new(program));
 
         core.registers_64[0] = 2;
@@ -8063,7 +8192,8 @@ mod tests {
     fn test_addu() {
         let program = vec![16,0,128,0,1];
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory.clone());
+        let (sender, receiver) = channel();
+        let mut core = Core::new(memory, sender, receiver);
         core.add_program(Arc::new(program));
 
         let value1 = 1;
@@ -8081,7 +8211,8 @@ mod tests {
     fn test_unsigned_overflow() {
         let program = vec![16,0,8,0,1];
         let memory = Arc::new(RwLock::new(Vec::new()));
-        let mut core = Core::new(memory.clone());
+        let (sender, receiver) = channel();
+        let mut core = Core::new(memory, sender, receiver);
         core.add_program(Arc::new(program));
         
         let value1:u8 = 1;
@@ -8100,7 +8231,8 @@ mod tests {
     fn test_write_byte() {
         let program = vec![145,0,0,1,145,0,0,2,145,0,0,3,145,0,0,4];
         let memory = Arc::new(RwLock::new(vec![]));
-        let mut core = Core::new(memory.clone());
+        let (sender, receiver) = channel();
+        let mut core = Core::new(memory, sender, receiver);
         core.add_program(Arc::new(program));
 
         core.registers_64[0] = 1;
@@ -8121,7 +8253,8 @@ mod tests {
         let program = vec![146,0,0,1,2,149,0,0];
         let memory = vec![0, 104,101,108,108,111,32,119,111,114,108,100,10];
         let memory = Arc::new(RwLock::new(memory));
-        let mut core = Core::new(memory.clone());
+        let (sender, receiver) = channel();
+        let mut core = Core::new(memory, sender, receiver);
         core.add_program(Arc::new(program));
 
         core.registers_64[0] = 1;
@@ -8140,7 +8273,8 @@ mod tests {
         let program = vec![27,0,32,0,1,0,0,0,0,0,0,0];
         let memory = vec![0, 0x00,0x00,0xb8,0x41];
         let memory = Arc::new(RwLock::new(memory));
-        let mut core = Core::new(memory.clone());
+        let (sender, receiver) = channel();
+        let mut core = Core::new(memory, sender, receiver);
         core.add_program(Arc::new(program));
 
         core.run(0).unwrap();
@@ -8157,7 +8291,8 @@ mod tests {
     fn test_jumps() {
         let program = vec![20,0, 8,0,2, 71,0, 26,0,0,0,0,0,0,0, 16,0,8,0,1, 70,0, 0,0,0,0,0,0,0,0];
         let memory = Arc::new(RwLock::new(vec![]));
-        let mut core = Core::new(memory.clone());
+        let (sender, receiver) = channel();
+        let mut core = Core::new(memory, sender, receiver);
         core.add_program(Arc::new(program));
 
         core.registers_64[0] = 0;
