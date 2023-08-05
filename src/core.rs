@@ -257,6 +257,32 @@ impl Core {
         self.advance_by_size(16);
     }
 
+    fn get_1_byte(&mut self) -> u8 {
+        let value = self.program[self.program_counter];
+        self.advance_by_1_byte();
+        value
+    }
+    fn get_2_bytes(&mut self) -> u16 {
+        let value = u16::from_le_bytes([self.program[self.program_counter], self.program[self.program_counter + 1]]);
+        self.advance_by_2_bytes();
+        value
+    }
+    fn get_4_bytes(&mut self) -> u32 {
+        let value = u32::from_le_bytes([self.program[self.program_counter], self.program[self.program_counter + 1], self.program[self.program_counter + 2], self.program[self.program_counter + 3]]);
+        self.advance_by_4_bytes();
+        value
+    }
+    fn get_8_bytes(&mut self) -> u64 {
+        let value = u64::from_le_bytes([self.program[self.program_counter], self.program[self.program_counter + 1], self.program[self.program_counter + 2], self.program[self.program_counter + 3], self.program[self.program_counter + 4], self.program[self.program_counter + 5], self.program[self.program_counter + 6], self.program[self.program_counter + 7]]);
+        self.advance_by_8_bytes();
+        value
+    }
+    fn get_16_bytes(&mut self) -> u128 {
+        let value = u128::from_le_bytes([self.program[self.program_counter], self.program[self.program_counter + 1], self.program[self.program_counter + 2], self.program[self.program_counter + 3], self.program[self.program_counter + 4], self.program[self.program_counter + 5], self.program[self.program_counter + 6], self.program[self.program_counter + 7], self.program[self.program_counter + 8], self.program[self.program_counter + 9], self.program[self.program_counter + 10], self.program[self.program_counter + 11], self.program[self.program_counter + 12], self.program[self.program_counter + 13], self.program[self.program_counter + 14], self.program[self.program_counter + 15]]);
+        self.advance_by_16_bytes();
+        value
+    }
+
     pub fn run(&mut self, program_counter: usize) -> Result<(),Fault> {
         self.program_counter = program_counter;
 
@@ -283,7 +309,7 @@ impl Core {
 
 
     fn decode_opcode(&mut self) -> Opcode {
-        let opcode = Opcode::from(self.program[self.program_counter] as u16);
+        let opcode = Opcode::from(self.get_2_bytes());
         self.advance_by_2_bytes();
         return opcode;
 
@@ -424,31 +450,31 @@ impl Core {
         self.advance_by_1_byte();
         match size {
             8 => {
-                let value = self.program[self.program_counter] as u8;
+                let value = self.get_1_byte();
                 check_register64!(register);
                 self.registers_64[register] = value as u64;
                 self.advance_by_1_byte();
             },
             16 => {
-                let value = self.program[self.program_counter] as u16;
+                let value = self.get_2_bytes();
                 check_register64!(register);
                 self.registers_64[register] = value as u64;
                 self.advance_by_2_bytes();
             },
             32 => {
-                let value = self.program[self.program_counter] as u32;
+                let value = self.get_4_bytes();
                 check_register64!(register);
                 self.registers_64[register] = value as u64;
                 self.advance_by_4_bytes();
             },
             64 => {
-                let value = self.program[self.program_counter] as u64;
+                let value = self.get_8_bytes();
                 check_register64!(register);
                 self.registers_64[register] = value as u64;
                 self.advance_by_8_bytes();
             },
             128 => {
-                let value = self.program[self.program_counter] as u128;
+                let value = self.get_16_bytes();
                 check_register128!(register);
                 self.registers_128[register] = value as u128;
                 self.advance_by_16_bytes();
@@ -463,7 +489,7 @@ impl Core {
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let address = self.program[self.program_counter] as u64;
+        let address = self.get_8_bytes();
         self.advance_by_8_bytes();
         match size {
             8 => {
@@ -488,7 +514,8 @@ impl Core {
                             if address >= memory.len() as u64 {
                                 return Err(Fault::InvalidAddress(address));
                             }
-                            self.registers_64[register] = (memory[address as usize] as u16) as u64;
+                            let value = u16::from_le_bytes(memory[address as usize..address as usize + 2].try_into().unwrap());
+                            self.registers_64[register] = value as u64;
                             break;
                         },
                         Err(TryLockError::WouldBlock) => continue,
@@ -503,7 +530,8 @@ impl Core {
                             if address >= memory.len() as u64 {
                                 return Err(Fault::InvalidAddress(address));
                             }
-                            self.registers_64[register] = (memory[address as usize] as u32) as u64;
+                            let value = u32::from_le_bytes(memory[address as usize..address as usize + 4].try_into().unwrap());
+                            self.registers_64[register] = value as u64;
                             break;
                         },
                         Err(TryLockError::WouldBlock) => continue,
@@ -518,7 +546,8 @@ impl Core {
                             if address >= memory.len() as u64 {
                                 return Err(Fault::InvalidAddress(address));
                             }
-                            self.registers_64[register] = memory[address as usize] as u64;
+                            let value = u64::from_le_bytes(memory[address as usize..address as usize + 8].try_into().unwrap());
+                            self.registers_64[register] = value as u64;
                             break;
                         },
                         Err(TryLockError::WouldBlock) => continue,
@@ -533,7 +562,8 @@ impl Core {
                             if address >= memory.len() as u64 {
                                 return Err(Fault::InvalidAddress(address));
                             }
-                            self.registers_128[register] = memory[address as usize] as u128;
+                            let value = u128::from_le_bytes(memory[address as usize..address as usize + 16].try_into().unwrap());
+                            self.registers_128[register] = value as u128;
                             break;
                         },
                         Err(TryLockError::WouldBlock) => continue,
@@ -713,17 +743,9 @@ impl Core {
         let address_register = self.program[self.program_counter] as u8 as usize;
         check_register64!(address_register);
         self.advance_by_1_byte();
-        let mut offset_bytes = [0u8; 8];
-        offset_bytes[0] = self.program[self.program_counter];
-        offset_bytes[1] = self.program[self.program_counter + 1];
-        offset_bytes[2] = self.program[self.program_counter + 2];
-        offset_bytes[3] = self.program[self.program_counter + 3];
-        offset_bytes[4] = self.program[self.program_counter + 4];
-        offset_bytes[5] = self.program[self.program_counter + 5];
-        offset_bytes[6] = self.program[self.program_counter + 6];
-        offset_bytes[7] = self.program[self.program_counter + 7];
-        let offset = i64::from_le_bytes(offset_bytes);
+        let offset = i64::from_le_bytes(self.program[self.program_counter..self.program_counter + 8].try_into().unwrap());
         self.advance_by_8_bytes();
+
         let sign = if offset < 0 { -1 } else { 1 };
         let offset = offset.abs() as u64;
         let address = match sign {
@@ -6380,10 +6402,16 @@ impl Core {
         let address_register = self.program[self.program_counter] as usize;
         check_register64!(address_register);
         self.advance_by_1_byte();
-        let offset = self.program[self.program_counter] as i64;
+        let offset = i64::from_le_bytes(self.program[self.program_counter..self.program_counter + 8].try_into().unwrap());
         self.advance_by_8_bytes();
-        let address = self.registers_64[address_register] as i64 + offset;
-        let address = address as u64;
+
+        let sign = if offset < 0 { -1 } else { 1 };
+        let offset = offset.abs() as u64;
+        let address = match sign {
+            -1 => self.registers_64[address_register] - offset,
+            1 => self.registers_64[address_register] + offset,
+            _ => unreachable!(),
+        };
 
         match size {
             32 => {
@@ -7532,7 +7560,7 @@ impl Core {
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let address = self.program[self.program_counter] as u64;
+        let address = self.get_8_bytes();
         self.advance_by_8_bytes();
         match size {
             8 => {
@@ -7573,7 +7601,7 @@ impl Core {
     fn movestack_opcode(&mut self) -> Result<(), Fault> {
         let size = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let address = self.program[self.program_counter] as u64;
+        let address = self.get_8_bytes();
         self.advance_by_8_bytes();
         match size {
             8 => {
@@ -7672,10 +7700,16 @@ impl Core {
         let address_register = self.program[self.program_counter] as usize;
         check_register64!(address_register);
         self.advance_by_1_byte();
-        let offset = self.program[self.program_counter] as i64;
+        let offset = i64::from_le_bytes(self.program[self.program_counter..self.program_counter + 8].try_into().unwrap());
         self.advance_by_8_bytes();
-        let address = self.registers_64[address_register] as i64 + offset;
-        let address = address as u64;
+
+        let sign = if offset < 0 { -1 } else { 1 };
+        let offset = offset.abs() as u64;
+        let address = match sign {
+            -1 => self.registers_64[address_register] - offset,
+            1 => self.registers_64[address_register] + offset,
+            _ => unreachable!(),
+        };
 
         match size {
             8 => {
@@ -7864,10 +7898,17 @@ impl Core {
         let address_register = self.program[self.program_counter] as usize;
         check_register64!(address_register);
         self.advance_by_1_byte();
-        let offset = self.program[self.program_counter] as i64;
+
+        let offset = i64::from_le_bytes(self.program[self.program_counter..self.program_counter + 8].try_into().unwrap());
         self.advance_by_8_bytes();
-        let address = self.registers_64[address_register] as i64 + offset;
-        let address = address as u64;
+
+        let sign = if offset < 0 { -1 } else { 1 };
+        let offset = offset.abs() as u64;
+        let address = match sign {
+            -1 => self.registers_64[address_register] - offset,
+            1 => self.registers_64[address_register] + offset,
+            _ => unreachable!(),
+        };
 
         match size {
             32 => {
@@ -7914,11 +7955,11 @@ impl Core {
     }
 
     fn regmove_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
         let register1 = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register2 = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         match size {
@@ -7940,11 +7981,11 @@ impl Core {
     }
 
     fn regmovef_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
         let register1 = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register2 = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         match size {
