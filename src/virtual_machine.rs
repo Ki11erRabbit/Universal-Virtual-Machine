@@ -418,4 +418,84 @@ ret}
 
         assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 21, 0, 0, 0, 34, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     }
+
+    #[test]
+    fn test_recursive_fibonacci() {
+        /*let input = "number{
+.u32 0u32}
+fibonacci{
+move 32, $5, 1u32
+lequ 32, $5, $1
+jumpeq before-end
+push 32, $1
+subu 32, $1, $5
+call fibonacci
+pop 32, $1
+subu 32, $1, $5
+subu 32, $1, $5
+push 32, $0
+call fibonacci
+pop 32, $1
+addu 32, $0, $1
+jump end}
+before-end{
+move $0, $1, 32}
+end{
+ret}
+main{
+move 32, $1, 5u32
+call fibonacci
+move 64, $3, number
+move 32, $3, $0
+ret
+}
+";*/
+        let input = "number{
+.u32 0u32}
+fibonacci{
+move 32, $2, 1u32
+lequ 32, $1, $2
+jumpgt rec
+move $0, $1, 32
+jump end
+}
+rec{
+push 32, $1
+subu 32, $1, $2
+call fibonacci
+pop 32, $1
+push 32, $0
+move 32, $2, 2u32
+subu 32, $1, $2
+call fibonacci
+pop 32, $1
+addu 32, $0, $1}
+end{
+ret}
+main{
+move 32, $1, 9u32
+call fibonacci
+move 64, $3, number
+move 32, $3, $0
+ret
+}
+";
+            
+        let binary = generate_binary(input, "test").unwrap();
+
+        let mut machine = Machine::new();
+
+        machine.load_binary(&binary);
+
+        println!("{}", binary.assembly());
+        println!("{}", binary.program_with_count());
+
+        machine.add_core();
+
+        machine.run();
+
+        assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 34]);
+        
+    }
+
 }

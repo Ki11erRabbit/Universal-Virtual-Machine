@@ -219,7 +219,7 @@ impl Core {
         }
     }
 
-    fn push_stack(&mut self, value: &[u8]) {
+    fn push_stack(&mut self,value: &[u8]) {
         self.stack.extend_from_slice(value);
     }
 
@@ -231,8 +231,9 @@ impl Core {
 
         let mut value = Vec::with_capacity(size as usize);
         for _ in 0..size {
-            value.push(self.stack.pop().unwrap());
+            value.insert(0,self.stack.pop().unwrap());
         }
+
 
         Ok(value)
     }
@@ -259,27 +260,22 @@ impl Core {
 
     fn get_1_byte(&mut self) -> u8 {
         let value = self.program[self.program_counter];
-        self.advance_by_1_byte();
         value
     }
     fn get_2_bytes(&mut self) -> u16 {
         let value = u16::from_le_bytes([self.program[self.program_counter], self.program[self.program_counter + 1]]);
-        self.advance_by_2_bytes();
         value
     }
     fn get_4_bytes(&mut self) -> u32 {
         let value = u32::from_le_bytes([self.program[self.program_counter], self.program[self.program_counter + 1], self.program[self.program_counter + 2], self.program[self.program_counter + 3]]);
-        self.advance_by_4_bytes();
         value
     }
     fn get_8_bytes(&mut self) -> u64 {
         let value = u64::from_le_bytes([self.program[self.program_counter], self.program[self.program_counter + 1], self.program[self.program_counter + 2], self.program[self.program_counter + 3], self.program[self.program_counter + 4], self.program[self.program_counter + 5], self.program[self.program_counter + 6], self.program[self.program_counter + 7]]);
-        self.advance_by_8_bytes();
         value
     }
     fn get_16_bytes(&mut self) -> u128 {
         let value = u128::from_le_bytes([self.program[self.program_counter], self.program[self.program_counter + 1], self.program[self.program_counter + 2], self.program[self.program_counter + 3], self.program[self.program_counter + 4], self.program[self.program_counter + 5], self.program[self.program_counter + 6], self.program[self.program_counter + 7], self.program[self.program_counter + 8], self.program[self.program_counter + 9], self.program[self.program_counter + 10], self.program[self.program_counter + 11], self.program[self.program_counter + 12], self.program[self.program_counter + 13], self.program[self.program_counter + 14], self.program[self.program_counter + 15]]);
-        self.advance_by_16_bytes();
         value
     }
 
@@ -323,6 +319,8 @@ impl Core {
 
         let opcode = self.decode_opcode();
 
+        println!("Executing opcode: {:?}", opcode);
+        println!("64 bit registers: {:?}", self.registers_64);
        
         match opcode {
             Halt | NoOp => return Ok(true),
@@ -432,7 +430,7 @@ impl Core {
             
 
             x => {
-                println!("Invalid opcode: {:?}", x);
+                println!("Invalid opcode: {:?} {}", x, u16::from_le_bytes(self.program[self.program_counter - 2..self.program_counter].try_into().unwrap()));
                 return Err(Fault::InvalidOperation)},
             
 
@@ -444,7 +442,7 @@ impl Core {
 
 
     fn set_opcode(&mut self) -> Result<(), Fault> {
-        let size = self.program[self.program_counter] as usize;
+        let size = self.program[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
@@ -7359,7 +7357,7 @@ impl Core {
     }
 
     fn call_opcode(&mut self) -> Result<(), Fault> {
-        let line = self.program[self.program_counter] as u64 as usize;
+        let line = self.get_8_bytes() as usize;
         self.advance_by_8_bytes();
 
         if line >= self.program.len() {
@@ -7373,10 +7371,7 @@ impl Core {
 
     fn return_opcode(&mut self) -> Result<(), Fault> {
         let line = self.pop_stack(64)?;
-        let mut address = [0; 8];
-        address.copy_from_slice(&line);
-        self.program_counter = u64::from_le_bytes(address) as usize;
-
+        self.program_counter = u64::from_le_bytes(line[..].try_into().unwrap()) as usize;
         Ok(())
     }
 
@@ -7387,7 +7382,6 @@ impl Core {
         self.advance_by_1_byte();
 
         let value = self.pop_stack(size)?;
-
 
         match size {
             8 => {
@@ -7465,22 +7459,22 @@ impl Core {
         match size {
             8 => {
                 check_register64!(register as usize);
-                let value = self.registers_64[register as usize].to_le_bytes();
+                let value = (self.registers_64[register as usize] as u8).to_le_bytes();
                 self.push_stack(&value);
             },
             16 => {
                 check_register64!(register as usize);
-                let value = self.registers_64[register as usize].to_le_bytes();
+                let value = (self.registers_64[register as usize] as u16).to_le_bytes();
                 self.push_stack(&value);
             },
             32 => {
                 check_register64!(register as usize);
-                let value = self.registers_64[register as usize].to_le_bytes();
+                let value = (self.registers_64[register as usize] as u32).to_le_bytes();
                 self.push_stack(&value);
             },
             64 => {
                 check_register64!(register as usize);
-                let value = self.registers_64[register as usize].to_le_bytes();
+                let value = (self.registers_64[register as usize] as u64).to_le_bytes();
                 self.push_stack(&value);
             },
             128 => {

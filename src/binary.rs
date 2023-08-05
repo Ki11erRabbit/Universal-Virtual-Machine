@@ -60,6 +60,21 @@ impl Binary {
           }
     }
 
+    pub fn program_with_count(&self) -> String {
+        let mut program = String::new();
+        let mut count = 0;
+        for byte in &self.program {
+            program.push_str(&format!("{}", byte));
+            program.push(' ');
+            count += 1;
+            if count == 16 {
+                program.push('\n');
+                count = 0;
+            }
+        }
+        program
+    }
+
     pub fn data_segment(&self) -> Vec<u8> {
         self.data_segment.clone()
     }
@@ -310,11 +325,11 @@ impl Binary {
                 },
                 RegMove => {
                     assembly.push_str("move ");
-                    let size = self.program[read_head];
-                    read_head += 1;
                     let reg1 = self.program[read_head];
                     read_head += 1;
                     let reg2 = self.program[read_head];
+                    read_head += 1;
+                    let size = self.program[read_head];
                     read_head += 1;
 
                     assembly.push_str(&format!("${}, ${}, {}\n", reg1, reg2, size));
@@ -421,11 +436,11 @@ impl Binary {
                 },
                 RegMoveF => {
                     assembly.push_str("movef ");
-                    let size = self.program[read_head];
-                    read_head += 1;
                     let reg1 = self.program[read_head];
                     read_head += 1;
                     let reg2 = self.program[read_head];
+                    read_head += 1;
+                    let size = self.program[read_head];
                     read_head += 1;
 
                     assembly.push_str(&format!("${}, ${}, {}\n", reg1, reg2, size));
@@ -511,11 +526,11 @@ impl Binary {
                 },
                 RegMoveA => {
                     assembly.push_str("movea ");
-                    let size = self.program[read_head];
-                    read_head += 1;
                     let reg1 = self.program[read_head];
                     read_head += 1;
                     let reg2 = self.program[read_head];
+                    read_head += 1;
+                    let size = self.program[read_head];
                     read_head += 1;
 
                     assembly.push_str(&format!("${}, ${}, {}\n", reg1, reg2, size));

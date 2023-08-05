@@ -713,7 +713,7 @@ where
 
                     match ops.as_slice() {
                         [MoveOps::Number, MoveOps::Register] => {
-                            let mut temp = vec![112,0];
+                            let mut temp = vec![111,0];
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
