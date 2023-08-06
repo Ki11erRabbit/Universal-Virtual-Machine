@@ -319,9 +319,6 @@ impl Core {
 
         let opcode = self.decode_opcode();
 
-        println!("Executing opcode: {:?}", opcode);
-        println!("64 bit registers: {:?}", self.registers_64);
-       
         match opcode {
             Halt | NoOp => return Ok(true),
             Set => self.set_opcode()?,
