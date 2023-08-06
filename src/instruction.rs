@@ -175,6 +175,8 @@ pub enum Opcode {
     RegMove,
     RegMoveF,
     RegMoveA,
+    /* Special Return for threads */
+    ThreadReturn,
     
     
     
@@ -356,6 +358,8 @@ impl From<u16> for Opcode {
             159 => RegMove,
             160 => RegMoveF,
             161 => RegMoveA,
+            /* Special Return for Threads */
+            162 => ThreadReturn,
             
             
             /* Instructions illegal instruction */

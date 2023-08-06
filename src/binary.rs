@@ -1059,8 +1059,10 @@ impl Binary {
                     assembly.push_str("threadspawn ");
                     let reg = self.program[read_head];
                     read_head += 1;
+                    let id_reg = self.program[read_head];
+                    read_head += 1;
 
-                    assembly.push_str(&format!("${}\n", reg));
+                    assembly.push_str(&format!("${}, ${}\n", reg, id_reg));
                 },
                 Remainder => {
                     assembly.push_str("remainder ");
@@ -1102,6 +1104,7 @@ impl Binary {
 
                     assembly.push_str(&format!("{}, ${}, ${}\n", size, reg1, reg2));
                 },
+                ThreadReturn => assembly.push_str("threadret"),
                 Illegal => {
                     assembly.push_str("illegal\n");
                 },

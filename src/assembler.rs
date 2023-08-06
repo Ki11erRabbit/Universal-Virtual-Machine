@@ -1350,7 +1350,7 @@ where
                     }
 
                     match ops.as_slice() {
-                        [MoveOps::Register] => {
+                        [MoveOps::Register, MoveOps::Register] => {
                             let mut temp = vec![144,0];
                             temp.append(&mut bytes);
                             return Ok(temp);

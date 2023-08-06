@@ -300,11 +300,12 @@ impl Machine {
     }
 
     fn run_core_threaded(&mut self, core: usize, program_counter: usize) {
-        //TODO: Add special return instruction to allow for capturing return value
         let mut core = self.cores.remove(core);
         let mut program = (**self.program.as_ref().expect("Program Somehow not set").clone()).to_vec();
         let new_pc = program.len();
         program.push(109);
+        program.push(0);
+        program.push(162);
         program.push(0);
         program.extend_from_slice(&program_counter.to_le_bytes());
         let program = Arc::new(program);
