@@ -423,7 +423,7 @@ impl Core {
             RegMoveF => self.regmovef_opcode()?,
             Open => self.open_opcode()?,
             Close => self.close_opcode()?,
-            
+            ThreadSpawn => self.threadspawn_opcode()?,
             
 
             x => {
@@ -910,8 +910,8 @@ impl Core {
         match size {
             8 => {
                 check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as i8;
-                let reg2_value = self.registers_64[register2] as i8;
+                let reg1_value = i8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
+                let reg2_value = i8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) + Wrapping(reg2_value)).0;
 
@@ -938,8 +938,8 @@ impl Core {
             },
             16 => {
                 check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as i16;
-                let reg2_value = self.registers_64[register2] as i16;
+                let reg1_value = i16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
+                let reg2_value = i16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) + Wrapping(reg2_value)).0;
 
@@ -967,8 +967,8 @@ impl Core {
 
             32 => {
                 check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as i32;
-                let reg2_value = self.registers_64[register2] as i32;
+                let reg1_value = i32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
+                let reg2_value = i32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) + Wrapping(reg2_value)).0;
 
@@ -995,8 +995,8 @@ impl Core {
             },
             64 => {
                 check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as i64;
-                let reg2_value = self.registers_64[register2] as i64;
+                let reg1_value = i64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = i64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) + Wrapping(reg2_value)).0;
 
@@ -1030,8 +1030,8 @@ impl Core {
             },
             128 => {
                 check_register128!(register1, register2);
-                let reg1_value = self.registers_128[register1] as i128;
-                let reg2_value = self.registers_128[register2] as i128;
+                let reg1_value = i128::from_le_bytes(self.registers_128[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = i128::from_le_bytes(self.registers_128[register2].to_le_bytes().try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) + Wrapping(reg2_value)).0;
 
@@ -1075,8 +1075,8 @@ impl Core {
         match size {
             8 => {
                 check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as i8;
-                let reg2_value = self.registers_64[register2] as i8;
+                let reg1_value = i8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
+                let reg2_value = i8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) - Wrapping(reg2_value)).0;
 
@@ -1103,8 +1103,8 @@ impl Core {
             },
             16 => {
                 check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as i16;
-                let reg2_value = self.registers_64[register2] as i16;
+                let reg1_value = i16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
+                let reg2_value = i16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) - Wrapping(reg2_value)).0;
 
@@ -1131,8 +1131,8 @@ impl Core {
             },
             32 => {
                 check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as i32;
-                let reg2_value = self.registers_64[register2] as i32;
+                let reg1_value = i32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
+                let reg2_value = i32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) - Wrapping(reg2_value)).0;
 
@@ -1159,8 +1159,8 @@ impl Core {
             },
             64 => {
                 check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as i64;
-                let reg2_value = self.registers_64[register2] as i64;
+                let reg1_value = i64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = i64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) - Wrapping(reg2_value)).0;
 
@@ -1188,8 +1188,9 @@ impl Core {
             },
             128 => {
                 check_register128!(register1, register2);
-                let reg1_value = self.registers_128[register1] as i128;
-                let reg2_value = self.registers_128[register2] as i128;
+                let reg1_value = i128::from_le_bytes(self.registers_128[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = i128::from_le_bytes(self.registers_128[register2].to_le_bytes().try_into().unwrap());
+                
 
                 let new_value = (Wrapping(reg1_value) - Wrapping(reg2_value)).0;
 
@@ -1233,8 +1234,9 @@ impl Core {
         match size {
             8 => {
                 check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as i8;
-                let reg2_value = self.registers_64[register2] as i8;
+                let reg1_value = i8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
+                let reg2_value = i8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
+                
 
                 let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
 
@@ -1261,8 +1263,8 @@ impl Core {
             },
             16 => {
                 check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as i16;
-                let reg2_value = self.registers_64[register2] as i16;
+                let reg1_value = i16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
+                let reg2_value = i16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
 
@@ -1290,8 +1292,8 @@ impl Core {
 
             32 => {
                 check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as i32;
-                let reg2_value = self.registers_64[register2] as i32;
+                let reg1_value = i32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
+                let reg2_value = i32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
 
@@ -1318,8 +1320,8 @@ impl Core {
             },
             64 => {
                 check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as i64;
-                let reg2_value = self.registers_64[register2] as i64;
+                let reg1_value = i64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = i64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
 
@@ -1347,8 +1349,8 @@ impl Core {
             },
             128 => {
                 check_register128!(register1, register2);
-                let reg1_value = self.registers_128[register1] as i128;
-                let reg2_value = self.registers_128[register2] as i128;
+                let reg1_value = i128::from_le_bytes(self.registers_128[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = i128::from_le_bytes(self.registers_128[register2].to_le_bytes().try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
 
@@ -1392,8 +1394,8 @@ impl Core {
         match size {
             8 => {
                 check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as i8;
-                let reg2_value = self.registers_64[register2] as i8;
+                let reg1_value = i8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
+                let reg2_value = i8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
 
                 if reg2_value == 0 {
                     return Err(Fault::DivideByZero);
@@ -1426,8 +1428,8 @@ impl Core {
             },
             16 => {
                 check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as i16;
-                let reg2_value = self.registers_64[register2] as i16;
+                let reg1_value = i16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
+                let reg2_value = i16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
 
                 if reg2_value == 0 {
                     return Err(Fault::DivideByZero);
@@ -1460,8 +1462,8 @@ impl Core {
             },
             32 => {
                 check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as i32;
-                let reg2_value = self.registers_64[register2] as i32;
+                let reg1_value = i32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
+                let reg2_value = i32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
 
                 if reg2_value == 0 {
                     return Err(Fault::DivideByZero);
@@ -1494,8 +1496,8 @@ impl Core {
             },
             64 => {
                 check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as i64;
-                let reg2_value = self.registers_64[register2] as i64;
+                let reg1_value = i64::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..8].try_into().unwrap());
+                let reg2_value = i64::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..8].try_into().unwrap());
 
                 if reg2_value == 0 {
                     return Err(Fault::DivideByZero);
@@ -1529,8 +1531,8 @@ impl Core {
             },
             128 => {
                 check_register128!(register1, register2);
-                let reg1_value = self.registers_128[register1] as i128;
-                let reg2_value = self.registers_128[register2] as i128;
+                let reg1_value = i128::from_le_bytes(self.registers_128[register1].to_le_bytes());
+                let reg2_value = i128::from_le_bytes(self.registers_128[register2].to_le_bytes());
 
                 if reg2_value == 0 {
                     return Err(Fault::DivideByZero);
@@ -1580,8 +1582,8 @@ impl Core {
             8 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i8;
-                let reg2_value = self.registers_64[register2] as i8;
+                let reg1_value = i8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
+                let reg2_value = i8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
 
                 if reg1_value != reg2_value {
                     self.comparison_flag = Comparison::NotEqual;
@@ -1593,8 +1595,8 @@ impl Core {
             16 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i16;
-                let reg2_value = self.registers_64[register2] as i16;
+                let reg1_value = i16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
+                let reg2_value = i16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
 
                 if reg1_value != reg2_value {
                     self.comparison_flag = Comparison::NotEqual;
@@ -1606,8 +1608,8 @@ impl Core {
             32 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i32;
-                let reg2_value = self.registers_64[register2] as i32;
+                let reg1_value = i32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
+                let reg2_value = i32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
 
                 if reg1_value != reg2_value {
                     self.comparison_flag = Comparison::NotEqual;
@@ -1619,8 +1621,9 @@ impl Core {
             64 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i64;
-                let reg2_value = self.registers_64[register2] as i64;
+                let reg1_value = i64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = i64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
+                
 
                 if reg1_value != reg2_value {
                     self.comparison_flag = Comparison::NotEqual;
@@ -1632,8 +1635,8 @@ impl Core {
             128 => {
                 check_register128!(register1, register2);
 
-                let reg1_value = self.registers_128[register1] as i128;
-                let reg2_value = self.registers_128[register2] as i128;
+                let reg1_value = i128::from_le_bytes(self.registers_128[register1].to_le_bytes());
+                let reg2_value = i128::from_le_bytes(self.registers_128[register2].to_le_bytes());
 
                 if reg1_value != reg2_value {
                     self.comparison_flag = Comparison::NotEqual;
@@ -1662,8 +1665,8 @@ impl Core {
             8 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i8;
-                let reg2_value = self.registers_64[register2] as i8;
+                let reg1_value = i8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
+                let reg2_value = i8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
 
                 if reg1_value == reg2_value {
                     self.comparison_flag = Comparison::Equal;
@@ -1675,8 +1678,8 @@ impl Core {
             16 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i16;
-                let reg2_value = self.registers_64[register2] as i16;
+                let reg1_value = i16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
+                let reg2_value = i16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
 
                 if reg1_value == reg2_value {
                     self.comparison_flag = Comparison::Equal;
@@ -1688,8 +1691,8 @@ impl Core {
             32 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i32;
-                let reg2_value = self.registers_64[register2] as i32;
+                let reg1_value = i32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
+                let reg2_value = i32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
 
                 if reg1_value == reg2_value {
                     self.comparison_flag = Comparison::Equal;
@@ -1701,8 +1704,8 @@ impl Core {
             64 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i64;
-                let reg2_value = self.registers_64[register2] as i64;
+                let reg1_value = i64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = i64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
 
                 if reg1_value == reg2_value {
                     self.comparison_flag = Comparison::Equal;
@@ -1714,8 +1717,8 @@ impl Core {
             128 => {
                 check_register128!(register1, register2);
 
-                let reg1_value = self.registers_128[register1] as i128;
-                let reg2_value = self.registers_128[register2] as i128;
+                let reg1_value = i128::from_le_bytes(self.registers_128[register1].to_le_bytes());
+                let reg2_value = i128::from_le_bytes(self.registers_128[register2].to_le_bytes());
 
                 if reg1_value == reg2_value {
                     self.comparison_flag = Comparison::Equal;
@@ -1744,8 +1747,8 @@ impl Core {
             8 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i8;
-                let reg2_value = self.registers_64[register2] as i8;
+                let reg1_value = i8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
+                let reg2_value = i8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
 
                 if reg1_value < reg2_value {
                     self.comparison_flag = Comparison::LessThan;
@@ -1757,8 +1760,8 @@ impl Core {
             16 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i16;
-                let reg2_value = self.registers_64[register2] as i16;
+                let reg1_value = i16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
+                let reg2_value = i16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
 
                 if reg1_value < reg2_value {
                     self.comparison_flag = Comparison::LessThan;
@@ -1770,8 +1773,8 @@ impl Core {
             32 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i32;
-                let reg2_value = self.registers_64[register2] as i32;
+                let reg1_value = i32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
+                let reg2_value = i32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
 
                 if reg1_value < reg2_value {
                     self.comparison_flag = Comparison::LessThan;
@@ -1783,8 +1786,8 @@ impl Core {
             64 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i64;
-                let reg2_value = self.registers_64[register2] as i64;
+                let reg1_value = i64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = i64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
 
                 if reg1_value < reg2_value {
                     self.comparison_flag = Comparison::LessThan;
@@ -1796,8 +1799,8 @@ impl Core {
             128 => {
                 check_register128!(register1, register2);
 
-                let reg1_value = self.registers_128[register1] as i128;
-                let reg2_value = self.registers_128[register2] as i128;
+                let reg1_value = i128::from_le_bytes(self.registers_128[register1].to_le_bytes());
+                let reg2_value = i128::from_le_bytes(self.registers_128[register2].to_le_bytes());
 
                 if reg1_value < reg2_value {
                     self.comparison_flag = Comparison::LessThan;
@@ -1825,8 +1828,8 @@ impl Core {
             8 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i8;
-                let reg2_value = self.registers_64[register2] as i8;
+                let reg1_value = i8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
+                let reg2_value = i8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
 
                 if reg1_value > reg2_value {
                     self.comparison_flag = Comparison::GreaterThan;
@@ -1838,8 +1841,8 @@ impl Core {
             16 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i16;
-                let reg2_value = self.registers_64[register2] as i16;
+                let reg1_value = i16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
+                let reg2_value = i16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
 
                 if reg1_value > reg2_value {
                     self.comparison_flag = Comparison::GreaterThan;
@@ -1851,8 +1854,8 @@ impl Core {
             32 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i32;
-                let reg2_value = self.registers_64[register2] as i32;
+                let reg1_value = i32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
+                let reg2_value = i32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
 
                 if reg1_value > reg2_value {
                     self.comparison_flag = Comparison::GreaterThan;
@@ -1864,8 +1867,8 @@ impl Core {
             64 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i64;
-                let reg2_value = self.registers_64[register2] as i64;
+                let reg1_value = i64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = i64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
 
                 if reg1_value > reg2_value {
                     self.comparison_flag = Comparison::GreaterThan;
@@ -1877,8 +1880,8 @@ impl Core {
             128 => {
                 check_register128!(register1, register2);
 
-                let reg1_value = self.registers_128[register1] as i128;
-                let reg2_value = self.registers_128[register2] as i128;
+                let reg1_value = i128::from_le_bytes(self.registers_128[register1].to_le_bytes());
+                let reg2_value = i128::from_le_bytes(self.registers_128[register2].to_le_bytes());
 
                 if reg1_value > reg2_value {
                     self.comparison_flag = Comparison::GreaterThan;
@@ -1906,9 +1909,9 @@ impl Core {
             8 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i8;
-                let reg2_value = self.registers_64[register2] as i8;
-
+                let reg1_value = i8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
+                let reg2_value = i8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
+                
                 if reg1_value <= reg2_value {
                     self.comparison_flag = Comparison::LessThanOrEqual;
                 }
@@ -1919,8 +1922,8 @@ impl Core {
             16 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i16;
-                let reg2_value = self.registers_64[register2] as i16;
+                let reg1_value = i16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
+                let reg2_value = i16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
 
                 if reg1_value <= reg2_value {
                     self.comparison_flag = Comparison::LessThanOrEqual;
@@ -1932,8 +1935,8 @@ impl Core {
             32 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i32;
-                let reg2_value = self.registers_64[register2] as i32;
+                let reg1_value = i32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
+                let reg2_value = i32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
 
                 if reg1_value <= reg2_value {
                     self.comparison_flag = Comparison::LessThanOrEqual;
@@ -1945,8 +1948,8 @@ impl Core {
             64 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i64;
-                let reg2_value = self.registers_64[register2] as i64;
+                let reg1_value = i64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = i64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
 
                 if reg1_value <= reg2_value {
                     self.comparison_flag = Comparison::LessThanOrEqual;
@@ -1958,8 +1961,8 @@ impl Core {
             128 => {
                 check_register128!(register1, register2);
 
-                let reg1_value = self.registers_128[register1] as i128;
-                let reg2_value = self.registers_128[register2] as i128;
+                let reg1_value = i128::from_le_bytes(self.registers_128[register1].to_le_bytes());
+                let reg2_value = i128::from_le_bytes(self.registers_128[register2].to_le_bytes());
 
                 if reg1_value <= reg2_value {
                     self.comparison_flag = Comparison::LessThanOrEqual;
@@ -1987,8 +1990,8 @@ impl Core {
             8 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i8;
-                let reg2_value = self.registers_64[register2] as i8;
+                let reg1_value = i8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
+                let reg2_value = i8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
 
                 if reg1_value >= reg2_value {
                     self.comparison_flag = Comparison::GreaterThanOrEqual;
@@ -2000,8 +2003,8 @@ impl Core {
             16 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i16;
-                let reg2_value = self.registers_64[register2] as i16;
+                let reg1_value = i16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
+                let reg2_value = i16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
 
                 if reg1_value >= reg2_value {
                     self.comparison_flag = Comparison::GreaterThanOrEqual;
@@ -2013,8 +2016,8 @@ impl Core {
             32 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i32;
-                let reg2_value = self.registers_64[register2] as i32;
+                let reg1_value = i32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
+                let reg2_value = i32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
 
                 if reg1_value >= reg2_value {
                     self.comparison_flag = Comparison::GreaterThanOrEqual;
@@ -2026,8 +2029,8 @@ impl Core {
             64 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = self.registers_64[register1] as i64;
-                let reg2_value = self.registers_64[register2] as i64;
+                let reg1_value = i64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = i64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
 
                 if reg1_value >= reg2_value {
                     self.comparison_flag = Comparison::GreaterThanOrEqual;
@@ -2039,8 +2042,8 @@ impl Core {
             128 => {
                 check_register128!(register1, register2);
 
-                let reg1_value = self.registers_128[register1] as i128;
-                let reg2_value = self.registers_128[register2] as i128;
+                let reg1_value = i128::from_le_bytes(self.registers_128[register1].to_le_bytes());
+                let reg2_value = i128::from_le_bytes(self.registers_128[register2].to_le_bytes());
 
                 if reg1_value >= reg2_value {
                     self.comparison_flag = Comparison::GreaterThanOrEqual;
@@ -8061,6 +8064,35 @@ impl Core {
                 return Err(Fault::InvalidMessage);
             }
         }
+    }
+
+    fn threadspawn_opcode(&mut self) -> Result<(), Fault> {
+        let program_counter_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let thread_id_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(program_counter_reg as usize, thread_id_reg as usize);
+
+        let message = Message::SpawnThread(self.registers_64[program_counter_reg as usize] as u64);
+
+        self.send_message(message)?;
+
+        let message = self.recv_message()?;
+
+        match message {
+            Message::ThreadSpawned(thread_id) => {
+                self.registers_64[thread_id_reg as usize] = thread_id as u64;
+            },
+            Message::Error(fault) => {
+                return Err(fault);
+            },
+            _ => {
+                return Err(Fault::InvalidMessage);
+            }
+        }
+        
+        Ok(())
     }
     
     
