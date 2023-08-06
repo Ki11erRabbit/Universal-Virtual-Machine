@@ -185,6 +185,10 @@ impl Core {
         }
     }
 
+    pub fn set_threaded(&mut self, threaded: bool) {
+        self.threaded = threaded;
+    }
+
     pub fn add_program(&mut self, program: Arc<Vec<u8>>) {
         self.program = program;
     }

@@ -206,6 +206,10 @@ impl Machine {
                             let message = self.flush(fd);
                             send.send(message).unwrap();
                         },
+                        Message::SpawnThread(program_counter) => {
+                            let message = self.thread_spawn(program_counter);
+                            send.send(message).unwrap();
+                        },
                         _ => unimplemented!(),
 
                     }
@@ -278,12 +282,34 @@ impl Machine {
         }
     }
 
+    fn thread_spawn(&mut self, program_counter: u64) -> Message {
+        if self.cores.len() == 0 {
+            self.add_core();
+        }
+        self.run_core_threaded(0, program_counter as usize);
+        let core_id = self.core_threads.len() - 1;
+        Message::ThreadSpawned(core_id as u8)
+    }
+
     pub fn add_core(&mut self) {
         let (core_sender, core_receiver) = channel();
         let (machine_sender, machine_receiver) = channel();
         self.channels.borrow_mut().push((core_sender, machine_receiver));
         let core = Core::new(self.memory.clone(), machine_sender, core_receiver,);
         self.cores.push(core);
+    }
+
+    fn run_core_threaded(&mut self, core: usize, program_counter: usize) {
+        //TODO: Add assembly that calls the function to the function we with to thread
+        let mut core = self.cores.remove(core);
+        core.set_threaded(true);
+        core.add_program(self.program.as_ref().expect("Program Not set").clone());
+        let core_thread = {
+            thread::spawn(move || {
+                core.run(program_counter)
+            })
+        };
+        self.core_threads.push(core_thread);
     }
 
     pub fn run_core(&mut self, core: usize, program_counter: usize) {
