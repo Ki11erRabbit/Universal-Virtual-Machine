@@ -177,6 +177,11 @@ pub enum Opcode {
     RegMoveA,
     /* Special Return for threads */
     ThreadReturn,
+    /* Other Thread Instructions */
+    ThreadJoin,
+    ThreadDetach,
+
+    StackPointer,
     
     
     
@@ -360,6 +365,9 @@ impl From<u16> for Opcode {
             161 => RegMoveA,
             /* Special Return for Threads */
             162 => ThreadReturn,
+            163 => ThreadJoin,
+            164 => ThreadDetach,
+            165 => StackPointer,
             
             
             /* Instructions illegal instruction */

@@ -2,6 +2,7 @@ use chumsky::prelude::*;
 use std::collections::HashMap;
 use crate::binary::Binary;
 
+use crate::Byte;
 
 #[derive(Debug, Clone)]
 enum Number {
@@ -1397,6 +1398,73 @@ where
                 "subuf" => parse_arithmetic(vec![156,0], args),
                 "muluf" => parse_arithmetic(vec![157,0], args),
                 "divuf" => parse_arithmetic(vec![158,0], args),
+                "threadret" => return Ok(vec![162,0]),
+                "threadjoin" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected only registers".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Register] => {
+                            let mut temp = vec![163,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for threadjoin".to_owned()),
+                    }
+                },
+                "threaddetach" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected only registers".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Register] => {
+                            let mut temp = vec![164,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for threaddetach".to_owned()),
+                    }
+                },
+                "stackptr" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected only registers".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Register] => {
+                            let mut temp = vec![165,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for stackptr".to_owned()),
+                    }
+                },
                 instr => return Err(format!("Invalid instruction: {}", instr)),
                 
                     
@@ -1527,17 +1595,17 @@ where
 
 }
 
-fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, Vec<String>, HashMap<String,usize>, Vec<u8>), String> {
+fn parse_file(input: &str) -> Result<(Vec<Byte>,usize,Vec<String>, Vec<String>, HashMap<String,usize>, Vec<u8>), String> {
 
     let parser = file_parser();
 
     let result = parser.parse(input);
 
+
     let mut result = match result {
         Ok(ast) => ast,
         Err(_) => return Err("Error parsing file".to_owned()),
     };
-
 
     let mut labels = Vec::new();
     let mut segment_labels = Vec::new();
@@ -1564,7 +1632,7 @@ fn parse_file(input: &str) -> Result<(Vec<u8>,usize,Vec<String>, Vec<String>, Ha
                                                 },
                                                 _ => (),
                                             }
-                                            let mut instruction_bytes = parse_instruction(instruction, |label, extra_bytes| {
+                                            let mut instruction_bytes = parse_instruction(instruction, |label, _extra_bytes| {
                                                 match label_positions.get(&label) {
                                                     Some(pos) => *pos as u64,
                                                     None => {

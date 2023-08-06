@@ -1,15 +1,15 @@
 
+use std::collections::HashSet;
 use std::sync::{Arc,RwLock,TryLockError};
 use std::num::Wrapping;
 use std::array::from_fn;
 use std::sync::atomic::AtomicU64;
 use std::thread;
-use std::io::Write;
 use std::fmt;
-use std::sync::mpsc::{Sender,Receiver};
+use std::sync::mpsc::{Sender,Receiver, TryRecvError};
 
 use crate::instruction::Opcode;
-use crate::virtual_machine::{Fault, Message, RegisterType};
+use crate::{RegisterType,Message,Fault,CoreId,Byte,Pointer};
 
 
 macro_rules! check_register64 {
@@ -152,11 +152,13 @@ pub struct Core {
     remainder_64: usize,
     remainder_128: u128,
     program_counter: usize,
-    stack: Vec<u8>,
-    program: Arc<Vec<u8>>,
-    memory: Arc<RwLock<Vec<u8>>>,
+    stack: Vec<Byte>,
+    program: Arc<Vec<Byte>>,
+    memory: Arc<RwLock<Vec<Byte>>>,
     send_channel: Sender<Message>,
     recv_channel: Receiver<Message>,
+    threads: HashSet<CoreId>,
+    main_thread: bool,
 }
     
 impl Core {
@@ -182,7 +184,13 @@ impl Core {
             memory,
             send_channel: send,
             recv_channel: recv,
+            threads: HashSet::new(),
+            main_thread: false,
         }
+    }
+
+    pub fn set_main_thread(&mut self) {
+        self.main_thread = true;
     }
 
     pub fn add_program(&mut self, program: Arc<Vec<u8>>) {
@@ -203,7 +211,7 @@ impl Core {
         }
     }
 
-    fn get_string(&mut self, address: u64, size: u64) -> Result<Vec<u8>,Fault> {
+    fn get_string(&mut self, address: Pointer, size: u64) -> Result<Vec<u8>,Fault> {
         loop {
             match self.memory.try_read() {
                 Ok(memory) => {
@@ -219,11 +227,11 @@ impl Core {
         }
     }
 
-    fn push_stack(&mut self,value: &[u8]) {
+    fn push_stack(&mut self,value: &[Byte]) {
         self.stack.extend_from_slice(value);
     }
 
-    fn pop_stack(&mut self, size: u8) -> Result<Vec<u8>,Fault> {
+    fn pop_stack(&mut self, size: u8) -> Result<Vec<Byte>,Fault> {
         let size = size / 8;
         if self.stack.len() < size as usize {
             return Err(Fault::StackUnderflow);
@@ -258,7 +266,7 @@ impl Core {
         self.advance_by_size(16);
     }
 
-    fn get_1_byte(&mut self) -> u8 {
+    fn get_1_byte(&mut self) -> Byte {
         let value = self.program[self.program_counter];
         value
     }
@@ -289,6 +297,32 @@ impl Core {
         Ok(())
     }
 
+    fn remove_thread(&mut self, core_id: CoreId) {
+        self.threads.remove(&core_id);
+    }
+
+    fn check_messages(&mut self) -> Result<(), Fault> {
+        match self.recv_channel.try_recv() {
+            Ok(message) => {
+                match message {
+                    Message::ThreadDone(core_id) => {
+                    },
+
+                    _ => unimplemented!(),
+
+                }
+
+            },
+            Err(TryRecvError::Disconnected) => {
+                return Err(Fault::MachineCrash);
+            },
+            Err(TryRecvError::Empty) => {
+
+            }
+        }
+        Ok(())
+    }
+
     pub fn run_once(&mut self) -> Result<(),Fault> {
         self.execute_instruction()?;
         Ok(())
@@ -312,12 +346,19 @@ impl Core {
     }
 
     fn execute_instruction(&mut self) -> Result<bool, Fault> {
+
+        self.check_messages()?;
+
         if self.check_program_counter()? {
             return Ok(true);
         }
         use Opcode::*;
 
         let opcode = self.decode_opcode();
+
+        if self.main_thread {
+            println!("Opcode: {:?}", opcode);
+        }
 
         match opcode {
             Halt | NoOp => return Ok(true),
@@ -424,6 +465,9 @@ impl Core {
             Open => self.open_opcode()?,
             Close => self.close_opcode()?,
             ThreadSpawn => self.threadspawn_opcode()?,
+            ThreadReturn => self.threadreturn_opcode()?,
+            ThreadJoin => self.threadjoin_opcode()?,
+            ThreadDetach => self.threaddetach_opcode()?,
             
 
             x => {
@@ -8067,6 +8111,7 @@ impl Core {
     }
 
     fn threadspawn_opcode(&mut self) -> Result<(), Fault> {
+
         let program_counter_reg = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let thread_id_reg = self.program[self.program_counter] as u8;
@@ -8083,6 +8128,7 @@ impl Core {
         match message {
             Message::ThreadSpawned(thread_id) => {
                 self.registers_64[thread_id_reg as usize] = thread_id as u64;
+                self.threads.insert(thread_id);
             },
             Message::Error(fault) => {
                 return Err(fault);
@@ -8092,6 +8138,67 @@ impl Core {
             }
         }
         
+        Ok(())
+    }
+
+    fn threadreturn_opcode(&mut self) -> Result<(), Fault> {
+
+        let message = Message::ThreadDone(0);
+
+        self.send_message(message)?;
+
+        let message = self.recv_message()?;
+
+        match message {
+            Message::Success => {
+                return Ok(());
+            },
+            Message::Error(fault) => {
+                return Err(fault);
+            },
+            _ => {
+                return Err(Fault::InvalidMessage);
+            }
+        }
+    }
+
+    fn threadjoin_opcode(&mut self) -> Result<(), Fault> {
+        let thread_id_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(thread_id_reg as usize);
+
+        let core_id = self.registers_64[thread_id_reg as usize] as CoreId;
+
+        let message = Message::JoinThread(core_id);
+
+        self.send_message(message)?;
+
+        let message = self.recv_message()?;
+
+        match message {
+            Message::Success => {
+                return Ok(());
+            },
+            Message::Error(fault) => {
+                return Err(fault);
+            },
+            _ => {
+                return Err(Fault::InvalidMessage);
+            }
+        }
+    }
+
+    fn threaddetach_opcode(&mut self) -> Result<(), Fault> {
+        let thread_id_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(thread_id_reg as usize);
+
+        let core_id = self.registers_64[thread_id_reg as usize] as CoreId;
+
+        self.remove_thread(core_id);
+
         Ok(())
     }
     
@@ -8317,7 +8424,6 @@ mod tests {
         
         core.run(0).unwrap();
         
-        std::io::stdout().flush().unwrap();
         
     }
 

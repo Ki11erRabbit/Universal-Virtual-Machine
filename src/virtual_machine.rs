@@ -1,118 +1,31 @@
 #![allow(arithmetic_overflow)]
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 use std::thread::{self,JoinHandle};
-use std::fmt;
 use std::sync::mpsc::{Sender,Receiver, channel};
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::Write;
 
+use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault};
 use crate::binary::Binary;
 use crate::core::Core;
 
 
-#[derive(Debug,PartialEq)]
-pub enum RegisterType {
-    Register64,
-    Register128,
-    RegisterF32,
-    RegisterF64,
-    RegisterAtomic64,
-}
-
-impl fmt::Display for RegisterType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            RegisterType::Register64 => write!(f, "Register64"),
-            RegisterType::Register128 => write!(f, "Register128"),
-            RegisterType::RegisterF32 => write!(f, "RegisterF32"),
-            RegisterType::RegisterF64 => write!(f, "RegisterF64"),
-            RegisterType::RegisterAtomic64 => write!(f, "RegisterAtomic64"),
-        }
-    }
-}
-/// Messages that a core and the machine can send to each other
-#[derive(Debug,PartialEq)]
-pub enum Message {
-    Malloc(u64),                     // Takes size
-    MemoryPointer(u64),              // Returns pointer
-    DeallocateMemory(u64),           // Takes pointer
-    DereferenceStackPointer(u8,u64), // Takes core and pointer
-    DereferencedMemory(Vec<u8>),     // Returns dereferenced memory
-    OpenFile(Vec<u8>,u8),            // Takes filename, and flags
-    FileDescriptor(i64),             // Returns file descriptor
-    ReadFile(i64,u64),               // Takes file descriptor and amount to read
-    FileData(Vec<u8>, u64),          // Returns read data, and amount read
-    WriteFile(i64,Vec<u8>),          // Takes file descriptor and data to write
-    CloseFile(i64),                  // Takes file descriptor
-    Flush(i64),                      // Takes file descriptor
-    FileClosed,                      // Returns file closed
-    SpawnThread(u64),                // Takes address of function to call
-    ThreadSpawned(u8),               // Returns core id of spawned thread
-    ThreadDone,                      // Returns thread done
-    Error(Fault),                    // Returns error
-    Success,                         // Returns success
-}
-
-
-#[derive(Debug,PartialEq)]
-pub enum Fault {
-    ProgramLock,
-    InvalidOperation,
-    InvalidSize,
-    InvalidRegister(usize,RegisterType),// (register, type)
-    InvalidMemory,
-    InvalidAddress(u64),
-    DivideByZero,
-    CorruptedMemory,
-    InvalidFileDescriptor,
-    InvalidJump,
-    StackOverflow,
-    StackUnderflow,
-    MemoryOutOfBounds,
-    MachineCrash,
-    FileOpenError,
-    InvalidMessage,
-    FileWriteError,
-
-}
-
-impl fmt::Display for Fault {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Fault::ProgramLock => write!(f, "Program Lock"),
-            Fault::InvalidOperation => write!(f, "Invalid Operation"),
-            Fault::InvalidSize => write!(f, "Invalid Size"),
-            Fault::InvalidRegister(register, register_type) => write!(f, "Invalid Register {} of type {}", register, register_type),
-            Fault::InvalidMemory => write!(f, "Invalid Memory"),
-            Fault::InvalidAddress(address) => write!(f, "Invalid Address {}", address),
-            Fault::DivideByZero => write!(f, "Divide By Zero"),
-            Fault::CorruptedMemory => write!(f, "Corrupted Memory"),
-            Fault::InvalidFileDescriptor => write!(f, "Invalid File Descriptor"),
-            Fault::InvalidJump => write!(f, "Invalid Jump"),
-            Fault::StackOverflow => write!(f, "Stack Overflow"),
-            Fault::StackUnderflow => write!(f, "Stack Underflow"),
-            Fault::MemoryOutOfBounds => write!(f, "Memory Out Of Bounds"),
-            Fault::MachineCrash => write!(f, "Machine Crash"),
-            Fault::FileOpenError => write!(f, "File Open Error"),
-            Fault::InvalidMessage => write!(f, "Invalid Message"),
-            Fault::FileWriteError => write!(f, "File Write Error"),
-        }
-    }
-}
-
 
 pub struct Machine {
-    memory: Arc<RwLock<Vec<u8>>>,
+    memory: Arc<RwLock<Vec<Byte>>>,
     cores: Vec<Core>,
-    core_threads: Vec<JoinHandle<Result<(),Fault>>>,
-    program: Option<Arc<Vec<u8>>>,
+    core_threads: Vec<Option<JoinHandle<Result<(),Fault>>>>,
+    program: Option<Arc<Vec<Byte>>>,
     entry_point: Option<usize>,
     channels: Rc<RefCell<Vec<(Sender<Message>, Receiver<Message>)>>>,
     files: Vec<Box<dyn Write>>,
+    thread_children: HashMap<CoreId, CoreId>,
+    main_thread_id: CoreId,
 }
 
 impl Machine {
@@ -126,6 +39,8 @@ impl Machine {
             entry_point: None,
             channels: Rc::new(RefCell::new(Vec::new())),
             files: vec![Box::new(std::io::stdout()), Box::new(std::io::stderr())],
+            thread_children: HashMap::new(),
+            main_thread_id: 0,
         }
     }
 
@@ -146,46 +61,33 @@ impl Machine {
         //TODO: change print to log
         let program_counter = self.entry_point.expect("Entry point not set");
         self.run_core(0, program_counter);
+        let mut main_thread_done = false;
         loop {
-            self.check_finished_cores();
+            self.check_main_core(&mut main_thread_done);
             self.check_messages();
 
             //TODO: check for commands from the threads to do various things like allocate more memory, etc.
-            if self.core_threads.len() == 0 {
+            if self.core_threads.len() == 0 || main_thread_done {
                 break;
             }
         }
-        
+        self.core_threads.clear();
+        self.channels.borrow_mut().clear();
     }
 
-    fn check_finished_cores(&mut self) {
-        let mut finished_cores = Vec::new();
-        for (core_num, core_thread) in self.core_threads.iter().enumerate() {
-            if core_thread.is_finished() {
-                finished_cores.push(core_num);
+    fn check_main_core(&mut self, main_thread_done: &mut bool) {
+        if self.core_threads[self.main_thread_id as usize].as_ref().expect("main core doesn't exist").is_finished() {
+            *main_thread_done = true;
+            self.join_thread(self.main_thread_id);
 
-            }
+            self.channels.borrow_mut().remove(self.main_thread_id as usize);
         }
-
-        for core_num in finished_cores.iter().rev() {
-            let core = self.core_threads.remove(*core_num);
-            let _ = self.channels.borrow_mut().remove(*core_num);
-
-            match core.join() {
-                Ok(result) => {
-                    match result {
-                        Ok(_) => eprintln!("Core {} finished", core_num),
-                        Err(fault) => eprintln!("Core {} faulted with: {}", core_num, fault),
-                    }
-                },
-                Err(_) => eprintln!("Core {} panicked", core_num),
-            }
-        }
-        finished_cores.clear();
 
     }
 
     fn check_messages(&mut self) {
+        let mut core_id = 0;
+        let mut channel_to_remove = None;
         for (send, recv) in self.channels.clone().borrow().iter() {
             match recv.try_recv() {
                 Ok(message) => {
@@ -207,20 +109,58 @@ impl Machine {
                             send.send(message).unwrap();
                         },
                         Message::SpawnThread(program_counter) => {
-                            let message = self.thread_spawn(program_counter);
+                            let (message, child_id) = self.thread_spawn(program_counter);
+                            self.thread_children.insert(child_id, core_id as u8);
                             send.send(message).unwrap();
+                        },
+                        Message::ThreadDone(_) => {
+                            match self.thread_children.remove(&core_id) {
+                                Some(parent_core_id) => {
+                                    let parent_channel = self.channels.borrow()[parent_core_id as usize].0.clone();
+                                    let message = Message::ThreadDone(core_id as u8);
+                                    parent_channel.send(message).unwrap();
+                                },
+                                None => {},
+                            }
+
+                            send.send(Message::Success).unwrap();
+                        },
+                        Message::JoinThread(thread_id) => {
+                            channel_to_remove = Some(core_id);
+
+                            self.join_thread(thread_id);
+
+                            send.send(Message::Success).unwrap();
                         },
                         _ => unimplemented!(),
 
                     }
 
                 },
-                Err(_) => continue,
+                Err(_) => {},
             }
 
-            
+           core_id += 1;
         }
 
+        if let Some(core_id) = channel_to_remove {
+            self.channels.borrow_mut().remove(core_id as usize);
+        }
+
+    }
+
+    fn join_thread(&mut self, thread_id: CoreId) {
+        let core_id = thread_id as usize;
+
+        match self.core_threads[core_id].take().expect("Already joined this core").join() {
+            Ok(result) => {
+                match result {
+                    Ok(_) => eprintln!("Core {} finished", core_id),
+                    Err(fault) => eprintln!("Core {} faulted with: {}", core_id, fault),
+                }
+            },
+            Err(_) => eprintln!("Core {} panicked", core_id),
+        }
     }
 
     fn write_file(&mut self, fd: i64, data: Vec<u8>) -> Message {
@@ -282,16 +222,17 @@ impl Machine {
         }
     }
 
-    fn thread_spawn(&mut self, program_counter: u64) -> Message {
+    fn thread_spawn(&mut self, program_counter: u64) -> (Message, u8) {
         if self.cores.len() == 0 {
             self.add_core();
         }
         self.run_core_threaded(0, program_counter as usize);
         let core_id = self.core_threads.len() - 1;
-        Message::ThreadSpawned(core_id as u8)
+        (Message::ThreadSpawned(core_id as u8), core_id as u8)
     }
 
     pub fn add_core(&mut self) {
+        //TODO: Make it so that we don't panic from trying to add another core while running
         let (core_sender, core_receiver) = channel();
         let (machine_sender, machine_receiver) = channel();
         self.channels.borrow_mut().push((core_sender, machine_receiver));
@@ -305,9 +246,9 @@ impl Machine {
         let new_pc = program.len();
         program.push(109);
         program.push(0);
+        program.extend_from_slice(&program_counter.to_le_bytes());
         program.push(162);
         program.push(0);
-        program.extend_from_slice(&program_counter.to_le_bytes());
         let program = Arc::new(program);
         core.add_program(program);
         let core_thread = {
@@ -315,18 +256,19 @@ impl Machine {
                 core.run(new_pc)
             })
         };
-        self.core_threads.push(core_thread);
+        self.core_threads.push(Some(core_thread));
     }
 
     pub fn run_core(&mut self, core: usize, program_counter: usize) {
         let mut core = self.cores.remove(core);
+        core.set_main_thread();
         core.add_program(self.program.as_ref().expect("Program Not set").clone());
         let core_thread = {
             thread::spawn(move || {
                 core.run(program_counter)
             })
         };
-        self.core_threads.push(core_thread);
+        self.core_threads.push(Some(core_thread));
     }
 
     pub fn add_program(&mut self, program: Vec<u8>) {
@@ -537,6 +479,56 @@ ret
 
         assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 34]);
         
+    }
+
+    #[test]
+    fn test_multicore() {
+        let input = "counter{
+.u64 0u64}
+count{
+move 64, $0, counter
+move 64, $1, 0u64
+move 64, $2, 10u64
+}
+loop{
+move 64, $3, 1u64
+equ 64, $1, $2
+jumpeq end
+addu 64, $1, $3
+jump loop
+}
+end{
+move 64, $0, $1
+ret}
+main{
+move 64, $0, count
+threadspawn $0, $1
+threadspawn $0, $2
+threadjoin $1
+threadjoin $2
+ret}
+";
+
+        let binary = generate_binary(input, "test").unwrap();
+
+        let mut machine = Machine::new();
+
+        println!("{}", binary.assembly());
+        println!("{}", binary.program_with_count());
+
+        machine.load_binary(&binary);
+
+
+        machine.add_core();
+        machine.add_core();
+        machine.add_core();
+
+        machine.run();
+
+
+        assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 0, 0, 0, 0, 10]);
+
+
     }
 
 }

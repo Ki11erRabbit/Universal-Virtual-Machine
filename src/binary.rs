@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::instruction::Opcode;
 
+use crate::{Byte,Pointer};
 
 #[derive(Debug, PartialEq)]
 pub struct Binary {
@@ -11,8 +12,8 @@ pub struct Binary {
     program_size: usize,
     data_segment_size: usize,
     entry_address: usize,
-    program: Vec<u8>,
-    data_segment: Vec<u8>,
+    program: Vec<Byte>,
+    data_segment: Vec<Byte>,
     section_names: Vec<String>,
     section_addresses: Vec<usize>,
 }
@@ -35,8 +36,8 @@ enum DeserializeState {
 impl Binary {
     pub fn new(shebang: &str,
                entry_address: usize,
-               program: Vec<u8>,
-               data_segment: Vec<u8>,
+               program: Vec<Byte>,
+               data_segment: Vec<Byte>,
                section_names: Vec<String>,
                section_addresses: Vec<usize>) -> Binary {
         // however many bytes the shebang is
@@ -75,11 +76,11 @@ impl Binary {
         program
     }
 
-    pub fn data_segment(&self) -> Vec<u8> {
+    pub fn data_segment(&self) -> Vec<Byte> {
         self.data_segment.clone()
     }
 
-    pub fn program(&self) -> Vec<u8> {
+    pub fn program(&self) -> Vec<Byte> {
         self.program.clone()
     }
 
@@ -88,7 +89,7 @@ impl Binary {
     }
 
 
-    pub fn serialize(&self) -> Vec<u8> {
+    pub fn serialize(&self) -> Vec<Byte> {
         let mut binary = Vec::new();
         binary.extend(self.shebang.as_bytes());
         binary.extend(&self.header_size.to_le_bytes());
@@ -110,7 +111,7 @@ impl Binary {
         binary
     }
 
-    pub fn deserialize(bin: Vec<u8>) -> Binary {
+    pub fn deserialize(bin: Vec<Byte>) -> Binary {
         let mut buffer = Vec::new();
         let mut shebang = String::new();
         let mut entry_address = 0;
@@ -1105,6 +1106,27 @@ impl Binary {
                     assembly.push_str(&format!("{}, ${}, ${}\n", size, reg1, reg2));
                 },
                 ThreadReturn => assembly.push_str("threadret"),
+                ThreadJoin => {
+                    assembly.push_str("threadjoin ");
+                    let reg = self.program[read_head];
+                    read_head += 1;
+
+                    assembly.push_str(&format!("${}\n", reg));
+                },
+                ThreadDetach => {
+                    assembly.push_str("threaddetach ");
+                    let reg = self.program[read_head];
+                    read_head += 1;
+
+                    assembly.push_str(&format!("${}\n", reg));
+                },
+                StackPointer => {
+                    assembly.push_str("stackptr ");
+                    let reg = self.program[read_head];
+                    read_head += 1;
+
+                    assembly.push_str(&format!("${}\n", reg));
+                },
                 Illegal => {
                     assembly.push_str("illegal\n");
                 },
