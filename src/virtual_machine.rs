@@ -322,6 +322,7 @@ impl Machine {
 mod tests {
     use crate::assembler::generate_binary;
     use std::io::Read;
+    use std::time::SystemTime;
 
     use super::*;
 
@@ -381,6 +382,9 @@ ret
 .u32 0u32
 .u32 0u32
 .u32 0u32
+.u32 0u32
+.u32 0u32
+.u32 0u32
 .u32 0u32}
 main{
 move 64, $0, array ; pointer to first element
@@ -405,7 +409,8 @@ jump loop
 end{
 ret}
 ";
-        
+
+        let now = SystemTime::now();
         let binary = generate_binary(input, "test").unwrap();
 
         let mut machine = Machine::new();
@@ -415,6 +420,8 @@ ret}
         machine.add_core();
 
         machine.run();
+
+        println!("Time: {:?}", now.elapsed().unwrap());
 
         assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 21, 0, 0, 0, 34, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     }
@@ -480,19 +487,21 @@ move 32, $3, $0
 ret
 }
 ";
-            
+        let now = SystemTime::now();
         let binary = generate_binary(input, "test").unwrap();
 
         let mut machine = Machine::new();
 
         machine.load_binary(&binary);
 
-        println!("{}", binary.assembly());
-        println!("{}", binary.program_with_count());
+        //println!("{}", binary.assembly());
+        //println!("{}", binary.program_with_count());
 
         machine.add_core();
 
         machine.run();
+
+        println!("Time: {:?}", now.elapsed().unwrap());
 
         assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 34]);
         
