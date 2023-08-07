@@ -184,6 +184,10 @@ impl Machine {
                             let message = self.free(ptr);
                             send.send(message).unwrap();
                         },
+                        Message::Realloc(ptr, size) => {
+                            let message = self.realloc(ptr, size);
+                            send.send(message).unwrap();
+                        },
                         _ => unimplemented!(),
 
                     }
@@ -249,7 +253,83 @@ impl Machine {
         }
     }
 
-    fn free(&mut self, ptr: u64) -> Message {
+    fn realloc(&mut self, ptr: Pointer, size: u64) -> Message {
+        if size == 0 {
+            return self.free(ptr);
+        }
+
+        let old_size = *self.allocated_blocks.get(&ptr).expect("Reallocating Bad Pointer") as u64;
+        let mut ret_ptr = None;
+        let mut free_ptr = None;
+        loop {
+            match self.memory.try_write() {
+                Ok(mut memory) => {
+
+                    if old_size < size {
+                        let try_address = old_size + ptr ;
+
+                        // If we are not already allocated and not free
+                        if !self.allocated_blocks.contains_key(&try_address) && !self.available_blocks.contains_key(&try_address) {
+                            let difference = size - old_size;
+
+                            let mem_size = memory.len();
+
+                            memory.resize(mem_size + difference as usize, 0);
+
+                            return Message::MemoryPointer(ptr);
+                        }// TODO: add in check for if we already have blocks allocated
+                        else {
+
+                            let mem_size = memory.len();
+
+                            let new_ptr = mem_size as u64;
+
+                            memory.resize(mem_size + size as usize, 0);
+
+                            let old_memory = memory[ptr as usize..(ptr + old_size) as usize].to_vec();
+
+                            for (index, byte) in old_memory.iter().enumerate() {
+                                memory[new_ptr as usize + index] = *byte;
+                            }
+
+                            self.allocated_blocks.insert(new_ptr, size as usize);
+                            self.allocated_blocks.remove(&ptr);
+                            self.available_blocks.insert(ptr, old_size as usize);
+
+                            free_ptr = Some(ptr);
+                            ret_ptr = Some(new_ptr);
+                            break;
+                        }
+                    }
+                    else {
+                        let difference = old_size - size;
+
+                        let mem_size = memory.len();
+
+                        self.allocated_blocks.insert(ptr, size as usize);
+                        self.available_blocks.insert(ptr + size, difference as usize);
+
+                        return Message::MemoryPointer(ptr);
+                    }
+                }
+                Err(TryLockError::WouldBlock) => {
+                    continue;
+                },
+                Err(_) => {
+                    panic!("Memory lock poisoned");
+                }
+            }
+        }
+        if let Some(ptr) = free_ptr {
+            self.free(ptr);
+        }
+        if let Some(ptr) = ret_ptr {
+            return Message::MemoryPointer(ptr);
+        }
+        Message::Error(Fault::InvalidRealloc)
+    }
+
+    fn free(&mut self, ptr: Pointer) -> Message {
         if !self.allocated_blocks.contains_key(&ptr) {
             return Message::Error(Fault::InvalidFree);
         }
@@ -586,7 +666,7 @@ ret
 
         println!("Time: {:?}", now.elapsed().unwrap());
 
-        assert_eq!(machine.memory.read().unwrap()[1..5], [0, 0, 0, 34]);
+        assert_eq!(machine.memory.read().unwrap()[1..5], [34, 0, 0, 0]);
         
     }
 
@@ -639,7 +719,7 @@ ret}
         machine.run();
 
 
-        assert_eq!(machine.memory.read().unwrap()[1..9], [0, 0, 0, 0, 0, 0, 0, 10]);
+        assert_eq!(machine.memory.read().unwrap()[1..9], [10, 0, 0, 0, 0, 0, 0, 0]);
 
 
     }
@@ -678,7 +758,7 @@ ret}";
 
         machine.run();
 
-        assert_eq!(machine.memory.read().unwrap()[1..9], [0, 0, 0, 0, 0, 0, 0, 45]);
+        assert_eq!(machine.memory.read().unwrap()[1..9], [45, 0, 0, 0, 0, 0, 0, 0]);
 
     }
 
@@ -722,7 +802,7 @@ ret}";
 
         machine.run();
 
-        assert_eq!(machine.memory.read().unwrap()[1..9], [0, 0, 0, 0, 0, 0, 0, 35]);
+        assert_eq!(machine.memory.read().unwrap()[1..9], [35, 0, 0, 0, 0, 0, 0, 0]);
         assert_eq!(argument.unwrap().read().unwrap().downcast_ref::<u64>().unwrap(), &45u64);
 
     }
@@ -747,7 +827,7 @@ ret}
 
         machine.run();
 
-        assert_eq!(machine.memory.read().unwrap()[1..9], [0, 0, 0, 0, 0, 0, 0, 10]);
+        assert_eq!(machine.memory.read().unwrap()[1..9], [10, 0, 0, 0, 0, 0, 0, 0]);
 
     }
 
@@ -772,9 +852,42 @@ ret}
 
         machine.run();
 
-        assert_eq!(machine.memory.read().unwrap()[1..9], [0, 0, 0, 0, 0, 0, 0, 10]);
+        assert_eq!(machine.memory.read().unwrap()[1..9], [10, 0, 0, 0, 0, 0, 0, 0]);
 
     }
-    
+
+    #[test]
+    fn test_reallocation() {
+        let input = "
+main{
+move 64, $0, 8u64
+malloc $1, $0
+move 64, $2, 10u64
+move 64, $1, $2
+move 64, $0, 16u64
+realloc $1, $0
+move 64, $2, 8u64
+addu 64, $1, $2
+move 64, $1, $2
+ret}
+";
+        let binary = generate_binary(input, "test").unwrap();
+
+        let mut machine = Machine::new();
+
+        println!("{}", binary.assembly());
+        println!("{}", binary.program_with_count());
+        
+        machine.load_binary(&binary);
+
+        machine.add_core();
+
+        machine.run();
+
+        println!("{:?}", machine.memory.read().unwrap());
+
+        assert_eq!(machine.memory.read().unwrap()[1..17], [10, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0 ,0, 0, 0, 0, 0]);
+
+    }
 
 }

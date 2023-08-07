@@ -121,6 +121,7 @@ pub enum Fault {
     InvalidMessage,
     FileWriteError,
     InvalidFree,
+    InvalidRealloc,
 
 }
 
@@ -145,6 +146,7 @@ impl fmt::Display for Fault {
             Fault::InvalidMessage => write!(f, "Invalid Message"),
             Fault::FileWriteError => write!(f, "File Write Error"),
             Fault::InvalidFree => write!(f, "Invalid Free"),
+            Fault::InvalidRealloc => write!(f, "Invalid Realloc"),
         }
     }
 }

@@ -1,4 +1,5 @@
 
+use std::arch::x86_64::_CMP_TRUE_UQ;
 use std::collections::HashSet;
 use std::sync::{Arc,RwLock,TryLockError};
 use std::num::Wrapping;
@@ -499,6 +500,7 @@ impl Core {
             ForeignCall => self.foreigncall_opcode()?,
             Malloc => self.malloc_opcode()?,
             Free => self.free_opcode()?,
+            Realloc => self.realloc_opcode()?,
             
 
             x => {
@@ -690,8 +692,10 @@ impl Core {
                             if address >= memory.len() as u64 - 1 {
                                 return Err(Fault::InvalidAddress(address));
                             }
-                            memory[address as usize] = (self.registers_64[register] >> 8) as u8;
-                            memory[address as usize + 1] = self.registers_64[register] as u8;
+                            let bytes = self.registers_64[register].to_le_bytes();
+
+                            memory[address as usize] = bytes[0];
+                            memory[address as usize + 1] = bytes[1];
                             break;
                         },
                         Err(TryLockError::WouldBlock) => {
@@ -714,10 +718,13 @@ impl Core {
                             if address >= memory.len() as u64 - 3 {
                                 return Err(Fault::InvalidAddress(address));
                             }
-                            memory[address as usize] = (self.registers_64[register] >> 24) as u8;
-                            memory[address as usize + 1] = (self.registers_64[register] >> 16) as u8;
-                            memory[address as usize + 2] = (self.registers_64[register] >> 8) as u8;
-                            memory[address as usize + 3] = self.registers_64[register] as u8;
+                            let bytes = self.registers_64[register].to_le_bytes();
+
+                            memory[address as usize] = bytes[0];
+                            memory[address as usize + 1] = bytes[1];
+                            memory[address as usize + 2] = bytes[2];
+                            memory[address as usize + 3] = bytes[3];
+                            
                             break;
                         },
                         Err(TryLockError::WouldBlock) => {
@@ -740,14 +747,17 @@ impl Core {
                             if address >= memory.len() as u64 - 7 {
                                 return Err(Fault::InvalidAddress(address));
                             }
-                            memory[address as usize] = (self.registers_64[register] >> 56) as u8;
-                            memory[address as usize + 1] = (self.registers_64[register] >> 48) as u8;
-                            memory[address as usize + 2] = (self.registers_64[register] >> 40) as u8;
-                            memory[address as usize + 3] = (self.registers_64[register] >> 32) as u8;
-                            memory[address as usize + 4] = (self.registers_64[register] >> 24) as u8;
-                            memory[address as usize + 5] = (self.registers_64[register] >> 16) as u8;
-                            memory[address as usize + 6] = (self.registers_64[register] >> 8) as u8;
-                            memory[address as usize + 7] = self.registers_64[register] as u8;
+                            let bytes = self.registers_64[register].to_le_bytes();
+
+                            memory[address as usize] = bytes[0];
+                            memory[address as usize + 1] = bytes[1];
+                            memory[address as usize + 2] = bytes[2];
+                            memory[address as usize + 3] = bytes[3];
+                            memory[address as usize + 4] = bytes[4];
+                            memory[address as usize + 5] = bytes[5];
+                            memory[address as usize + 6] = bytes[6];
+                            memory[address as usize + 7] = bytes[7];
+
                             break;
                         },
                         Err(TryLockError::WouldBlock) => {
@@ -770,22 +780,25 @@ impl Core {
                             if address >= memory.len() as u64 - 15 {
                                 return Err(Fault::InvalidAddress(address));
                             }
-                            memory[address as usize] = (self.registers_128[register] >> 120) as u8;
-                            memory[address as usize + 1] = (self.registers_128[register] >> 112) as u8;
-                            memory[address as usize + 2] = (self.registers_128[register] >> 104) as u8;
-                            memory[address as usize + 3] = (self.registers_128[register] >> 96) as u8;
-                            memory[address as usize + 4] = (self.registers_128[register] >> 88) as u8;
-                            memory[address as usize + 5] = (self.registers_128[register] >> 80) as u8;
-                            memory[address as usize + 6] = (self.registers_128[register] >> 72) as u8;
-                            memory[address as usize + 7] = (self.registers_128[register] >> 64) as u8;
-                            memory[address as usize + 8] = (self.registers_128[register] >> 56) as u8;
-                            memory[address as usize + 9] = (self.registers_128[register] >> 48) as u8;
-                            memory[address as usize + 10] = (self.registers_128[register] >> 40) as u8;
-                            memory[address as usize + 11] = (self.registers_128[register] >> 32) as u8;
-                            memory[address as usize + 12] = (self.registers_128[register] >> 24) as u8;
-                            memory[address as usize + 13] = (self.registers_128[register] >> 16) as u8;
-                            memory[address as usize + 14] = (self.registers_128[register] >> 8) as u8;
-                            memory[address as usize + 15] = self.registers_128[register] as u8;
+                            let bytes = self.registers_128[register].to_le_bytes();
+
+                            memory[address as usize] = bytes[0];
+                            memory[address as usize + 1] = bytes[1];
+                            memory[address as usize + 2] = bytes[2];
+                            memory[address as usize + 3] = bytes[3];
+                            memory[address as usize + 4] = bytes[4];
+                            memory[address as usize + 5] = bytes[5];
+                            memory[address as usize + 6] = bytes[6];
+                            memory[address as usize + 7] = bytes[7];
+                            memory[address as usize + 8] = bytes[8];
+                            memory[address as usize + 9] = bytes[9];
+                            memory[address as usize + 10] = bytes[10];
+                            memory[address as usize + 11] = bytes[11];
+                            memory[address as usize + 12] = bytes[12];
+                            memory[address as usize + 13] = bytes[13];
+                            memory[address as usize + 14] = bytes[14];
+                            memory[address as usize + 15] = bytes[15];
+                            
                             break;
                         },
                         Err(TryLockError::WouldBlock) => {
@@ -7693,8 +7706,10 @@ impl Core {
                     return Err(Fault::InvalidAddress(address));
                 }
 
-                self.stack[address as usize] = (self.registers_64[register] >> 8) as u8;
-                self.stack[address as usize + 1] = self.registers_64[register] as u8;
+                let bytes = self.registers_64[register].to_be_bytes();
+
+                self.stack[address as usize] = bytes[0];
+                self.stack[address as usize + 1] = bytes[1];
             },
             32 => {
                 let register = self.program[self.program_counter] as u8 as usize;
@@ -7705,10 +7720,13 @@ impl Core {
                     return Err(Fault::InvalidAddress(address));
                 }
 
-                self.stack[address as usize] = (self.registers_64[register] >> 24) as u8;
-                self.stack[address as usize + 1] = (self.registers_64[register] >> 16) as u8;
-                self.stack[address as usize + 2] = (self.registers_64[register] >> 8) as u8;
-                self.stack[address as usize + 3] = self.registers_64[register] as u8;
+                let bytes = self.registers_64[register].to_be_bytes();
+
+                self.stack[address as usize] = bytes[0];
+                self.stack[address as usize + 1] = bytes[1];
+                self.stack[address as usize + 2] = bytes[2];
+                self.stack[address as usize + 3] = bytes[3];
+                self.stack[address as usize + 4] = bytes[4];
             },
             64 => {
                 let register = self.program[self.program_counter] as u8 as usize;
@@ -7718,15 +7736,16 @@ impl Core {
                 if address >= self.stack.len() as u64 - 7 {
                     return Err(Fault::InvalidAddress(address));
                 }
+                let bytes = self.registers_64[register].to_be_bytes();
 
-                self.stack[address as usize] = (self.registers_64[register] >> 56) as u8;
-                self.stack[address as usize + 1] = (self.registers_64[register] >> 48) as u8;
-                self.stack[address as usize + 2] = (self.registers_64[register] >> 40) as u8;
-                self.stack[address as usize + 3] = (self.registers_64[register] >> 32) as u8;
-                self.stack[address as usize + 4] = (self.registers_64[register] >> 24) as u8;
-                self.stack[address as usize + 5] = (self.registers_64[register] >> 16) as u8;
-                self.stack[address as usize + 6] = (self.registers_64[register] >> 8) as u8;
-                self.stack[address as usize + 7] = self.registers_64[register] as u8;
+                self.stack[address as usize] = bytes[0];
+                self.stack[address as usize + 1] = bytes[1];
+                self.stack[address as usize + 2] = bytes[2];
+                self.stack[address as usize + 3] = bytes[3];
+                self.stack[address as usize + 4] = bytes[4];
+                self.stack[address as usize + 5] = bytes[5];
+                self.stack[address as usize + 6] = bytes[6];
+                self.stack[address as usize + 7] = bytes[7];
             },
             128 => {
                 let register = self.program[self.program_counter] as u8 as usize;
@@ -7736,24 +7755,24 @@ impl Core {
                 if address >= self.stack.len() as u64 - 15 {
                     return Err(Fault::InvalidAddress(address));
                 }
+                let bytes = self.registers_128[register].to_be_bytes();
 
-                self.stack[address as usize] = (self.registers_128[register] >> 120) as u8;
-                self.stack[address as usize + 1] = (self.registers_128[register] >> 112) as u8;
-                self.stack[address as usize + 2] = (self.registers_128[register] >> 104) as u8;
-                self.stack[address as usize + 3] = (self.registers_128[register] >> 96) as u8;
-                self.stack[address as usize + 4] = (self.registers_128[register] >> 88) as u8;
-                self.stack[address as usize + 5] = (self.registers_128[register] >> 80) as u8;
-                self.stack[address as usize + 6] = (self.registers_128[register] >> 72) as u8;
-                self.stack[address as usize + 7] = (self.registers_128[register] >> 64) as u8;
-                self.stack[address as usize + 8] = (self.registers_128[register] >> 56) as u8;
-                self.stack[address as usize + 9] = (self.registers_128[register] >> 48) as u8;
-                self.stack[address as usize + 10] = (self.registers_128[register] >> 40) as u8;
-                self.stack[address as usize + 11] = (self.registers_128[register] >> 32) as u8;
-                self.stack[address as usize + 12] = (self.registers_128[register] >> 24) as u8;
-                self.stack[address as usize + 13] = (self.registers_128[register] >> 16) as u8;
-                self.stack[address as usize + 14] = (self.registers_128[register] >> 8) as u8;
-                self.stack[address as usize + 15] = self.registers_128[register] as u8;
-                
+                self.stack[address as usize] = bytes[0];
+                self.stack[address as usize + 1] = bytes[1];
+                self.stack[address as usize + 2] = bytes[2];
+                self.stack[address as usize + 3] = bytes[3];
+                self.stack[address as usize + 4] = bytes[4];
+                self.stack[address as usize + 5] = bytes[5];
+                self.stack[address as usize + 6] = bytes[6];
+                self.stack[address as usize + 7] = bytes[7];
+                self.stack[address as usize + 8] = bytes[8];
+                self.stack[address as usize + 9] = bytes[9];
+                self.stack[address as usize + 10] = bytes[10];
+                self.stack[address as usize + 11] = bytes[11];
+                self.stack[address as usize + 12] = bytes[12];
+                self.stack[address as usize + 13] = bytes[13];
+                self.stack[address as usize + 14] = bytes[14];
+                self.stack[address as usize + 15] = bytes[15];
             },
             _ => return Err(Fault::InvalidSize),
 
@@ -8328,6 +8347,38 @@ impl Core {
                 return Err(Fault::InvalidMessage);
             }
         }
+    }
+
+    fn realloc_opcode(&mut self) -> Result<(), Fault> {
+        let ptr_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let size_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(ptr_reg as usize, size_reg as usize);
+
+        let ptr = self.registers_64[ptr_reg as usize];
+
+        let size = self.registers_64[size_reg as usize];
+
+        let message = Message::Realloc(ptr, size);
+
+        self.send_message(message)?;
+
+        let message = self.recv_message()?;
+
+        match message {
+            Message::MemoryPointer(ptr) => {
+                self.registers_64[ptr_reg as usize] = ptr as u64;
+            },
+            Message::Error(fault) => {
+                return Err(fault);
+            },
+            _ => {
+                return Err(Fault::InvalidMessage);
+            }
+        }
+        Ok(())
     }
     
     
