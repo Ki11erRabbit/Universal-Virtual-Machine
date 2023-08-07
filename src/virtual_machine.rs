@@ -80,7 +80,6 @@ impl Machine {
 
     fn check_main_core(&mut self, main_thread_done: &mut bool) {
         if self.core_threads[self.main_thread_id as usize].as_ref().expect("main core doesn't exist").is_finished() {
-            println!("Main thread finished");
             *main_thread_done = true;
             self.join_thread(self.main_thread_id);
 
@@ -99,6 +98,17 @@ impl Machine {
                             Ok(_) => eprintln!("Core {} finished", *thread_id),
                             Err(fault) => eprintln!("Core {} faulted with: {}", *thread_id, fault),
                         }
+
+                        match self.thread_children.remove(thread_id) {
+                            Some(parent_core_id) => {
+                                let parent_channel = self.channels.borrow()[parent_core_id as usize].as_ref().expect("channel no longer exists").0.clone();
+                                let message = Message::Success;
+                                parent_channel.send(message).unwrap();
+                            },
+                            None => {},
+                        }
+
+                        self.channels.borrow_mut()[*thread_id as usize] = None;
                     },
                     Err(_) => eprintln!("Core {} panicked", *thread_id),
                 }
@@ -111,7 +121,6 @@ impl Machine {
 
     fn check_messages(&mut self) {
         let mut core_id = 0;
-        let mut channel_to_remove = None;
         self.channels.clone().borrow().iter().for_each(|channels| {
             if channels.is_none() {
                 core_id += 1;
@@ -143,28 +152,18 @@ impl Machine {
                             send.send(message).unwrap();
                         },
                         Message::ThreadDone(_) => {
-                            /*match self.thread_children.remove(&core_id) {
-                                Some(parent_core_id) => {
-                                    let parent_channel = self.channels.borrow()[parent_core_id as usize].as_ref().expect("channel no longer exists").0.clone();
-                                    let message = Message::ThreadDone(core_id as u8);
-                                    parent_channel.send(message).unwrap();
-                                },
-                                None => {},
-                            }*/
 
                             send.send(Message::Success).unwrap();
                         },
                         Message::JoinThread(thread_id) => {
-                            channel_to_remove = Some(core_id);
 
                             //self.join_thread(thread_id);
 
                             self.threads_to_join.borrow_mut().push(thread_id);
 
-                            send.send(Message::Success).unwrap();
+                            //send.send(Message::Success).unwrap();
                         },
                         Message::DetachThread(thread_id) => {
-                            channel_to_remove = Some(core_id);
 
                             self.core_threads[thread_id as usize].take().expect("Already joined this core");
 
@@ -180,10 +179,6 @@ impl Machine {
 
            core_id += 1;
         });
-
-        if let Some(core_id) = channel_to_remove {
-            self.channels.borrow_mut()[core_id as usize] = None;
-        }
 
     }
 

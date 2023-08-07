@@ -200,14 +200,14 @@ impl Core {
     fn send_message(&self, message: Message) -> Result<(), Fault> {
         match self.send_channel.send(message) {
             Ok(_) => Ok(()),
-            Err(_) => Err(Fault::MachineCrash),
+            Err(_) => Err(Fault::MachineCrash("Could not send message"))
         }
     }
 
     fn recv_message(&self) -> Result<Message, Fault> {
         match self.recv_channel.recv() {
             Ok(message) => Ok(message),
-            Err(_) => Err(Fault::MachineCrash),
+            Err(_) => Err(Fault::MachineCrash("Could not receive message"))
         }
     }
 
@@ -314,7 +314,7 @@ impl Core {
 
             },
             Err(TryRecvError::Disconnected) => {
-                return Err(Fault::MachineCrash);
+                return Err(Fault::MachineCrash("Could not check on messages"))
             },
             Err(TryRecvError::Empty) => {
 
@@ -355,10 +355,6 @@ impl Core {
         use Opcode::*;
 
         let opcode = self.decode_opcode();
-
-        if self.main_thread {
-            println!("Opcode: {:?}", opcode);
-        }
 
         match opcode {
             Halt | NoOp => return Ok(true),
@@ -8173,12 +8169,8 @@ impl Core {
         let message = Message::JoinThread(core_id);
 
         self.send_message(message)?;
-
-        println!("Sent join message");
         
         let message = self.recv_message()?;
-
-        println!("Received join message");
 
         match message {
             Message::Success => {
