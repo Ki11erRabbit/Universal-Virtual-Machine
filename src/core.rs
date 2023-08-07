@@ -8245,8 +8245,8 @@ impl Core {
 
         let message = self.recv_message()?;
 
-        let mut function = match message {
-            Message::ForeignFunction(function) => function,
+        let (argument, function) = match message {
+            Message::ForeignFunction(argument,function) => (argument, function),
             Message::Error(fault) => {
                 return Err(fault);
             },
@@ -8255,7 +8255,7 @@ impl Core {
             }
         };
 
-        function(self)?;
+        function(self, argument)?;
         
         
         Ok(())

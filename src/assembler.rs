@@ -1465,7 +1465,7 @@ where
                         _ => return Err("Invalid arguments for stackptr".to_owned()),
                     }
                 },
-                "foriegn" => {
+                "foreign" => {
                     let mut bytes: Vec<u8> = Vec::new();
                     let mut ops: Vec<MoveOps> = Vec::new();
                     for arg in args {
@@ -1484,7 +1484,7 @@ where
                             temp.append(&mut bytes);
                             return Ok(temp);
                         },
-                        _ => return Err("Invalid arguments for foriegn".to_owned()),
+                        _ => return Err("Invalid arguments for foreign".to_owned()),
                     }
                 },
                 instr => return Err(format!("Invalid instruction: {}", instr)),

@@ -1,6 +1,7 @@
 #![allow(arithmetic_overflow)]
 
 use std::cell::RefCell;
+use std::any::Any;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};
@@ -10,7 +11,7 @@ use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::Write;
 
-use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, FFun};
+use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, AnyThreadSafe};
 use crate::binary::Binary;
 use crate::core::Core;
 
@@ -27,7 +28,7 @@ pub struct Machine {
     thread_children: HashMap<CoreId, CoreId>,
     threads_to_join: Rc<RefCell<Vec<CoreId>>>,
     main_thread_id: CoreId,
-    foriegn_functions: Vec<FFun>,
+    foriegn_functions: Vec<(Option<Arc<RwLock<dyn AnyThreadSafe>>>, Arc<fn(&mut Core, Option<Arc<RwLock<dyn AnyThreadSafe>>>)-> Result<(),Fault>>)>,
 }
 
 impl Machine {
@@ -56,8 +57,8 @@ impl Machine {
         machine
     }
 
-    pub fn add_function(&mut self, function: FFun) {
-        self.foriegn_functions.push(function);
+    pub fn add_function(&mut self, func_arg: Option<Arc<RwLock<dyn AnyThreadSafe>>>, function: fn(&mut Core, Option<Arc<RwLock<dyn AnyThreadSafe>>>) -> Result<(),Fault>) {
+        self.foriegn_functions.push((func_arg, Arc::new(function)));
     }
 
     pub fn run_at(&mut self, program_counter: usize) {
@@ -176,8 +177,8 @@ impl Machine {
                             send.send(Message::Success).unwrap();
                         },
                         Message::GetForeignFunction(function_id) => {
-                            let message = self.foriegn_functions[function_id as usize];
-                            send.send(Message::ForeignFunction(message)).unwrap();
+                            let (arg, func) = self.foriegn_functions[function_id as usize].clone();
+                            send.send(Message::ForeignFunction(arg, func)).unwrap();
                         },
                         
                         _ => unimplemented!(),
@@ -344,7 +345,7 @@ mod tests {
 
     use super::*;
 
-    /*#[test]
+    #[test]
     fn test_file_hello_world() {
         let input = "File{
 .string \"hello.txt\"}
@@ -523,7 +524,7 @@ ret
 
         assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 34]);
         
-    }*/
+    }
 
     #[test]
     fn test_multicore()
@@ -575,21 +576,38 @@ ret}
         machine.run();
 
 
-        assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 0, 0, 0, 0, 10]);
+            assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 0, 0, 0, 0, 10]);
 
 
+        }
+
+
+    fn simple_mutation(core: &mut Core) -> Result<(),Fault> {
+
+        let reg = core.get_register_64(0)?;
+
+        *reg += 10;
+
+
+        Ok(())
     }
 
-    /*#[test]
-    fn test_foriegn_function() {
-        let input = "main{
+    #[test]
+    fn test_foreign_function() {
+        let input = "mem{
+.u64 0u64}
+main{
 move 64, $0, 35u64
 foreign $1
+move 64, $1, mem
+move 64, $1, $0
 ret}";
 
         let binary = generate_binary(input, "test").unwrap();
 
         let mut machine = Machine::new();
+
+        machine.add_function(simple_mutation);
 
         machine.load_binary(&binary);
 
@@ -597,9 +615,9 @@ ret}";
 
         machine.run();
 
-        assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 0, 0, 0, 0, 35]);
+        assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 0, 0, 0, 0, 45]);
 
-    }*/
+    }
 
 
 }

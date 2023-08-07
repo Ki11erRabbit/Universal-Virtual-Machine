@@ -6,6 +6,9 @@ pub mod assembler;
 pub mod binary;
 
 use crate::core::Core;
+use std::sync::Arc;
+use std::sync::RwLock;
+use std::any::Any;
 use std::fmt;
 
 pub type CoreId = u8;
@@ -13,7 +16,7 @@ pub type Byte = u8;
 pub type Pointer = u64;
 
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug,PartialEq, Clone)]
 pub enum RegisterType {
     Register64,
     Register128,
@@ -34,12 +37,12 @@ impl fmt::Display for RegisterType {
     }
 }
 
-//pub type FFun = Box<dyn FnMut(&mut Core) -> Result<(),Fault> + Send + Sync + 'static>;
+pub unsafe trait AnyThreadSafe: Any + Send + Sync {}
 
+//pub type FFun = Box<dyn FnMut(&mut Core) -> Result<(),Fault> + Send + Sync + 'static>;
+//fn(&mut Core) -> Result<(), Fault>
 /// Messages that a core and the machine can send to each other
-#[derive(Clone)]
-pub enum Message<FFun> where
-    FFun: FnMut(&mut Core) -> Result<(),Fault> + Send + Sync + 'static
+pub enum Message
 {
     Malloc(u64),                               // Takes size
     MemoryPointer(Pointer),                    // Returns pointer
@@ -63,11 +66,39 @@ pub enum Message<FFun> where
     Error(Fault),                              // Returns error
     Success,                                   // Returns success
     GetForeignFunction(u64),                   // Takes function name
-    ForeignFunction(FFun),// Returns function
+    ForeignFunction(Option<Arc<RwLock<dyn AnyThreadSafe>>>,Arc<fn(&mut Core, Option<Arc<RwLock<dyn AnyThreadSafe>>>)-> Result<(),Fault>>),// Returns function
 }
 
+impl fmt::Debug for Message {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Message::Malloc(size) => write!(f, "Malloc({})", size),
+            Message::MemoryPointer(pointer) => write!(f, "MemoryPointer({})", pointer),
+            Message::DeallocateMemory(pointer) => write!(f, "DeallocateMemory({})", pointer),
+            Message::DereferenceStackPointer(core_id,pointer) => write!(f, "DereferenceStackPointer({}, {})", core_id, pointer),
+            Message::DereferencedMemory(data) => write!(f, "DereferencedMemory({:?})", data),
+            Message::OpenFile(filename,flags) => write!(f, "OpenFile({:?}, {})", filename, flags),
+            Message::FileDescriptor(fd) => write!(f, "FileDescriptor({})", fd),
+            Message::ReadFile(fd,amount) => write!(f, "ReadFile({}, {})", fd, amount),
+            Message::FileData(data,amount) => write!(f, "FileData({:?}, {})", data, amount),
+            Message::WriteFile(fd,data) => write!(f, "WriteFile({}, {:?})", fd, data),
+            Message::CloseFile(fd) => write!(f, "CloseFile({})", fd),
+            Message::Flush(fd) => write!(f, "Flush({})", fd),
+            Message::FileClosed => write!(f, "FileClosed"),
+            Message::SpawnThread(address) => write!(f, "SpawnThread({})", address),
+            Message::ThreadSpawned(core_id) => write!(f, "ThreadSpawned({})", core_id),
+            Message::ThreadDone(core_id) => write!(f, "ThreadDone({})", core_id),
+            Message::JoinThread(core_id) => write!(f, "JoinThread({})", core_id),
+            Message::DetachThread(core_id) => write!(f, "DetachThread({})", core_id),
+            Message::Error(fault) => write!(f, "Error({})", fault),
+            Message::Success => write!(f, "Success"),
+            Message::GetForeignFunction(address) => write!(f, "GetForeignFunction({})", address),
+            Message::ForeignFunction(_, _) => write!(f, "ForeignFunction"),
+        }
+    }
+}
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug,PartialEq, Clone)]
 pub enum Fault {
     ProgramLock,
     InvalidOperation,
