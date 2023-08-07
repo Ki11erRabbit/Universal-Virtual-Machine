@@ -38,7 +38,9 @@ impl fmt::Display for RegisterType {
 
 /// Messages that a core and the machine can send to each other
 #[derive(Clone)]
-pub enum Message {
+pub enum Message<FFun> where
+    FFun: FnMut(&mut Core) -> Result<(),Fault> + Send + Sync + 'static
+{
     Malloc(u64),                               // Takes size
     MemoryPointer(Pointer),                    // Returns pointer
     DeallocateMemory(Pointer),                 // Takes pointer
@@ -61,7 +63,7 @@ pub enum Message {
     Error(Fault),                              // Returns error
     Success,                                   // Returns success
     GetForeignFunction(u64),                   // Takes function name
-    ForeignFunction(Box<dyn FnOnce(&mut Core) -> Result<(), Fault>>),// Returns function
+    ForeignFunction(FFun),// Returns function
 }
 
 
