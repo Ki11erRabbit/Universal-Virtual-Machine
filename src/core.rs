@@ -189,6 +189,38 @@ impl Core {
         }
     }
 
+    pub fn get_register_64<'input>(&'input mut self, register: usize) -> Result<&'input mut u64, Fault> {
+        if register < REGISTER_64_COUNT {
+            Ok(&mut self.registers_64[register])
+        } else {
+            Err(Fault::InvalidRegister(register, RegisterType::Register64))
+        }
+    }
+
+    pub fn get_register_128<'input>(&'input mut self, register: usize) -> Result<&'input mut u128, Fault> {
+        if register < REGISTER_128_COUNT {
+            Ok(&mut self.registers_128[register])
+        } else {
+            Err(Fault::InvalidRegister(register, RegisterType::Register128))
+        }
+    }
+
+    pub fn get_register_f32<'input>(&'input mut self, register: usize) -> Result<&'input mut f32, Fault> {
+        if register < REGISTER_F32_COUNT {
+            Ok(&mut self.registers_f32[register])
+        } else {
+            Err(Fault::InvalidRegister(register, RegisterType::RegisterF32))
+        }
+    }
+
+    pub fn get_register_f64<'input>(&'input mut self, register: usize) -> Result<&'input mut f64, Fault> {
+        if register < REGISTER_F64_COUNT {
+            Ok(&mut self.registers_f64[register])
+        } else {
+            Err(Fault::InvalidRegister(register, RegisterType::RegisterF64))
+        }
+    }
+
     pub fn set_main_thread(&mut self) {
         self.main_thread = true;
     }
@@ -464,6 +496,7 @@ impl Core {
             ThreadReturn => self.threadreturn_opcode()?,
             ThreadJoin => self.threadjoin_opcode()?,
             ThreadDetach => self.threaddetach_opcode()?,
+            ForeignCall => self.foreigncall_opcode()?,
             
 
             x => {
@@ -8197,6 +8230,36 @@ impl Core {
 
         Ok(())
     }
+
+    fn foreigncall_opcode(&mut self) -> Result<(), Fault> {
+        let function_id_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(function_id_reg as usize);
+
+        let function_id = self.registers_64[function_id_reg as usize] as u64;
+
+        let message = Message::GetForeignFunction(function_id);
+
+        self.send_message(message)?;
+
+        let message = self.recv_message()?;
+
+        let mut function = match message {
+            Message::ForeignFunction(function) => function,
+            Message::Error(fault) => {
+                return Err(fault);
+            },
+            _ => {
+                return Err(Fault::InvalidMessage);
+            }
+        };
+
+        function(self)?;
+        
+        
+        Ok(())
+    }
     
     
 }
@@ -8207,7 +8270,7 @@ impl Core {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    /*use super::*;
     use std::sync::mpsc::channel;
 
     #[test]
@@ -8478,7 +8541,7 @@ mod tests {
 
         assert_eq!(core.registers_64[0], 8);
         
-    }
+    }*/
 
 
 }

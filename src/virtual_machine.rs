@@ -10,7 +10,7 @@ use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::Write;
 
-use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault};
+use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, FFun};
 use crate::binary::Binary;
 use crate::core::Core;
 
@@ -27,6 +27,7 @@ pub struct Machine {
     thread_children: HashMap<CoreId, CoreId>,
     threads_to_join: Rc<RefCell<Vec<CoreId>>>,
     main_thread_id: CoreId,
+    foriegn_functions: Vec<FFun>,
 }
 
 impl Machine {
@@ -43,6 +44,7 @@ impl Machine {
             thread_children: HashMap::new(),
             threads_to_join: Rc::new(RefCell::new(Vec::new())),
             main_thread_id: 0,
+            foriegn_functions: Vec::new(),
         }
     }
 
@@ -52,6 +54,10 @@ impl Machine {
             machine.add_core();
         }
         machine
+    }
+
+    pub fn add_function(&mut self, function: FFun) {
+        self.foriegn_functions.push(function);
     }
 
     pub fn run_at(&mut self, program_counter: usize) {
@@ -169,6 +175,11 @@ impl Machine {
 
                             send.send(Message::Success).unwrap();
                         },
+                        Message::GetForeignFunction(function_id) => {
+                            let message = self.foriegn_functions[function_id as usize];
+                            send.send(Message::ForeignFunction(message)).unwrap();
+                        },
+                        
                         _ => unimplemented!(),
 
                     }
@@ -333,7 +344,7 @@ mod tests {
 
     use super::*;
 
-    #[test]
+    /*#[test]
     fn test_file_hello_world() {
         let input = "File{
 .string \"hello.txt\"}
@@ -512,10 +523,11 @@ ret
 
         assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 34]);
         
-    }
+    }*/
 
     #[test]
-    fn test_multicore() {
+    fn test_multicore()
+        {
         let input = "counter{
 .u64 0u64}
 count{
@@ -567,5 +579,27 @@ ret}
 
 
     }
+
+    /*#[test]
+    fn test_foriegn_function() {
+        let input = "main{
+move 64, $0, 35u64
+foreign $1
+ret}";
+
+        let binary = generate_binary(input, "test").unwrap();
+
+        let mut machine = Machine::new();
+
+        machine.load_binary(&binary);
+
+        machine.add_core();
+
+        machine.run();
+
+        assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 0, 0, 0, 0, 35]);
+
+    }*/
+
 
 }

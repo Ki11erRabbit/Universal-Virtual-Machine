@@ -182,6 +182,7 @@ pub enum Opcode {
     ThreadDetach,
 
     StackPointer,
+    ForeignCall,
     
     
     
@@ -368,6 +369,7 @@ impl From<u16> for Opcode {
             163 => ThreadJoin,
             164 => ThreadDetach,
             165 => StackPointer,
+            166 => ForeignCall,
             
             
             /* Instructions illegal instruction */

@@ -5,6 +5,7 @@ pub mod core;
 pub mod assembler;
 pub mod binary;
 
+use crate::core::Core;
 use std::fmt;
 
 pub type CoreId = u8;
@@ -33,9 +34,10 @@ impl fmt::Display for RegisterType {
     }
 }
 
+//pub type FFun = Box<dyn FnMut(&mut Core) -> Result<(),Fault> + Send + Sync + 'static>;
 
 /// Messages that a core and the machine can send to each other
-#[derive(Debug,PartialEq)]
+#[derive(Clone)]
 pub enum Message {
     Malloc(u64),                               // Takes size
     MemoryPointer(Pointer),                    // Returns pointer
@@ -58,6 +60,8 @@ pub enum Message {
 
     Error(Fault),                              // Returns error
     Success,                                   // Returns success
+    GetForeignFunction(u64),                   // Takes function name
+    ForeignFunction(Box<dyn FnOnce(&mut Core) -> Result<(), Fault>>),// Returns function
 }
 
 

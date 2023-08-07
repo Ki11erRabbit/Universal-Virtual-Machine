@@ -1465,6 +1465,28 @@ where
                         _ => return Err("Invalid arguments for stackptr".to_owned()),
                     }
                 },
+                "foriegn" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected only registers".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Register] => {
+                            let mut temp = vec![166,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for foriegn".to_owned()),
+                    }
+                },
                 instr => return Err(format!("Invalid instruction: {}", instr)),
                 
                     

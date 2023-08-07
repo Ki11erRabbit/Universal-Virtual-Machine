@@ -1127,9 +1127,18 @@ impl Binary {
 
                     assembly.push_str(&format!("${}\n", reg));
                 },
+                ForeignCall => {
+                    assembly.push_str("foriegn ");
+                    let reg = self.program[read_head];
+                    read_head += 1;
+
+                    assembly.push_str(&format!("${}\n", reg));
+                },
+                
                 Illegal => {
                     assembly.push_str("illegal\n");
                 },
+
             }
             
             
