@@ -8174,7 +8174,11 @@ impl Core {
 
         self.send_message(message)?;
 
+        println!("Sent join message");
+        
         let message = self.recv_message()?;
+
+        println!("Received join message");
 
         match message {
             Message::Success => {

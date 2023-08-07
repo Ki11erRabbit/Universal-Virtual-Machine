@@ -22,9 +22,10 @@ pub struct Machine {
     core_threads: Vec<Option<JoinHandle<Result<(),Fault>>>>,
     program: Option<Arc<Vec<Byte>>>,
     entry_point: Option<usize>,
-    channels: Rc<RefCell<Vec<(Sender<Message>, Receiver<Message>)>>>,
+    channels: Rc<RefCell<Vec<Option<(Sender<Message>, Receiver<Message>)>>>>,
     files: Vec<Box<dyn Write>>,
     thread_children: HashMap<CoreId, CoreId>,
+    threads_to_join: Rc<RefCell<Vec<CoreId>>>,
     main_thread_id: CoreId,
 }
 
@@ -40,6 +41,7 @@ impl Machine {
             channels: Rc::new(RefCell::new(Vec::new())),
             files: vec![Box::new(std::io::stdout()), Box::new(std::io::stderr())],
             thread_children: HashMap::new(),
+            threads_to_join: Rc::new(RefCell::new(Vec::new())),
             main_thread_id: 0,
         }
     }
@@ -65,9 +67,10 @@ impl Machine {
         loop {
             self.check_main_core(&mut main_thread_done);
             self.check_messages();
+            self.join_joinable_threads();
 
             //TODO: check for commands from the threads to do various things like allocate more memory, etc.
-            if self.core_threads.len() == 0 || main_thread_done {
+            if main_thread_done {
                 break;
             }
         }
@@ -77,18 +80,44 @@ impl Machine {
 
     fn check_main_core(&mut self, main_thread_done: &mut bool) {
         if self.core_threads[self.main_thread_id as usize].as_ref().expect("main core doesn't exist").is_finished() {
+            println!("Main thread finished");
             *main_thread_done = true;
             self.join_thread(self.main_thread_id);
 
-            self.channels.borrow_mut().remove(self.main_thread_id as usize);
+            self.channels.borrow_mut()[self.main_thread_id as usize] = None;
         }
 
+    }
+
+    fn join_joinable_threads(&mut self) {
+        let mut threads_joined = Vec::new();
+        for thread_id in self.threads_to_join.borrow().iter() {
+            if self.core_threads[*thread_id as usize].as_ref().expect("core doesn't exist").is_finished() {
+                match self.core_threads[*thread_id as usize].take().expect("Already joined this core").join() {
+                    Ok(result) => {
+                        match result {
+                            Ok(_) => eprintln!("Core {} finished", *thread_id),
+                            Err(fault) => eprintln!("Core {} faulted with: {}", *thread_id, fault),
+                        }
+                    },
+                    Err(_) => eprintln!("Core {} panicked", *thread_id),
+                }
+                        threads_joined.push(*thread_id);
+                    }
+                }
+
+        self.threads_to_join.borrow_mut().retain(|thread_id| !threads_joined.contains(thread_id));
     }
 
     fn check_messages(&mut self) {
         let mut core_id = 0;
         let mut channel_to_remove = None;
-        for (send, recv) in self.channels.clone().borrow().iter() {
+        self.channels.clone().borrow().iter().for_each(|channels| {
+            if channels.is_none() {
+                core_id += 1;
+                return;
+            }
+            let (send, recv) = channels.as_ref().expect("channel no longer exists");
             match recv.try_recv() {
                 Ok(message) => {
                     match message {
@@ -114,21 +143,30 @@ impl Machine {
                             send.send(message).unwrap();
                         },
                         Message::ThreadDone(_) => {
-                            match self.thread_children.remove(&core_id) {
+                            /*match self.thread_children.remove(&core_id) {
                                 Some(parent_core_id) => {
-                                    let parent_channel = self.channels.borrow()[parent_core_id as usize].0.clone();
+                                    let parent_channel = self.channels.borrow()[parent_core_id as usize].as_ref().expect("channel no longer exists").0.clone();
                                     let message = Message::ThreadDone(core_id as u8);
                                     parent_channel.send(message).unwrap();
                                 },
                                 None => {},
-                            }
+                            }*/
 
                             send.send(Message::Success).unwrap();
                         },
                         Message::JoinThread(thread_id) => {
                             channel_to_remove = Some(core_id);
 
-                            self.join_thread(thread_id);
+                            //self.join_thread(thread_id);
+
+                            self.threads_to_join.borrow_mut().push(thread_id);
+
+                            send.send(Message::Success).unwrap();
+                        },
+                        Message::DetachThread(thread_id) => {
+                            channel_to_remove = Some(core_id);
+
+                            self.core_threads[thread_id as usize].take().expect("Already joined this core");
 
                             send.send(Message::Success).unwrap();
                         },
@@ -141,10 +179,10 @@ impl Machine {
             }
 
            core_id += 1;
-        }
+        });
 
         if let Some(core_id) = channel_to_remove {
-            self.channels.borrow_mut().remove(core_id as usize);
+            self.channels.borrow_mut()[core_id as usize] = None;
         }
 
     }
@@ -235,7 +273,7 @@ impl Machine {
         //TODO: Make it so that we don't panic from trying to add another core while running
         let (core_sender, core_receiver) = channel();
         let (machine_sender, machine_receiver) = channel();
-        self.channels.borrow_mut().push((core_sender, machine_receiver));
+        self.channels.borrow_mut().push(Some((core_sender, machine_receiver)));
         let core = Core::new(self.memory.clone(), machine_sender, core_receiver,);
         self.cores.push(core);
     }
@@ -499,6 +537,10 @@ jump loop
 }
 end{
 move 64, $0, $1
+move 8, $10, 68
+move 64, $11, 1i64
+writebyte $11, $10
+flush $11
 ret}
 main{
 move 64, $0, count
