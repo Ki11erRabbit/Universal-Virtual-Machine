@@ -142,6 +142,7 @@ pub enum Opcode {
     /* Instructions for memory management */
     Malloc,
     Free,
+    Realloc,
     /* IO instructions */
     ReadByte,
     /* Takes a string pointer and a length */
@@ -370,6 +371,7 @@ impl From<u16> for Opcode {
             164 => ThreadDetach,
             165 => StackPointer,
             166 => ForeignCall,
+            167 => Realloc,
             
             
             /* Instructions illegal instruction */

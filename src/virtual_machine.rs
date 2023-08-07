@@ -1,17 +1,15 @@
-#![allow(arithmetic_overflow)]
-
 use std::cell::RefCell;
 use std::any::Any;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, TryLockError};
 use std::thread::{self,JoinHandle};
 use std::sync::mpsc::{Sender,Receiver, channel};
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::Write;
 
-use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, ForeignFunction, ForeignFunctionArg};
+use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, ForeignFunction, ForeignFunctionArg, FileDescriptor};
 use crate::binary::Binary;
 use crate::core::Core;
 
@@ -19,6 +17,8 @@ use crate::core::Core;
 
 pub struct Machine {
     memory: Arc<RwLock<Vec<Byte>>>,
+    allocated_blocks: HashMap<Pointer, usize>,
+    available_blocks: HashMap<Pointer, usize>,
     cores: Vec<Core>,
     core_threads: Vec<Option<JoinHandle<Result<(),Fault>>>>,
     program: Option<Arc<Vec<Byte>>>,
@@ -36,6 +36,8 @@ impl Machine {
     pub fn new() -> Machine {
         Machine {
             memory: Arc::new(RwLock::new(Vec::new())),
+            allocated_blocks: HashMap::new(),
+            available_blocks: HashMap::new(),
             cores: Vec::new(),
             core_threads: Vec::new(),
             program: None,
@@ -159,16 +161,10 @@ impl Machine {
                             send.send(message).unwrap();
                         },
                         Message::ThreadDone(_) => {
-
                             send.send(Message::Success).unwrap();
                         },
                         Message::JoinThread(thread_id) => {
-
-                            //self.join_thread(thread_id);
-
                             self.threads_to_join.borrow_mut().push(thread_id);
-
-                            //send.send(Message::Success).unwrap();
                         },
                         Message::DetachThread(thread_id) => {
 
@@ -180,7 +176,14 @@ impl Machine {
                             let (arg, func) = self.foriegn_functions[function_id as usize].clone();
                             send.send(Message::ForeignFunction(arg, func)).unwrap();
                         },
-                        
+                        Message::Malloc(size) => {
+                            let message = self.malloc(size);
+                            send.send(message).unwrap();
+                        },
+                        Message::Free(ptr) => {
+                            let message = self.free(ptr);
+                            send.send(message).unwrap();
+                        },
                         _ => unimplemented!(),
 
                     }
@@ -192,6 +195,67 @@ impl Machine {
            core_id += 1;
         });
 
+    }
+
+    fn malloc(&mut self, size: u64) -> Message {
+        loop {
+            match self.memory.try_write() {
+                Ok(mut memory) => {
+
+                    let mut block = Vec::new();
+                    let mut new_size = 0;
+                    let mut new_ptr = 0;
+                    for (ptr, block_size) in self.available_blocks.iter() {
+                        if *block_size >= size as usize {
+                            new_size = *block_size - size as usize;
+                            new_ptr = *ptr + size;
+
+
+                            block.push(*ptr);
+
+                            break;
+                        }
+                    }
+
+                    if !block.is_empty() {
+                        if new_size > 0 {
+                            self.available_blocks.insert(new_ptr, new_size);
+                        }
+                        for ptr in block {
+                            self.available_blocks.remove(&ptr);
+                            return Message::MemoryPointer(ptr);
+                        }
+                    }
+                    
+                    let new_size = memory.len() + size as usize;
+
+                    let ptr = memory.len() as u64;
+
+                    if new_size > memory.len() {
+                        memory.resize(new_size, 0);
+                    }
+
+                    self.allocated_blocks.insert(ptr, size as usize);
+
+                    return Message::MemoryPointer(ptr);
+                }
+                Err(TryLockError::WouldBlock) => {
+                    continue;
+                },
+                Err(_) => {
+                    panic!("Memory lock poisoned");
+                }
+            }
+        }
+    }
+
+    fn free(&mut self, ptr: u64) -> Message {
+        if !self.allocated_blocks.contains_key(&ptr) {
+            return Message::Error(Fault::InvalidFree);
+        }
+        self.available_blocks.insert(ptr, self.allocated_blocks.get(&ptr).unwrap().clone());
+        self.allocated_blocks.remove(&ptr);
+        Message::Success
     }
 
     fn join_thread(&mut self, thread_id: CoreId) {
@@ -208,37 +272,37 @@ impl Machine {
         }
     }
 
-    fn write_file(&mut self, fd: i64, data: Vec<u8>) -> Message {
-        let fd = fd as usize - 1;
-        if fd >= self.files.len() {
+    fn write_file(&mut self, fd: FileDescriptor, data: Vec<u8>) -> Message {
+        let fd = fd - 1;
+        if fd as usize >= self.files.len() {
             return Message::Error(Fault::InvalidFileDescriptor);
         }
-        let file = &mut self.files[fd];
+        let file = &mut self.files[fd as usize];
         match file.write(&data) {
             Ok(_) => Message::Success,
             Err(_) => Message::Error(Fault::FileWriteError),
         }
     }
 
-    fn flush(&mut self, fd: i64) -> Message {
+    fn flush(&mut self, fd: FileDescriptor) -> Message {
         let fd = fd as usize - 1;
-        if fd >= self.files.len() {
+        if fd as usize >= self.files.len() {
             return Message::Error(Fault::InvalidFileDescriptor);
         }
-        let file = &mut self.files[fd];
+        let file = &mut self.files[fd as usize];
         match file.flush() {
             Ok(_) => Message::Success,
             Err(_) => Message::Error(Fault::FileWriteError),
         }
     }
 
-    fn close_file(&mut self, fd: i64) -> Message {
-        let fd = fd as usize - 1;
-        if fd >= self.files.len() {
+    fn close_file(&mut self, fd: FileDescriptor) -> Message {
+        let fd = fd - 1;
+        if fd as usize >= self.files.len() {
             return Message::Error(Fault::InvalidFileDescriptor);
         }
 
-        self.files.remove(fd);
+        self.files.remove(fd as usize);
         Message::Success
     }
 
@@ -258,7 +322,7 @@ impl Machine {
                 match file.open(filename) {
                     Ok(file) => {
                         self.files.push(Box::new(file));
-                        Message::FileDescriptor(self.files.len() as i64)
+                        Message::FileDescriptor(self.files.len() as FileDescriptor)
                     },
                     Err(_) => Message::Error(Fault::FileOpenError),
                 }
@@ -442,7 +506,7 @@ ret}
 
         println!("Time: {:?}", now.elapsed().unwrap());
 
-        assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 21, 0, 0, 0, 34, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(machine.memory.read().unwrap()[1..], [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 21, 0, 0, 0, 34, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     }
 
     #[test]
@@ -522,7 +586,7 @@ ret
 
         println!("Time: {:?}", now.elapsed().unwrap());
 
-        assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 34]);
+        assert_eq!(machine.memory.read().unwrap()[1..5], [0, 0, 0, 34]);
         
     }
 
@@ -575,7 +639,7 @@ ret}
         machine.run();
 
 
-        assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 0, 0, 0, 0, 10]);
+        assert_eq!(machine.memory.read().unwrap()[1..9], [0, 0, 0, 0, 0, 0, 0, 10]);
 
 
     }
@@ -614,7 +678,7 @@ ret}";
 
         machine.run();
 
-        assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 0, 0, 0, 0, 45]);
+        assert_eq!(machine.memory.read().unwrap()[1..9], [0, 0, 0, 0, 0, 0, 0, 45]);
 
     }
 
@@ -639,7 +703,8 @@ ret}";
 main{
 move 64, $0, 35u64
 move 64, $1, mem
-foreign $1
+move 64, $2, 0u64
+foreign $2
 move 64, $1, $0
 ret}";
 
@@ -650,6 +715,31 @@ ret}";
         let argument: Option<Arc<RwLock<dyn Any + Send + Sync>>> = Some(Arc::new(RwLock::new(10u64)));
 
         machine.add_function(argument.clone(), complex_mutation);
+        
+        machine.load_binary(&binary);
+
+        machine.add_core();
+
+        machine.run();
+
+        assert_eq!(machine.memory.read().unwrap()[1..9], [0, 0, 0, 0, 0, 0, 0, 35]);
+        assert_eq!(argument.unwrap().read().unwrap().downcast_ref::<u64>().unwrap(), &45u64);
+
+    }
+
+    #[test]
+    fn test_allocation() {
+        let input = "
+main{
+move 64, $0, 64u64
+malloc $1, $0
+move 64, $2, 10u64
+move 64, $1, $2
+ret}
+";
+        let binary = generate_binary(input, "test").unwrap();
+
+        let mut machine = Machine::new();
 
         machine.load_binary(&binary);
 
@@ -657,10 +747,34 @@ ret}";
 
         machine.run();
 
-        assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 0, 0, 0, 0, 35]);
-        assert_eq!(argument.unwrap().read().unwrap().downcast_ref::<u64>().unwrap(), &45u64);
+        assert_eq!(machine.memory.read().unwrap()[1..9], [0, 0, 0, 0, 0, 0, 0, 10]);
 
     }
 
+    #[test]
+    fn test_free_allocation() {
+        let input = "
+main{
+move 64, $0, 64u64
+malloc $1, $0
+move 64, $2, 10u64
+move 64, $1, $2
+free $1
+ret}
+";
+        let binary = generate_binary(input, "test").unwrap();
+
+        let mut machine = Machine::new();
+
+        machine.load_binary(&binary);
+
+        machine.add_core();
+
+        machine.run();
+
+        assert_eq!(machine.memory.read().unwrap()[1..9], [0, 0, 0, 0, 0, 0, 0, 10]);
+
+    }
+    
 
 }

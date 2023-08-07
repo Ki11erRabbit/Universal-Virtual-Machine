@@ -14,6 +14,7 @@ use std::fmt;
 pub type CoreId = u8;
 pub type Byte = u8;
 pub type Pointer = u64;
+pub type FileDescriptor = u64;
 
 
 #[derive(Debug,PartialEq, Clone)]
@@ -43,20 +44,20 @@ pub type ForeignFunctionArg = Option<Arc<RwLock<dyn Any + Send + Sync>>>;
 //pub type FFun = Box<dyn FnMut(&mut Core) -> Result<(),Fault> + Send + Sync + 'static>;
 //fn(&mut Core) -> Result<(), Fault>
 /// Messages that a core and the machine can send to each other
-pub enum Message
-{
+pub enum Message {
     Malloc(u64),                               // Takes size
+    Realloc(Pointer, u64),                     // Takes pointer and size
     MemoryPointer(Pointer),                    // Returns pointer
-    DeallocateMemory(Pointer),                 // Takes pointer
+    Free(Pointer),                             // Takes pointer
     DereferenceStackPointer(CoreId,Pointer),   // Takes core and pointer
     DereferencedMemory(Vec<Byte>),             // Returns dereferenced memory
     OpenFile(Vec<Byte>,u8),                    // Takes filename, and flags
-    FileDescriptor(i64),                       // Returns file descriptor
-    ReadFile(i64,u64),                         // Takes file descriptor and amount to read
+    FileDescriptor(FileDescriptor),            // Returns file descriptor
+    ReadFile(FileDescriptor,u64),              // Takes file descriptor and amount to read
     FileData(Vec<Byte>, u64),                  // Returns read data, and amount read
-    WriteFile(i64,Vec<u8>),                    // Takes file descriptor and data to write
-    CloseFile(i64),                            // Takes file descriptor
-    Flush(i64),                                // Takes file descriptor
+    WriteFile(FileDescriptor,Vec<u8>),                    // Takes file descriptor and data to write
+    CloseFile(FileDescriptor),                            // Takes file descriptor
+    Flush(FileDescriptor),                                // Takes file descriptor
     FileClosed,                                // Returns file closed
     SpawnThread(Pointer),                      // Takes address of function to call
     ThreadSpawned(CoreId),                     // Returns core id of spawned thread
@@ -74,8 +75,9 @@ impl fmt::Debug for Message {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Message::Malloc(size) => write!(f, "Malloc({})", size),
+            Message::Realloc(pointer, size) => write!(f, "Realloc({}, {})", pointer, size),
             Message::MemoryPointer(pointer) => write!(f, "MemoryPointer({})", pointer),
-            Message::DeallocateMemory(pointer) => write!(f, "DeallocateMemory({})", pointer),
+            Message::Free(pointer) => write!(f, "DeallocateMemory({})", pointer),
             Message::DereferenceStackPointer(core_id,pointer) => write!(f, "DereferenceStackPointer({}, {})", core_id, pointer),
             Message::DereferencedMemory(data) => write!(f, "DereferencedMemory({:?})", data),
             Message::OpenFile(filename,flags) => write!(f, "OpenFile({:?}, {})", filename, flags),
@@ -118,6 +120,7 @@ pub enum Fault {
     FileOpenError,
     InvalidMessage,
     FileWriteError,
+    InvalidFree,
 
 }
 
@@ -141,6 +144,7 @@ impl fmt::Display for Fault {
             Fault::FileOpenError => write!(f, "File Open Error"),
             Fault::InvalidMessage => write!(f, "Invalid Message"),
             Fault::FileWriteError => write!(f, "File Write Error"),
+            Fault::InvalidFree => write!(f, "Invalid Free"),
         }
     }
 }

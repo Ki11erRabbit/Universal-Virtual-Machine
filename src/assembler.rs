@@ -1183,6 +1183,28 @@ where
                         _ => return Err("Invalid arguments for free".to_owned()),
                     }
                 },
+                "realloc" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected only registers".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Register, MoveOps::Register] => {
+                            let mut temp = vec![167,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for malloc".to_owned()),
+                    }
+                },
                 "readbyte" => {
                     let mut bytes: Vec<u8> = Vec::new();
                     let mut ops: Vec<MoveOps> = Vec::new();
@@ -1487,6 +1509,7 @@ where
                         _ => return Err("Invalid arguments for foreign".to_owned()),
                     }
                 },
+                //NEXT: 168
                 instr => return Err(format!("Invalid instruction: {}", instr)),
                 
                     
@@ -1630,11 +1653,11 @@ fn parse_file(input: &str) -> Result<(Vec<Byte>,usize,Vec<String>, Vec<String>, 
     };
 
     let mut labels = Vec::new();
-    let mut segment_labels = Vec::new();
+    let mut segment_labels = vec!["null".to_owned()];
     let mut label_positions = HashMap::new();
     let mut unknown_labels = HashMap::new();
     let mut bytes = Vec::new();
-    let mut segment_bytes = Vec::new();
+    let mut segment_bytes = vec![0];
 
     match result {
         Ast::File(ref mut ast) => {

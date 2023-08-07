@@ -989,6 +989,15 @@ impl Binary {
 
                     assembly.push_str(&format!("${}\n", reg));
                 },
+                Realloc => {
+                    assembly.push_str("realloc ");
+                    let reg1 = self.program[read_head];
+                    read_head += 1;
+                    let reg2 = self.program[read_head];
+                    read_head += 1;
+
+                    assembly.push_str(&format!("${}, ${}\n", reg1, reg2));
+                },
                 ReadByte => {
                     assembly.push_str("readbyte ");
                     let reg1 = self.program[read_head];

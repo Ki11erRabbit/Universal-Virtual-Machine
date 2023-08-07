@@ -9,7 +9,7 @@ use std::fmt;
 use std::sync::mpsc::{Sender,Receiver, TryRecvError};
 
 use crate::instruction::Opcode;
-use crate::{RegisterType,Message,Fault,CoreId,Byte,Pointer};
+use crate::{RegisterType,Message,Fault,CoreId,Byte,Pointer,FileDescriptor};
 
 
 macro_rules! check_register64 {
@@ -497,6 +497,8 @@ impl Core {
             ThreadJoin => self.threadjoin_opcode()?,
             ThreadDetach => self.threaddetach_opcode()?,
             ForeignCall => self.foreigncall_opcode()?,
+            Malloc => self.malloc_opcode()?,
+            Free => self.free_opcode()?,
             
 
             x => {
@@ -4156,7 +4158,7 @@ impl Core {
 
         check_register64!(fd_register as usize, value_register as usize);
 
-        let fd = self.registers_64[fd_register as usize] as i64;
+        let fd = self.registers_64[fd_register as usize];
         let value = self.registers_64[value_register as usize] as u8;
 
         let message = Message::WriteFile(fd, vec![value]);
@@ -4183,7 +4185,7 @@ impl Core {
 
         check_register64!(fd_register as usize, pointer_register as usize, length_register as usize);
 
-        let fd = self.registers_64[fd_register as usize] as i64;
+        let fd = self.registers_64[fd_register as usize];
         let pointer = self.registers_64[pointer_register as usize] as u64;
         let length = self.registers_64[length_register as usize] as u64;
 
@@ -4210,7 +4212,7 @@ impl Core {
 
         check_register64!(fd_register as usize);
 
-        let fd = self.registers_64[fd_register as usize] as i64;
+        let fd = self.registers_64[fd_register as usize];
 
         let message = Message::Flush(fd);
 
@@ -8099,7 +8101,7 @@ impl Core {
 
         match message {
             Message::FileDescriptor(fd) => {
-                self.registers_64[fd_reg as usize] = fd as u64;
+                self.registers_64[fd_reg as usize] = fd;
             },
             Message::Error(fault) => {
                 return Err(fault);
@@ -8118,7 +8120,7 @@ impl Core {
 
         check_register64!(fd_reg as usize);
 
-        let fd = self.registers_64[fd_reg as usize] as i64;
+        let fd = self.registers_64[fd_reg as usize];
 
         let message = Message::CloseFile(fd);
 
@@ -8257,9 +8259,77 @@ impl Core {
 
         function(self, argument)?;
         
+        Ok(())
+    }
+
+    fn stackpointer_opcode(&mut self) -> Result<(), Fault> {
+        let stackptr_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(stackptr_reg as usize);
+
+        self.registers_64[stackptr_reg as usize] = self.stack.len() as u64;
+
+        Ok(())
+    }
+
+    fn malloc_opcode(&mut self) -> Result<(), Fault> {
+        let ptr_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let size_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(ptr_reg as usize, size_reg as usize);
+
+        let size = self.registers_64[size_reg as usize];
+
+        let message = Message::Malloc(size);
+
+        self.send_message(message)?;
+
+        let message = self.recv_message()?;
+
+        match message {
+            Message::MemoryPointer(ptr) => {
+                self.registers_64[ptr_reg as usize] = ptr as u64;
+            },
+            Message::Error(fault) => {
+                return Err(fault);
+            },
+            _ => {
+                return Err(Fault::InvalidMessage);
+            }
+        }
         
         Ok(())
     }
+
+    fn free_opcode(&mut self) -> Result<(), Fault> {
+        let ptr_reg = self.program[self.program_counter] as u8;
+
+        check_register64!(ptr_reg as usize);
+
+        let ptr = self.registers_64[ptr_reg as usize];
+
+        let message = Message::Free(ptr);
+
+        self.send_message(message)?;
+
+        let message = self.recv_message()?;
+
+        match message {
+            Message::Success => {
+                return Ok(());
+            },
+            Message::Error(fault) => {
+                return Err(fault);
+            },
+            _ => {
+                return Err(Fault::InvalidMessage);
+            }
+        }
+    }
+    
     
     
 }
