@@ -37,7 +37,8 @@ impl fmt::Display for RegisterType {
     }
 }
 
-pub unsafe trait AnyThreadSafe: Any + Send + Sync {}
+pub type ForeignFunction = Arc<fn(&mut Core, Option<Arc<RwLock<dyn Any + Send + Sync>>>)-> Result<(),Fault>>;
+pub type ForeignFunctionArg = Option<Arc<RwLock<dyn Any + Send + Sync>>>;
 
 //pub type FFun = Box<dyn FnMut(&mut Core) -> Result<(),Fault> + Send + Sync + 'static>;
 //fn(&mut Core) -> Result<(), Fault>
@@ -66,7 +67,7 @@ pub enum Message
     Error(Fault),                              // Returns error
     Success,                                   // Returns success
     GetForeignFunction(u64),                   // Takes function name
-    ForeignFunction(Option<Arc<RwLock<dyn AnyThreadSafe>>>,Arc<fn(&mut Core, Option<Arc<RwLock<dyn AnyThreadSafe>>>)-> Result<(),Fault>>),// Returns function
+    ForeignFunction(ForeignFunctionArg, ForeignFunction),// Returns function and its arguments
 }
 
 impl fmt::Debug for Message {

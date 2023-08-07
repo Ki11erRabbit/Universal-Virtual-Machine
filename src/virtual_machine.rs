@@ -11,7 +11,7 @@ use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::Write;
 
-use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, AnyThreadSafe};
+use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, ForeignFunction, ForeignFunctionArg};
 use crate::binary::Binary;
 use crate::core::Core;
 
@@ -28,7 +28,7 @@ pub struct Machine {
     thread_children: HashMap<CoreId, CoreId>,
     threads_to_join: Rc<RefCell<Vec<CoreId>>>,
     main_thread_id: CoreId,
-    foriegn_functions: Vec<(Option<Arc<RwLock<dyn AnyThreadSafe>>>, Arc<fn(&mut Core, Option<Arc<RwLock<dyn AnyThreadSafe>>>)-> Result<(),Fault>>)>,
+    foriegn_functions: Vec<(ForeignFunctionArg, ForeignFunction)>,
 }
 
 impl Machine {
@@ -57,7 +57,7 @@ impl Machine {
         machine
     }
 
-    pub fn add_function(&mut self, func_arg: Option<Arc<RwLock<dyn AnyThreadSafe>>>, function: fn(&mut Core, Option<Arc<RwLock<dyn AnyThreadSafe>>>) -> Result<(),Fault>) {
+    pub fn add_function(&mut self, func_arg: Option<Arc<RwLock<dyn Any + Send + Sync>>>, function: fn(&mut Core, Option<Arc<RwLock<dyn Any + Send + Sync>>>) -> Result<(),Fault>) {
         self.foriegn_functions.push((func_arg, Arc::new(function)));
     }
 
@@ -527,8 +527,7 @@ ret
     }
 
     #[test]
-    fn test_multicore()
-        {
+    fn test_multicore() {
         let input = "counter{
 .u64 0u64}
 count{
@@ -576,13 +575,13 @@ ret}
         machine.run();
 
 
-            assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 0, 0, 0, 0, 10]);
+        assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 0, 0, 0, 0, 10]);
 
 
-        }
+    }
 
 
-    fn simple_mutation(core: &mut Core) -> Result<(),Fault> {
+    fn simple_mutation(core: &mut Core, _args: Option<Arc<RwLock<dyn Any + Send + Sync>>>) -> Result<(),Fault> {
 
         let reg = core.get_register_64(0)?;
 
@@ -607,7 +606,7 @@ ret}";
 
         let mut machine = Machine::new();
 
-        machine.add_function(simple_mutation);
+        machine.add_function(None, simple_mutation);
 
         machine.load_binary(&binary);
 
@@ -616,6 +615,50 @@ ret}";
         machine.run();
 
         assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 0, 0, 0, 0, 45]);
+
+    }
+
+    fn complex_mutation(core: &mut Core, args: Option<Arc<RwLock<dyn Any + Send + Sync>>>) -> Result<(),Fault> {
+
+        let reg = core.get_register_64(0)?;
+
+        let binding = args.unwrap();
+        let mut binding = binding.write().unwrap();
+        let value = binding.downcast_mut::<u64>().unwrap();
+
+        *value += *reg;
+
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_foreign_function_with_arg() {
+        let input = "mem{
+.u64 0u64}
+main{
+move 64, $0, 35u64
+move 64, $1, mem
+foreign $1
+move 64, $1, $0
+ret}";
+
+        let binary = generate_binary(input, "test").unwrap();
+
+        let mut machine = Machine::new();
+
+        let argument: Option<Arc<RwLock<dyn Any + Send + Sync>>> = Some(Arc::new(RwLock::new(10u64)));
+
+        machine.add_function(argument.clone(), complex_mutation);
+
+        machine.load_binary(&binary);
+
+        machine.add_core();
+
+        machine.run();
+
+        assert_eq!(machine.memory.read().unwrap()[..], [0, 0, 0, 0, 0, 0, 0, 35]);
+        assert_eq!(argument.unwrap().read().unwrap().downcast_ref::<u64>().unwrap(), &45u64);
 
     }
 
