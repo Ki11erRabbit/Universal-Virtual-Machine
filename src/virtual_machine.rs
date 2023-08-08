@@ -44,7 +44,8 @@ pub struct Machine {
     /// The channels for the cores to communicate with the machine's event loop
     channels: Rc<RefCell<Vec<Option<(Sender<Message>, Receiver<Message>)>>>>,
     /// The files that are open for the machine
-    files: Vec<Box<dyn Write>>,
+    /// Unfortuately stdin doesn't implement Write so we have to create an offset for the file descriptors when writing
+    files: Vec<Option<Box<dyn Write>>>,
     /// A map of child threads to their parent threads
     thread_children: HashMap<CoreId, CoreId>,
     /// A list of threads to join, this is set by the join instruction. This is so that we don't deadlock when trying to join a thread
@@ -72,7 +73,7 @@ impl Machine {
             program: None,
             entry_point: None,
             channels: Rc::new(RefCell::new(Vec::new())),
-            files: vec![Box::new(std::io::stdout()), Box::new(std::io::stderr())],
+            files: vec![Some(Box::new(std::io::stdout())), Some(Box::new(std::io::stderr()))],
             thread_children: HashMap::new(),
             threads_to_join: Rc::new(RefCell::new(Vec::new())),
             main_thread_id: 0,
@@ -439,7 +440,10 @@ impl Machine {
         if fd as usize >= self.files.len() {
             return Message::Error(Fault::InvalidFileDescriptor);
         }
-        let file = &mut self.files[fd as usize];
+        let file = match &mut self.files[fd as usize] {
+            Some(file) => file,
+            None => return Message::Error(Fault::InvalidFileDescriptor),
+        };
         match file.write(&data) {
             Ok(_) => Message::Success,
             Err(_) => Message::Error(Fault::FileWriteError),
@@ -452,7 +456,10 @@ impl Machine {
         if fd as usize >= self.files.len() {
             return Message::Error(Fault::InvalidFileDescriptor);
         }
-        let file = &mut self.files[fd as usize];
+        let file = match &mut self.files[fd as usize] {
+            Some(file) => file,
+            None => return Message::Error(Fault::InvalidFileDescriptor),
+        };
         match file.flush() {
             Ok(_) => Message::Success,
             Err(_) => Message::Error(Fault::FileWriteError),
@@ -461,14 +468,13 @@ impl Machine {
 
     /// This function will close the file based on the file descriptor
     /// Trying to remove stdout or stderr will result in weird behavior
-    /// TODO: change it so that we set the file to None instead of removing it
     fn close_file(&mut self, fd: FileDescriptor) -> Message {
         let fd = fd - 1;
         if fd as usize >= self.files.len() {
             return Message::Error(Fault::InvalidFileDescriptor);
         }
 
-        self.files.remove(fd as usize);
+        self.files[fd as usize] = None;
         Message::Success
     }
 
@@ -489,7 +495,7 @@ impl Machine {
             Ok(filename) => {
                 match file.open(filename) {
                     Ok(file) => {
-                        self.files.push(Box::new(file));
+                        self.files.push(Some(Box::new(file)));
                         Message::FileDescriptor(self.files.len() as FileDescriptor)
                     },
                     Err(_) => Message::Error(Fault::FileOpenError),
@@ -499,6 +505,7 @@ impl Machine {
         }
     }
 
+    /// This function will run a core at the given program counter
     fn thread_spawn(&mut self, program_counter: u64) -> (Message, u8) {
         if self.cores.len() == 0 {
             self.add_core();
@@ -508,6 +515,7 @@ impl Machine {
         (Message::ThreadSpawned(core_id as u8), core_id as u8)
     }
 
+    /// This function adds a core to the machine
     pub fn add_core(&mut self) {
         //TODO: Make it so that we don't panic from trying to add another core while running
         let (core_sender, core_receiver) = channel();
@@ -517,6 +525,7 @@ impl Machine {
         self.cores.push(core);
     }
 
+    /// This function will run a core at a given program counter in a new thread
     fn run_core_threaded(&mut self, core: usize, program_counter: usize) {
         let mut core = self.cores.remove(core);
         let mut program = (**self.program.as_ref().expect("Program Somehow not set").clone()).to_vec();
@@ -536,6 +545,7 @@ impl Machine {
         self.core_threads.push(Some(core_thread));
     }
 
+    /// This function is for running the first core
     pub fn run_core(&mut self, core: usize, program_counter: usize) {
         let mut core = self.cores.remove(core);
         core.set_main_thread();
@@ -548,17 +558,18 @@ impl Machine {
         self.core_threads.push(Some(core_thread));
     }
 
-    pub fn add_program(&mut self, program: Vec<u8>) {
+    /// This function will add a program to the machine
+    pub fn add_program(&mut self, program: Vec<Byte>) {
         self.program = Some(Arc::new(program));
-
-        self.memory.write().unwrap().extend_from_slice(&self.program.as_ref().unwrap()[0..]);
-        
     }
 
+    /// This function will get the total number of cores
     pub fn core_count(&self) -> usize {
         self.core_threads.len()
     }
 
+    /// This function will load a binary into the machine
+    /// A binary is just a struct that contains the program, data segment, and entry point
     pub fn load_binary(&mut self, binary: &Binary) {
         self.program = Some(Arc::new(binary.program().clone()));
         self.memory.write().unwrap().extend_from_slice(&binary.data_segment());

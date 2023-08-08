@@ -11,63 +11,71 @@ use std::sync::RwLock;
 use std::any::Any;
 use std::fmt;
 
+/// The id to identify a core
 pub type CoreId = u8;
+/// A byte
 pub type Byte = u8;
+/// A pointer is an index to a memory location
 pub type Pointer = u64;
+/// A file descriptor is an index to a file
+/// The reason why this isn't signed or 32 bits is because we have more flavorful errors than C.
 pub type FileDescriptor = u64;
 
 
-#[derive(Debug,PartialEq, Clone)]
-pub enum RegisterType {
-    Register64,
-    Register128,
-    RegisterF32,
-    RegisterF64,
-    RegisterAtomic64,
-}
-
-impl fmt::Display for RegisterType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            RegisterType::Register64 => write!(f, "Register64"),
-            RegisterType::Register128 => write!(f, "Register128"),
-            RegisterType::RegisterF32 => write!(f, "RegisterF32"),
-            RegisterType::RegisterF64 => write!(f, "RegisterF64"),
-            RegisterType::RegisterAtomic64 => write!(f, "RegisterAtomic64"),
-        }
-    }
-}
-
+/// A foreign function that can be called from the virtual machine
 pub type ForeignFunction = Arc<fn(&mut Core, Option<Arc<RwLock<dyn Any + Send + Sync>>>)-> Result<(),Fault>>;
+/// The argument to a foreign function
 pub type ForeignFunctionArg = Option<Arc<RwLock<dyn Any + Send + Sync>>>;
 
 //pub type FFun = Box<dyn FnMut(&mut Core) -> Result<(),Fault> + Send + Sync + 'static>;
 //fn(&mut Core) -> Result<(), Fault>
 /// Messages that a core and the machine can send to each other
 pub enum Message {
+    /// Takes a size of memory to allocate
     Malloc(u64),                               // Takes size
+    /// Takes a pointer and a size to reallocate
     Realloc(Pointer, u64),                     // Takes pointer and size
+    /// Return message for (re)allocation
     MemoryPointer(Pointer),                    // Returns pointer
+    /// Takes a pointer to free
     Free(Pointer),                             // Takes pointer
+    /// Takes a core id and a pointer to dereference
     DereferenceStackPointer(CoreId,Pointer),   // Takes core and pointer
+    /// Returns dereferenced memory
     DereferencedMemory(Vec<Byte>),             // Returns dereferenced memory
+    /// Takes a filename in bytes and a flag to open a file
     OpenFile(Vec<Byte>,u8),                    // Takes filename, and flags
+    /// Return message for open file
     FileDescriptor(FileDescriptor),            // Returns file descriptor
+    /// Takes a file descriptor and amount to read
     ReadFile(FileDescriptor,u64),              // Takes file descriptor and amount to read
+    /// Returns read data and amount read
     FileData(Vec<Byte>, u64),                  // Returns read data, and amount read
+    /// Takes a file descriptor and data to write
     WriteFile(FileDescriptor,Vec<u8>),                    // Takes file descriptor and data to write
+    /// Takes a file descriptor to close
     CloseFile(FileDescriptor),                            // Takes file descriptor
+    /// Takes a file descriptor to flush
     Flush(FileDescriptor),                                // Takes file descriptor
+    /// Return message for close file
     FileClosed,                                // Returns file closed
+    /// Takes a program address to spawn a thread
     SpawnThread(Pointer),                      // Takes address of function to call
+    /// Return message for spawn thread
     ThreadSpawned(CoreId),                     // Returns core id of spawned thread
+    /// Takes a core id to mark as done
     ThreadDone(CoreId),                        // Returns thread done, then with return value as bytes, then the type of return value
+    /// Takes a core id to join
     JoinThread(CoreId),                        // Takes core id of thread to join
+    /// Takes a core id to detach
     DetachThread(CoreId),                      // Takes core id of thread to detach
-
+    /// Message for when an error occurs
     Error(Fault),                              // Returns error
+    /// Message for when an action succeeds
     Success,                                   // Returns success
+    /// Takes an index to a foreign function
     GetForeignFunction(u64),                   // Takes function name
+    /// Return message for foreign function
     ForeignFunction(ForeignFunctionArg, ForeignFunction),// Returns function and its arguments
 }
 
@@ -101,7 +109,34 @@ impl fmt::Debug for Message {
     }
 }
 
+
 #[derive(Debug,PartialEq, Clone)]
+/// The type of register, this is used with the Fault enum
+pub enum RegisterType {
+    Register64,
+    Register128,
+    RegisterF32,
+    RegisterF64,
+    RegisterAtomic64,
+}
+
+impl fmt::Display for RegisterType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            RegisterType::Register64 => write!(f, "Register64"),
+            RegisterType::Register128 => write!(f, "Register128"),
+            RegisterType::RegisterF32 => write!(f, "RegisterF32"),
+            RegisterType::RegisterF64 => write!(f, "RegisterF64"),
+            RegisterType::RegisterAtomic64 => write!(f, "RegisterAtomic64"),
+        }
+    }
+}
+
+
+
+#[derive(Debug,PartialEq, Clone)]
+/// The faults that a core can run into
+/// Returning these is so that we don't have to cause the core to panic
 pub enum Fault {
     ProgramLock,
     InvalidOperation,
@@ -122,7 +157,6 @@ pub enum Fault {
     FileWriteError,
     InvalidFree,
     InvalidRealloc,
-
 }
 
 impl fmt::Display for Fault {
