@@ -223,6 +223,7 @@ impl Core {
         }
     }
 
+    /// Allows for accessing the 64-bit registers of the core for foreign functions
     pub fn get_register_64<'input>(&'input mut self, register: usize) -> Result<&'input mut u64, Fault> {
         if register < REGISTER_64_COUNT {
             Ok(&mut self.registers_64[register])
@@ -231,6 +232,7 @@ impl Core {
         }
     }
 
+    /// Allows for accessing the 128-bit registers of the core for foreign functions
     pub fn get_register_128<'input>(&'input mut self, register: usize) -> Result<&'input mut u128, Fault> {
         if register < REGISTER_128_COUNT {
             Ok(&mut self.registers_128[register])
@@ -239,6 +241,7 @@ impl Core {
         }
     }
 
+    /// Allows for accessing the 32-bit floating point registers of the core for foreign functions
     pub fn get_register_f32<'input>(&'input mut self, register: usize) -> Result<&'input mut f32, Fault> {
         if register < REGISTER_F32_COUNT {
             Ok(&mut self.registers_f32[register])
@@ -247,6 +250,7 @@ impl Core {
         }
     }
 
+    /// Allows for accessing the 64-bit floating point registers of the core for foreign functions
     pub fn get_register_f64<'input>(&'input mut self, register: usize) -> Result<&'input mut f64, Fault> {
         if register < REGISTER_F64_COUNT {
             Ok(&mut self.registers_f64[register])
@@ -255,14 +259,18 @@ impl Core {
         }
     }
 
+    /// Used for making a core the main thread
     pub fn set_main_thread(&mut self) {
         self.main_thread = true;
     }
 
+    /// Used for adding a program to the core
+    /// This should not be called after the core has been started
     pub fn add_program(&mut self, program: Arc<Vec<u8>>) {
         self.program = program;
     }
 
+    /// Wrapper for sending a message to the machine's event loop
     fn send_message(&self, message: Message) -> Result<(), Fault> {
         match self.send_channel.send(message) {
             Ok(_) => Ok(()),
@@ -270,6 +278,7 @@ impl Core {
         }
     }
 
+    /// Wrapper for making a blocking call to receive a message from the machine's event loop
     fn recv_message(&self) -> Result<Message, Fault> {
         match self.recv_channel.recv() {
             Ok(message) => Ok(message),
@@ -277,6 +286,7 @@ impl Core {
         }
     }
 
+    /// Convenience function for getting the bytes of a string from memory
     fn get_string(&mut self, address: Pointer, size: u64) -> Result<Vec<u8>,Fault> {
         loop {
             match self.memory.try_read() {
@@ -293,10 +303,12 @@ impl Core {
         }
     }
 
+    /// Convenience function for pushing a value to the stack
     fn push_stack(&mut self,value: &[Byte]) {
         self.stack.extend_from_slice(value);
     }
 
+    /// Convenience function for popping a value from the stack
     fn pop_stack(&mut self, size: u8) -> Result<Vec<Byte>,Fault> {
         let size = size / 8;
         if self.stack.len() < size as usize {
@@ -313,46 +325,59 @@ impl Core {
     }
 
     #[inline]
+    /// Function that advances the program counter by a given size
     fn advance_by_size(&mut self, size: usize) {
         self.program_counter += size;
     }
+    /// Function that advances the program counter by 1 byte or 8 bits
     fn advance_by_1_byte(&mut self) {
         self.advance_by_size(1);
     }
+    /// Function that advances the program counter by 2 bytes or 16 bits
     fn advance_by_2_bytes(&mut self) {
         self.advance_by_size(2);
     }
+    /// Function that advances the program counter by 4 bytes or 32 bits
     fn advance_by_4_bytes(&mut self) {
         self.advance_by_size(4);
     }
+    /// Function that advances the program counter by 8 bytes or 64 bits
     fn advance_by_8_bytes(&mut self) {
         self.advance_by_size(8);
     }
+    /// Function that advances the program counter by 16 bytes or 128 bits
     fn advance_by_16_bytes(&mut self) {
         self.advance_by_size(16);
     }
 
+    /// Function that grabs a byte from the program without advancing the program counter
     fn get_1_byte(&mut self) -> Byte {
         let value = self.program[self.program_counter];
         value
     }
+    /// Function that grabs 2 bytes from the program without advancing the program counter
     fn get_2_bytes(&mut self) -> u16 {
         let value = u16::from_le_bytes([self.program[self.program_counter], self.program[self.program_counter + 1]]);
         value
     }
+    /// Function that grabs 4 bytes from the program without advancing the program counter
     fn get_4_bytes(&mut self) -> u32 {
         let value = u32::from_le_bytes([self.program[self.program_counter], self.program[self.program_counter + 1], self.program[self.program_counter + 2], self.program[self.program_counter + 3]]);
         value
     }
+    /// Function that grabs 8 bytes from the program without advancing the program counter
     fn get_8_bytes(&mut self) -> u64 {
         let value = u64::from_le_bytes([self.program[self.program_counter], self.program[self.program_counter + 1], self.program[self.program_counter + 2], self.program[self.program_counter + 3], self.program[self.program_counter + 4], self.program[self.program_counter + 5], self.program[self.program_counter + 6], self.program[self.program_counter + 7]]);
         value
     }
+    /// Function that grabs 16 bytes from the program without advancing the program counter
     fn get_16_bytes(&mut self) -> u128 {
         let value = u128::from_le_bytes([self.program[self.program_counter], self.program[self.program_counter + 1], self.program[self.program_counter + 2], self.program[self.program_counter + 3], self.program[self.program_counter + 4], self.program[self.program_counter + 5], self.program[self.program_counter + 6], self.program[self.program_counter + 7], self.program[self.program_counter + 8], self.program[self.program_counter + 9], self.program[self.program_counter + 10], self.program[self.program_counter + 11], self.program[self.program_counter + 12], self.program[self.program_counter + 13], self.program[self.program_counter + 14], self.program[self.program_counter + 15]]);
         value
     }
 
+    /// The main loop for the machine
+    /// This function will run the program until it is done
     pub fn run(&mut self, program_counter: usize) -> Result<(),Fault> {
         self.program_counter = program_counter;
 
@@ -363,10 +388,12 @@ impl Core {
         Ok(())
     }
 
+    /// Convenience function for removing a known thread from the machine
     fn remove_thread(&mut self, core_id: CoreId) {
         self.threads.remove(&core_id);
     }
 
+    /// Function for checking for messages from the machine thread
     fn check_messages(&mut self) -> Result<(), Fault> {
         match self.recv_channel.try_recv() {
             Ok(message) => {
@@ -389,12 +416,15 @@ impl Core {
         Ok(())
     }
 
+    /// Function that runs the machine for one instruction
+    /// This function is useful for debugging
     pub fn run_once(&mut self) -> Result<(),Fault> {
         self.execute_instruction()?;
         Ok(())
     }
 
     #[inline]
+    /// Function that checks if the program counter is out of bounds
     fn check_program_counter(&self) -> Result<bool,Fault> {
 
         if self.program_counter >= self.program.len() {
@@ -404,6 +434,7 @@ impl Core {
     }
 
 
+    /// Function that decodes the opcode from the program
     fn decode_opcode(&mut self) -> Opcode {
         let opcode = Opcode::from(self.get_2_bytes());
         self.advance_by_2_bytes();
@@ -411,6 +442,10 @@ impl Core {
 
     }
 
+    /// The main logic function for the core.
+    /// This function will check to see if there are any messages from the machine thread
+    /// If not then we see if the program counter is out of bounds
+    /// If not then we decode the opcode and execute the instruction
     fn execute_instruction(&mut self) -> Result<bool, Fault> {
 
         self.check_messages()?;
@@ -546,7 +581,6 @@ impl Core {
         Ok(false)
             
     }
-
 
     fn set_opcode(&mut self) -> Result<(), Fault> {
         let size = self.program[self.program_counter] as u8 as usize;

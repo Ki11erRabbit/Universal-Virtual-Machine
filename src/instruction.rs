@@ -2,89 +2,166 @@
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The different types of instructions
 pub enum Opcode {
+    /// The halt instruction
+    /// This currently just causes the core to stop executing
     Halt,
+    /// The no-op instruction
+    /// This currently does the same thing as halt
     NoOp,
     /* Instruction for loading values */
+    /// This instruction loads a value into a register from a pointer in another register with an offset in another register
     DeRefReg,
+    /// This instruction loads a value into a register from a pointer in the instruction
     DeRef,
+    /// This instruction moves a value from a register into memory
     Move,
+    /// This instruction loads a constant into a register
     Set,
     /* Instructions for signed integers */
+    /// This instruction does signed integer addition on two registers and stores it in the first
     AddI,
+    /// This instruction does signed integer subtraction on two registers and stores it in the first
     SubI,
+    /// This instruction does signed integer multiplication on two registers and stores it in the first
     MulI,
+    /// This instruction does signed integer division on two registers and stores it in the first
     DivI,
+    /// This instruction does signed integer equality on two registers and flips the right flags
     EqI,
+    /// This instruction does signed integer inequality on two registers and flips the right flags
     NeqI,
+    /// This instruction does signed integer less than on two registers and flips the right flags
     LtI,
+    /// This instruction does signed integer greater than on two registers and flips the right flags
     GtI,
+    /// This instruction does signed integer less than or equal on two registers and flips the right flags
     LeqI,
+    /// This instruction does signed integer greater than or equal on two registers and flips the right flags
     GeqI,
     /* Instructions for unsigned integers */
+    /// This instruction does unsigned integer addition on two registers and stores it in the first
     AddU,
+    /// This instruction does unsigned integer subtraction on two registers and stores it in the first
     SubU,
+    /// This instruction does unsigned integer multiplication on two registers and stores it in the first
     MulU,
+    /// This instruction does unsigned integer division on two registers and stores it in the first
     DivU,
+    /// This instruction does unsigned integer equality on two registers and flips the right flags
     EqU,
+    /// This instruction does unsigned integer inequality on two registers and flips the right flags
     NeqU,
+    /// This instruction does unsigned integer less than on two registers and flips the right flags
     LtU,
+    /// This instruction does unsigned integer greater than on two registers and flips the right flags
     GtU,
+    /// This instruction does unsigned integer less than or equal on two registers and flips the right flags
     LeqU,
+    /// This instruction does unsigned integer greater than or equal on two registers and flips the right flags
     GeqU,
     /* Instructions for floating point numbers */
+    /// This instruction is the same as DeRefReg but for floats
     DeRefRegF,
+    /// This instruction is the same as DeRef but for floats
     DeRefF,
+    /// This instruction is the same as Move but for floats
     MoveF,
+    /// This instruction is the same as Set but for floats
     SetF,
+    /// This instruction does floating point addition on two registers and stores it in the first
     AddF,
+    /// This instruction does floating point subtraction on two registers and stores it in the first
     SubF,
+    /// This instruction does floating point multiplication on two registers and stores it in the first
     MulF,
+    /// This instruction does floating point division on two registers and stores it in the first
     DivF,
+    /// This instruction does floating point equality on two registers and flips the right flags
     EqF,
+    /// This instruction does floating point inequality on two registers and flips the right flags
     NeqF,
+    /// This instruction does floating point less than on two registers and flips the right flags
     LtF,
+    /// This instruction does floating point greater than on two registers and flips the right flags
     GtF,
+    /// This instruction does floating point less than or equal on two registers and flips the right flags
     LeqF,
+    /// This instruction does floating point greater than or equal on two registers and flips the right flags
     GeqF,
     /* Instructions for Atomic Integers */
+    /// This instruction is the same as DeRefReg but for Atomic Integers
     DeRefRegA,
+    /// This instruction is the same as DeRef but for Atomic Integers
     DeRefA,
+    /// This instruction is the same as Move but for Atomic Integers
     MoveA,
+    /// This instruction is the same as Set but for Atomic Integers
     SetA,
     /* Instructions for signed Atomic Integers */
+    /// This instruction does signed integer addition on two registers and stores it in the first
     AddAI,
+    /// This instruction does signed integer subtraction on two registers and stores it in the first
     SubAI,
+    /// This instruction does signed integer multiplication on two registers and stores it in the first
     MulAI,
+    /// This instruction does signed integer division on two registers and stores it in the first
     DivAI,
+    /// This instruction does signed integer equality on two registers and flips the right flags
     EqAI,
+    /// This instruction does signed integer inequality on two registers and flips the right flags
     NeqAI,
+    /// This instruction does signed integer less than on two registers and flips the right flags
     LtAI,
+    /// This instruction does signed integer greater than on two registers and flips the right flags
     GtAI,
+    /// This instruction does signed integer less than or equal on two registers and flips the right flags
     LeqAI,
+    /// This instruction does signed integer greater than or equal on two registers and flips the right flags
     GeqAI,
     /* Instructions for unsigned Atomic Integers */
+    /// This instruction does unsigned integer addition on two registers and stores it in the first
     AddAU,
+    /// This instruction does unsigned integer subtraction on two registers and stores it in the first
     SubAU,
+    /// This instruction does unsigned integer multiplication on two registers and stores it in the first
     MulAU,
+    /// This instruction does unsigned integer division on two registers and stores it in the first
     DivAU,
+    /// This instruction does unsigned integer equality on two registers and flips the right flags
     EqAU,
+    /// This instruction does unsigned integer inequality on two registers and flips the right flags
     NeqAU,
+    /// This instruction does unsigned integer less than on two registers and flips the right flags
     LtAU,
+    /// This instruction does unsigned integer greater than on two registers and flips the right flags
     GtAU,
+    /// This instruction does unsigned integer less than or equal on two registers and flips the right flags
     LeqAU,
+    /// This instruction does unsigned integer greater than or equal on two registers and flips the right flags
     GeqAU,
     /* Instructions for bitwise operations */
+    /// This instruction does bitwise AND on two registers and stores it in the first
     And,
+    /// This instruction does bitwise OR on two registers and stores it in the first
     Or,
+    /// This instruction does bitwise XOR on two registers and stores it in the first
     Xor,
+    /// This instruction does bitwise NOT on a register
     Not,
+    /// This instruction does bitwise left shift a register
     ShiftLeft,
+    /// This instruction does bitwise right shift a register
     ShiftRight,
     /* Instructions for jumping */
+    /// This instruction is an unconditional jump
     Jump,
+    /// This Jump occurs if the last comparison was equal
     JumpEq,
+    /// This Jump occurs if the last comparison was not equal
     JumpNeq,
+    /// This Jump occurs if the last comparison was less than
     JumpLt,
     JumpGt,
     JumpLeq,
