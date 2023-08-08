@@ -163,103 +163,185 @@ pub enum Opcode {
     JumpNeq,
     /// This Jump occurs if the last comparison was less than
     JumpLt,
+    /// This Jump occurs if the last comparison was greater than
     JumpGt,
+    /// This Jump occurs if the last comparison was less than or equal
     JumpLeq,
+    /// This Jump occurs if the last comparison was greater than or equal
     JumpGeq,
+    /// This Jump occurs if the last operation resulted in a zero
     JumpZero,
+    /// This Jump occurs if the last operation resulted in a non-zero
     JumpNotZero,
+    /// This Jump occurs if the last operation resulted in a negative number
     JumpNeg,
+    /// This Jump occurs if the last operation resulted in a positive number
     JumpPos,
+    /// This Jump occurs if the last operation resulted in an even number
     JumpEven,
+    /// This Jump occurs if the last operation resulted in an odd number
     JumpOdd,
+    /// This is an unconditional jump backwards n spaces in the program
     JumpBack,
+    /// This is an unconditional jump forwards n spaces in the program
     JumpForward,
+    /// This Jump occurs if a floating point calculation resulted in infinity
     JumpInfinity,
+    /// This Jump occurs if a floating point calculation did not result in infinity
     JumpNotInfinity,
+    /// This Jump occurs if we overflow an integer
     JumpOverflow,
+    /// This Jump occurs if we underflow an integer
     JumpUnderflow,
+    /// This Jump occurs if we don't overflow an integer
     JumpNotOverflow,
+    /// This Jump occurs if we don't underflow an integer
     JumpNotUnderflow,
+    /// This Jump occurs if a floating point calculation resulted in NaN
     JumpNaN,
+    /// This Jump occurs if a floating point calculation did not result in NaN
     JumpNotNaN,
+    /// This jump occurs if an integer division resulted in a remainder
     JumpRemainder,
+    /// This jump occurs if we don't have a remainder
     JumpNotRemainder,
     
 
     /* Instructions for function calls */
+    /// This instruction calls a function
+    /// This instruction will load the current program counter value onto the stack
     Call,
+    /// This instruction will return from a function
+    /// This instruction will pop the current program counter value off the stack
     Return,
     /* Instructions for stack management */
+    /// This instruction will pop an integer off the stack with a given size
     Pop,
+    /// This instruction will push an integer onto the stack with a given size
     Push,
+    /// This instruction will pop a float off the stack
     PopF,
+    /// This instruction will push a float onto the stack
     PushF,
+    /// This instruction will pop an atomic integer off the stack
     PopA,
+    /// This instruction will push an atomic integer onto the stack
     PushA,
     /* Instructions for accessing the stack */
+    /// This is the DeRefReg instruction for the stack
     DeRefRegStack,
+    /// This is the DeRef instruction for the stack
     DeRefStack,
+    /// This is the Move instruction for the stack
     MoveStack,
+    /// This is the DeRefReg instruction for the stack but with floats
     DeRefRegStackF,
+    /// This is the DeRef instruction for the stack but with floats
     DeRefStackF,
+    /// This is the Move instruction for the stack but with floats
     MoveStackF,
+    /// This is the DeRefReg instruction for the stack but with atomic integers
     DeRefRegStackA,
+    /// This is the DeRef instruction for the stack but with atomic integers
     DeRefStackA,
+    /// This is the Move instruction for the stack but with atomic integers
     MoveStackA,
     /* Instructions for accessing the stack accross cores */
+    /// This is the DeRefReg instruction for the stack but for integers accross cores
     DeRefRegStackC,
+    /// This is the DeRef instruction for the stack but for integers accross cores
     DeRefStackC,
+    /// This is the Move instruction for the stack but for integers accross cores
     MoveStackC,
+    /// This is the DeRefReg instruction for the stack but for floats accross cores
     DeRefRegStackCF,
+    /// This is the DeRef instruction for the stack but for floats accross cores
     DeRefStackCF,
+    /// This is the Move instruction for the stack but for floats accross cores
     MoveStackCF,
+    /// This is the DeRefReg instruction for the stack but for atomic integers accross cores
     DeRefRegStackCA,
+    /// This is the DeRef instruction for the stack but for atomic integers accross cores
     DeRefStackCA,
+    /// This is the Move instruction for the stack but for atomic integers accross cores
     MoveStackCA,
     /* Instructions for memory management */
+    /// This instruction will allocate a block of memory and return a pointer to it
     Malloc,
+    /// This instruction will free a block of memory
     Free,
+    /// This instruction will reallocate a block of memory
     Realloc,
     /* IO instructions */
+    /// This instruction will read a byte from a file descriptor
     ReadByte,
     /* Takes a string pointer and a length */
+    /// This instruction will read a string from a file descriptor
     Read,
+    /// This instruction will write a byte to a file descriptor
     WriteByte,
     /* Takes a string pointer and a length */
+    /// This instruction will write a string to a file descriptor
     Write,
     /* Takes a string pointer and a length */
+    /// This instruction will open a file
     Open,
+    /// This instruction will close a file
     Close,
     /* Takes a file descriptor */
+    /// This instruction will flush a file
     Flush,
     /* Instructions for threads */
+    /// This instruction will spawn a thread
     ThreadSpawn,
+    /// This function will get the remainder of an operation an reset the flag
     Remainder,
     /* Instruction for clearing flags */
+    /// This instruction will clear the flags
     Clear,
     /* Instructions operation on integers and floats */
+    /// This instruction will add a signed integer to a float
     AddFI,
+    /// This instruction will subtract a signed integer from a float
     SubFI,
+    /// This instruction will multiply a signed integer with a float
     MulFI,
+    /// This instruction will divide a float by a signed integer
     DivFI,
+    /// This instruction will add float to a signed integer
     AddIF,
+    /// This instruction will subtract a float from a signed integer
     SubIF,
+    /// This instruction will multiply a float with a signed integer
     MulIF,
+    /// This instruction will divide a signed integer by a float
     DivIF,
+    /// This instruction will add a float to an unsigned integer
     AddUF,
+    /// This instruction will subtract a float from an unsigned integer
     SubUF,
+    /// This instruction will multiply a float with an unsigned integer
     MulUF,
+    /// This instruction will divide an unsigned integer by a float
     DivUF,
+    /// This instruction will move the value of a register to another register
     RegMove,
+    /// This instruction will move the value of a register to another register but for floats
     RegMoveF,
+    /// This instruction will move the value of a register to another register but for atomic integers
     RegMoveA,
     /* Special Return for threads */
+    /// This instruction will notify the machine that a thread has finished
     ThreadReturn,
     /* Other Thread Instructions */
+    /// This instruction will join a thread and block until it is finished
     ThreadJoin,
+    /// This instruction will detach a thread
     ThreadDetach,
 
+    /// This instruction will copy the stack pointer into a register
     StackPointer,
+    /// This instruction will call a specified foreign function
     ForeignCall,
     
     
@@ -267,6 +349,7 @@ pub enum Opcode {
     
 
     /* Instructions illegal instruction */
+    /// This represents an illegal instruction
     Illegal,
 }
 

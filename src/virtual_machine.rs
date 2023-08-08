@@ -56,7 +56,7 @@ pub struct Machine {
 }
 
 impl Machine {
-
+    /// Creates a new machine without any cores with the default options
     pub fn new() -> Machine {
         Machine {
             options: MachineOptions {
@@ -80,6 +80,7 @@ impl Machine {
         }
     }
 
+    /// Creates a new machine with the default options with a specified number of cores
     pub fn new_with_cores(core_count: usize) -> Machine {
         let mut machine = Machine::new();
         for _ in 0..core_count {
@@ -88,19 +89,29 @@ impl Machine {
         machine
     }
 
+    /// This is how we set new options for the machine
     pub fn set_options(&mut self, options: MachineOptions) {
         self.options = options;
     }
 
-    pub fn add_function(&mut self, func_arg: Option<Arc<RwLock<dyn Any + Send + Sync>>>, function: fn(&mut Core, Option<Arc<RwLock<dyn Any + Send + Sync>>>) -> Result<(),Fault>) {
-        self.foriegn_functions.push((func_arg, Arc::new(function)));
+    /// This is how we add foriegn functions and their arguments to the machine
+    pub fn add_function(&mut self, func_arg: ForeignFunctionArg, function: ForeignFunction) {
+        self.foriegn_functions.push((func_arg, function));
     }
 
+    /// This function allows us to specify the entry point of the program
     pub fn run_at(&mut self, program_counter: usize) {
         self.entry_point = Some(program_counter);
         self.run();
     }
-    
+
+    /// This function runs the main event loop of the machine
+    /// We first spawn the main thread and then we run the main event loop
+    /// We keep track of whether or not the main thread is completed. If it is, then we break out of the loop
+    /// We keep track of the amount of cycles so that we can perform certain actions on certain nth cycles
+    /// We always check for messages from the cores so they don't remain blocked for long.
+    /// We also have options for joining joinable threads for the nth cycle and defragging memory for the nth cycle
+    /// After the loop ends, we then clear the thread handles and the channels for the threads
     pub fn run(&mut self) {
         //TODO: change print to log
         let program_counter = self.entry_point.expect("Entry point not set");
@@ -128,6 +139,7 @@ impl Machine {
         self.channels.borrow_mut().clear();
     }
 
+    /// This function checks to see if the main thread is done and if it is, then we join it and remove it from the channels
     fn check_main_core(&mut self, main_thread_done: &mut bool) {
         if self.core_threads[self.main_thread_id as usize].as_ref().expect("main core doesn't exist").is_finished() {
             *main_thread_done = true;
@@ -138,6 +150,7 @@ impl Machine {
 
     }
 
+    /// This function checks to see if there are any threads that are able to be joined that were set to be joined.
     fn join_joinable_threads(&mut self) {
         let mut threads_joined = Vec::new();
         for thread_id in self.threads_to_join.borrow().iter() {
@@ -169,6 +182,7 @@ impl Machine {
         self.threads_to_join.borrow_mut().retain(|thread_id| !threads_joined.contains(thread_id));
     }
 
+    /// This function merges available blocks that are next to each other
     fn defrag_memory(&mut self) {
         let mut blocks_to_update = Vec::new();
         for (ptr, size) in self.available_blocks.iter() {
@@ -189,6 +203,7 @@ impl Machine {
 
     }
 
+    /// This function goes through the channels and checks to see if there are any messages to be processed
     fn check_messages(&mut self) {
         let mut core_id = 0;
         self.channels.clone().borrow().iter().for_each(|channels| {
@@ -262,6 +277,8 @@ impl Machine {
 
     }
 
+    /// This function is used to allocate memory when the right message is passed in
+    /// We try to acquire a lock on the memory and if we can't we try again until we do.
     fn malloc(&mut self, size: u64) -> Message {
         loop {
             match self.memory.try_write() {
@@ -314,6 +331,7 @@ impl Machine {
         }
     }
 
+    /// This function is used to reallocate the memory of a pointer to a larger or smaller size
     fn realloc(&mut self, ptr: Pointer, size: u64) -> Message {
         if size == 0 {
             return self.free(ptr);
@@ -390,6 +408,7 @@ impl Machine {
         Message::Error(Fault::InvalidRealloc)
     }
 
+    /// This function take a pointer and frees the memory associated with it
     fn free(&mut self, ptr: Pointer) -> Message {
         if !self.allocated_blocks.contains_key(&ptr) {
             return Message::Error(Fault::InvalidFree);
@@ -399,6 +418,7 @@ impl Machine {
         Message::Success
     }
 
+    /// This function will mark a thread for joining and then wait to send the right message back to block the calling thread
     fn join_thread(&mut self, thread_id: CoreId) {
         let core_id = thread_id as usize;
 
@@ -413,6 +433,7 @@ impl Machine {
         }
     }
 
+    /// This function writes bytes to a file based on the file descriptor
     fn write_file(&mut self, fd: FileDescriptor, data: Vec<u8>) -> Message {
         let fd = fd - 1;
         if fd as usize >= self.files.len() {
@@ -425,6 +446,7 @@ impl Machine {
         }
     }
 
+    /// This function will flush the file based on the file descriptor
     fn flush(&mut self, fd: FileDescriptor) -> Message {
         let fd = fd as usize - 1;
         if fd as usize >= self.files.len() {
@@ -437,6 +459,9 @@ impl Machine {
         }
     }
 
+    /// This function will close the file based on the file descriptor
+    /// Trying to remove stdout or stderr will result in weird behavior
+    /// TODO: change it so that we set the file to None instead of removing it
     fn close_file(&mut self, fd: FileDescriptor) -> Message {
         let fd = fd - 1;
         if fd as usize >= self.files.len() {
@@ -447,6 +472,8 @@ impl Machine {
         Message::Success
     }
 
+    /// This function will open a file based on the filename and the flag
+    /// The flag is just a char that is either 'r', 'w', 'a', or 't'
     fn open_file(&mut self, filename: Vec<u8>, flag: u8) -> Message {
         let mut file = OpenOptions::new();
         let file = file.create(true);
