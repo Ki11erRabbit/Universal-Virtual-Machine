@@ -87,6 +87,7 @@ const REGISTER_F64_COUNT: usize = 8;
 const REGISTER_ATOMIC_64_COUNT: usize = 8;
 
 #[derive(Debug,PartialEq)]
+/// An Enum that represents the sign flag
 pub enum Sign {
     Positive,
     Negative,
@@ -94,6 +95,7 @@ pub enum Sign {
 
 
 #[derive(Debug,PartialEq)]
+/// An Enum that represents the comparison flag
 pub enum Comparison {
     None,
     Equal,
@@ -104,6 +106,19 @@ pub enum Comparison {
     NotGreaterThan,
     LessThanOrEqual,
     GreaterThanOrEqual,
+}
+
+/// The values of this enum are used so that we can implement garbage collection.
+/// The use of the enum is so that we don't have to worry about the added runtime cost of
+/// protecting the stack when we don't need to.
+#[derive(Debug)]
+enum Stack {
+    /// This is the non-garbage collected stack
+    Regular(Vec<Byte>),
+    /// This is the garbage collected stack
+    /// We use a RwLock so that we can continue execution while the garbage collector is running.
+    /// This way, we only block the core when it is trying to write to the stack.
+    GarbageCollected(Arc<RwLock<Vec<Byte>>>),
 }
 
 impl fmt::Debug for Core {
@@ -175,7 +190,7 @@ pub struct Core {
     program_counter: usize,
     /// The stack
     /// The stack is always local to the core in order to prevent slowdowns from locking memory
-    stack: Vec<Byte>,
+    stack: Stack,
     /// The program
     program: Arc<Vec<Byte>>,
     /// The memory
@@ -213,13 +228,20 @@ impl Core {
             infinity_flag: false,
             nan_flag: false,
             program_counter: 0,
-            stack: vec![0],
+            stack: Stack::Regular(vec![0]),
             program: Arc::new(Vec::new()),
             memory,
             send_channel: send,
             recv_channel: recv,
             threads: HashSet::new(),
             main_thread: false,
+        }
+    }
+
+    pub fn set_garbage_collection(&mut self, garbage_collection: bool) {
+        match garbage_collection {
+            true => self.stack = Stack::GarbageCollected(Arc::new(RwLock::new(vec![0]))),
+            false => self.stack = Stack::Regular(vec![0]),
         }
     }
 
@@ -303,25 +325,154 @@ impl Core {
         }
     }
 
+    /// Convenience function for getting the size of the stack.
+    fn stack_len(&self) -> Result<usize, Fault> {
+        match self.stack {
+            Stack::Regular(ref stack) => Ok(stack.len()),
+            Stack::GarbageCollected(ref stack) => loop {
+                match stack.try_read() {
+                    Ok(stack) => return Ok(stack.len()),
+                    Err(TryLockError::WouldBlock) => thread::yield_now(),
+                    Err(TryLockError::Poisoned(_)) => return Err(Fault::CorruptedMemory),
+                }
+            },
+        }
+        
+    }
+
+    /// Convenience function for writing bytes to the stack.
+    fn write_bytes_to_stack(&mut self, address: Pointer, size: u64, value: &[Byte]) -> Result<(),Fault> {
+        match self.stack {
+            Stack::Regular(ref mut stack) => {
+                if address + size <= stack.len() as u64 {
+                    stack[address as usize..address as usize + size as usize].copy_from_slice(value);
+                    Ok(())
+                } else {
+                    Err(Fault::InvalidAddress(address))
+                }
+            },
+            Stack::GarbageCollected(ref mut stack) => {
+                loop {
+                    match stack.try_write() {
+                        Ok(mut stack) => {
+                            if address + size <= stack.len() as u64 {
+                                stack[address as usize..address as usize + size as usize].copy_from_slice(value);
+                                break;
+                            } else {
+                                return Err(Fault::StackOverflow);
+                            }
+                        },
+                        Err(TryLockError::WouldBlock) => {
+                            thread::yield_now();
+                        },
+                        Err(_) => {
+                            return Err(Fault::CorruptedMemory);
+                        }
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+
+    /// Convenience function for reading bytes from the stack.
+    fn read_bytes_from_stack(&mut self, address: Pointer, size: u64, bytes: &mut [Byte]) -> Result<(), Fault> {
+        match self.stack {
+            Stack::Regular(ref stack) => {
+                if address + size <= stack.len() as u64 {
+                    bytes.copy_from_slice(&stack[address as usize..address as usize + size as usize]);
+                    Ok(())
+                } else {
+                    Err(Fault::InvalidAddress(address))
+                }
+            },
+            Stack::GarbageCollected(ref stack) => {
+                loop {
+                    match stack.try_read() {
+                        Ok(stack) => {
+                            if address + size <= stack.len() as u64 {
+                                bytes.copy_from_slice(&stack[address as usize..address as usize + size as usize]);
+                                break;
+                            } else {
+                                return Err(Fault::StackOverflow);
+                            }
+                        },
+                        Err(TryLockError::WouldBlock) => {
+                            thread::yield_now();
+                        },
+                        Err(_) => {
+                            return Err(Fault::CorruptedMemory);
+                        }
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+
     /// Convenience function for pushing a value to the stack
     fn push_stack(&mut self,value: &[Byte]) {
-        self.stack.extend_from_slice(value);
+
+        match self.stack {
+            Stack::Regular(ref mut stack) => {
+                stack.extend_from_slice(value);
+            },
+            Stack::GarbageCollected(ref mut stack) => {
+                loop {
+                    match stack.try_write() {
+                        Ok(mut stack) => {
+                            stack.extend_from_slice(value);
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => {
+                            thread::yield_now();
+                        },
+                        Err(TryLockError::Poisoned(_)) => {
+                            panic!("Garbage collection lock poisoned");
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Convenience function for popping a value from the stack
     fn pop_stack(&mut self, size: u8) -> Result<Vec<Byte>,Fault> {
         let size = size / 8;
-        if self.stack.len() < size as usize {
-            return Err(Fault::StackUnderflow);
+        match self.stack {
+            Stack::Regular(ref mut stack) => {
+                if stack.len() < size as usize {
+                    return Err(Fault::StackUnderflow);
+                }
+                let mut value = Vec::with_capacity(size as usize);
+                for _ in 0..size {
+                    value.insert(0,stack.pop().unwrap());
+                }
+                Ok(value)
+            },
+            Stack::GarbageCollected(ref mut stack) => {
+                loop {
+                    match stack.try_write() {
+                        Ok(mut stack) => {
+                            if stack.len() < size as usize {
+                                return Err(Fault::StackUnderflow);
+                            }
+                            let mut value = Vec::with_capacity(size as usize);
+                            for _ in 0..size {
+                                value.insert(0,stack.pop().unwrap());
+                            }
+                            return Ok(value);
+                        },
+                        Err(TryLockError::WouldBlock) => {
+                            thread::yield_now();
+                        },
+                        Err(TryLockError::Poisoned(_)) => {
+                            panic!("Garbage collection lock poisoned");
+                        }
+                    }
+                }
+            }
         }
-
-        let mut value = Vec::with_capacity(size as usize);
-        for _ in 0..size {
-            value.insert(0,self.stack.pop().unwrap());
-        }
-
-
-        Ok(value)
     }
 
     #[inline]
@@ -7713,34 +7864,54 @@ impl Core {
         self.advance_by_8_bytes();
         match size {
             8 => {
-                if address >= self.stack.len() as u64 {
+                if address >= self.stack_len()? as u64 {
                     return Err(Fault::InvalidAddress(address));
                 }
-                self.registers_64[register] = (self.stack[address as usize] as u8) as u64;
+                let register_bytes = &mut self.registers_64[register].to_le_bytes()[0..1];
+                
+                self.read_bytes_from_stack(address, 1, register_bytes)?;
+
+                self.registers_64[register] = u8::from_le_bytes((*register_bytes).try_into().unwrap()) as u64;
             },
             16 => {
-                if address >= self.stack.len() as u64 {
+                if address >= self.stack_len()? as u64 {
                     return Err(Fault::InvalidAddress(address));
                 }
-                self.registers_64[register] = (self.stack[address as usize] as u16) as u64;
+                let register_bytes = &mut self.registers_64[register].to_le_bytes()[0..2];
+
+                self.read_bytes_from_stack(address, 2, register_bytes)?;
+
+                self.registers_64[register] = u16::from_le_bytes((*register_bytes).try_into().unwrap()) as u64;
             },
             32 => {
-                if address >= self.stack.len() as u64 {
+                if address >= self.stack_len()? as u64 {
                     return Err(Fault::InvalidAddress(address));
                 }
-                self.registers_64[register] = (self.stack[address as usize] as u32) as u64;
+                let register_bytes = &mut self.registers_64[register].to_le_bytes()[0..4];
+
+                self.read_bytes_from_stack(address, 4, register_bytes)?;
+
+                self.registers_64[register] = u32::from_le_bytes((*register_bytes).try_into().unwrap()) as u64;
             },
             64 => {
-                if address >= self.stack.len() as u64 {
+                if address >= self.stack_len()? as u64 {
                     return Err(Fault::InvalidAddress(address));
                 }
-                self.registers_64[register] = self.stack[address as usize] as u64;
+                let register_bytes = &mut self.registers_64[register].to_le_bytes()[0..8];
+
+                self.read_bytes_from_stack(address, 8, register_bytes)?;
+
+                self.registers_64[register] = u64::from_le_bytes((*register_bytes).try_into().unwrap()) as u64;
             },
             128 => {
-                if address >= self.stack.len() as u64 {
+                if address >= self.stack_len()? as u64 {
                     return Err(Fault::InvalidAddress(address));
                 }
-                self.registers_128[register] = self.stack[address as usize] as u128;
+                let register_bytes = &mut self.registers_128[register].to_le_bytes()[0..16];
+
+                self.read_bytes_from_stack(address, 16, register_bytes)?;
+
+                self.registers_128[register] = u128::from_le_bytes((*register_bytes).try_into().unwrap()) as u128;
             },
             _ => return Err(Fault::InvalidSize),
         }
@@ -7758,88 +7929,55 @@ impl Core {
                 check_register64!(register);
                 self.advance_by_1_byte();
 
-                if address >= self.stack.len() as u64 {
+                if address >= self.stack_len()? as u64 {
                     return Err(Fault::InvalidAddress(address));
                 }
 
-                self.stack[address as usize] = self.registers_64[register] as u8;
+                self.write_bytes_to_stack(address, 1, &self.registers_64[register].to_le_bytes()[0..1])?;
             },
             16 => {
                 let register = self.program[self.program_counter] as u8 as usize;
                 check_register64!(register);
                 self.advance_by_1_byte();
 
-                if address >= self.stack.len() as u64 - 1 {
+                if address >= self.stack_len()? as u64 - 1 {
                     return Err(Fault::InvalidAddress(address));
                 }
 
-                let bytes = self.registers_64[register].to_be_bytes();
-
-                self.stack[address as usize] = bytes[0];
-                self.stack[address as usize + 1] = bytes[1];
+                self.write_bytes_to_stack(address, 2, &self.registers_64[register].to_le_bytes()[0..2])?;
             },
             32 => {
                 let register = self.program[self.program_counter] as u8 as usize;
                 check_register64!(register);
                 self.advance_by_1_byte();
 
-                if address >= self.stack.len() as u64 - 3 {
+                if address >= self.stack_len()? as u64 - 3 {
                     return Err(Fault::InvalidAddress(address));
                 }
 
-                let bytes = self.registers_64[register].to_be_bytes();
-
-                self.stack[address as usize] = bytes[0];
-                self.stack[address as usize + 1] = bytes[1];
-                self.stack[address as usize + 2] = bytes[2];
-                self.stack[address as usize + 3] = bytes[3];
-                self.stack[address as usize + 4] = bytes[4];
+                self.write_bytes_to_stack(address, 4, &self.registers_64[register].to_le_bytes()[0..4])?;
             },
             64 => {
                 let register = self.program[self.program_counter] as u8 as usize;
                 check_register64!(register);
                 self.advance_by_1_byte();
 
-                if address >= self.stack.len() as u64 - 7 {
+                if address >= self.stack_len()? as u64 - 7 {
                     return Err(Fault::InvalidAddress(address));
                 }
-                let bytes = self.registers_64[register].to_be_bytes();
 
-                self.stack[address as usize] = bytes[0];
-                self.stack[address as usize + 1] = bytes[1];
-                self.stack[address as usize + 2] = bytes[2];
-                self.stack[address as usize + 3] = bytes[3];
-                self.stack[address as usize + 4] = bytes[4];
-                self.stack[address as usize + 5] = bytes[5];
-                self.stack[address as usize + 6] = bytes[6];
-                self.stack[address as usize + 7] = bytes[7];
+                self.write_bytes_to_stack(address, 8, &self.registers_64[register].to_le_bytes()[0..8])?;
             },
             128 => {
                 let register = self.program[self.program_counter] as u8 as usize;
                 check_register128!(register);
                 self.advance_by_1_byte();
 
-                if address >= self.stack.len() as u64 - 15 {
+                if address >= self.stack_len()? as u64 - 15 {
                     return Err(Fault::InvalidAddress(address));
                 }
-                let bytes = self.registers_128[register].to_be_bytes();
 
-                self.stack[address as usize] = bytes[0];
-                self.stack[address as usize + 1] = bytes[1];
-                self.stack[address as usize + 2] = bytes[2];
-                self.stack[address as usize + 3] = bytes[3];
-                self.stack[address as usize + 4] = bytes[4];
-                self.stack[address as usize + 5] = bytes[5];
-                self.stack[address as usize + 6] = bytes[6];
-                self.stack[address as usize + 7] = bytes[7];
-                self.stack[address as usize + 8] = bytes[8];
-                self.stack[address as usize + 9] = bytes[9];
-                self.stack[address as usize + 10] = bytes[10];
-                self.stack[address as usize + 11] = bytes[11];
-                self.stack[address as usize + 12] = bytes[12];
-                self.stack[address as usize + 13] = bytes[13];
-                self.stack[address as usize + 14] = bytes[14];
-                self.stack[address as usize + 15] = bytes[15];
+                self.write_bytes_to_stack(address, 16, &self.registers_128[register].to_le_bytes()[0..16])?;
             },
             _ => return Err(Fault::InvalidSize),
 
@@ -7870,77 +8008,67 @@ impl Core {
             8 => {
                 check_register64!(register);
 
-                if address >= self.stack.len() as u64 - 1 {
+                if address >= self.stack_len()? as u64 - 1 {
                     return Err(Fault::InvalidAddress(address));
                 }
 
-                self.registers_64[register] = ((self.stack[address as usize] as u8) as u64) << 8;
-                self.registers_64[register] |= (self.stack[address as usize + 1] as u8) as u64;
-                
+                let register_bytes = &mut self.registers_64[register].to_le_bytes()[0..1];
+
+                self.read_bytes_from_stack(address, 1, register_bytes)?;
+
+                self.registers_64[register] = u8::from_le_bytes((*register_bytes).try_into().unwrap()) as u64;
             },
             16 => {
                 check_register64!(register);
 
-                if address >= self.stack.len() as u64 - 1 {
+                if address >= self.stack_len()? as u64 - 1 {
                     return Err(Fault::InvalidAddress(address));
                 }
 
-                self.registers_64[register] = ((self.stack[address as usize] as u8) as u64) << 8;
-                self.registers_64[register] |= (self.stack[address as usize + 1] as u8) as u64;
-                
+                let register_bytes = &mut self.registers_64[register].to_le_bytes()[0..2];
+
+                self.read_bytes_from_stack(address, 2, register_bytes)?;
+
+                self.registers_64[register] = u16::from_le_bytes((*register_bytes).try_into().unwrap()) as u64;
             },
             32 => {
                 check_register64!(register);
 
-                if address >= self.stack.len() as u64 - 3 {
+                if address >= self.stack_len()? as u64 - 3 {
                     return Err(Fault::InvalidAddress(address));
                 }
 
-                self.registers_64[register] = ((self.stack[address as usize] as u8) as u64) << 24;
-                self.registers_64[register] |= ((self.stack[address as usize + 1] as u8) as u64) << 16;
-                self.registers_64[register] |= ((self.stack[address as usize + 2] as u8) as u64) << 8;
-                self.registers_64[register] |= (self.stack[address as usize + 3] as u8) as u64;
+                let register_bytes = &mut self.registers_64[register].to_le_bytes()[0..4];
+
+                self.read_bytes_from_stack(address, 4, register_bytes)?;
+
+                self.registers_64[register] = u32::from_le_bytes((*register_bytes).try_into().unwrap()) as u64;
             },
             64 => {
                 check_register64!(register);
 
-                if address >= self.stack.len() as u64 - 7 {
+                if address >= self.stack_len()? as u64 - 7 {
                     return Err(Fault::InvalidAddress(address));
                 }
 
-                self.registers_64[register] = ((self.stack[address as usize] as u8) as u64) << 56;
-                self.registers_64[register] |= ((self.stack[address as usize + 1] as u8) as u64) << 48;
-                self.registers_64[register] |= ((self.stack[address as usize + 2] as u8) as u64) << 40;
-                self.registers_64[register] |= ((self.stack[address as usize + 3] as u8) as u64) << 32;
-                self.registers_64[register] |= ((self.stack[address as usize + 4] as u8) as u64) << 24;
-                self.registers_64[register] |= ((self.stack[address as usize + 5] as u8) as u64) << 16;
-                self.registers_64[register] |= ((self.stack[address as usize + 6] as u8) as u64) << 8;
-                self.registers_64[register] |= (self.stack[address as usize + 7] as u8) as u64;
+                let register_bytes = &mut self.registers_64[register].to_le_bytes()[0..8];
+
+                self.read_bytes_from_stack(address, 8, register_bytes)?;
+
+                self.registers_64[register] = u64::from_le_bytes((*register_bytes).try_into().unwrap());
             },
             128 => {
                 check_register128!(register);
 
-                if address >= self.stack.len() as u64 - 15 {
+                if address >= self.stack_len()? as u64 - 15 {
                     return Err(Fault::InvalidAddress(address));
                 }
 
-                self.registers_128[register] = ((self.stack[address as usize] as u8) as u128) << 120;
-                self.registers_128[register] |= ((self.stack[address as usize + 1] as u8) as u128) << 112;
-                self.registers_128[register] |= ((self.stack[address as usize + 2] as u8) as u128) << 104;
-                self.registers_128[register] |= ((self.stack[address as usize + 3] as u8) as u128) << 96;
-                self.registers_128[register] |= ((self.stack[address as usize + 4] as u8) as u128) << 88;
-                self.registers_128[register] |= ((self.stack[address as usize + 5] as u8) as u128) << 80;
-                self.registers_128[register] |= ((self.stack[address as usize + 6] as u8) as u128) << 72;
-                self.registers_128[register] |= ((self.stack[address as usize + 7] as u8) as u128) << 64;
-                self.registers_128[register] |= ((self.stack[address as usize + 8] as u8) as u128) << 56;
-                self.registers_128[register] |= ((self.stack[address as usize + 9] as u8) as u128) << 48;
-                self.registers_128[register] |= ((self.stack[address as usize + 10] as u8) as u128) << 40;
-                self.registers_128[register] |= ((self.stack[address as usize + 11] as u8) as u128) << 32;
-                self.registers_128[register] |= ((self.stack[address as usize + 12] as u8) as u128) << 24;
-                self.registers_128[register] |= ((self.stack[address as usize + 13] as u8) as u128) << 16;
-                self.registers_128[register] |= ((self.stack[address as usize + 14] as u8) as u128) << 8;
-                self.registers_128[register] |= (self.stack[address as usize + 15] as u8) as u128;
-                
+                let register_bytes = &mut self.registers_128[register].to_le_bytes()[0..16];
+
+                self.read_bytes_from_stack(address, 16, register_bytes)?;
+
+                self.registers_128[register] = u128::from_le_bytes((*register_bytes).try_into().unwrap());
             }
             _ => {
                 return Err(Fault::InvalidSize);
@@ -7963,33 +8091,28 @@ impl Core {
             32 => {
                 check_registerF32!(register);
                 
-                if address >= self.stack.len() as u64 - 3 {
+                if address >= self.stack_len()? as u64 - 3 {
                     return Err(Fault::InvalidAddress(address));
                 }
 
                 let mut bytes = 0.0f32.to_le_bytes();
-                bytes[0] = self.stack[address as usize];
-                bytes[1] = self.stack[address as usize + 1];
-                bytes[2] = self.stack[address as usize + 2];
-                bytes[3] = self.stack[address as usize + 3];
-                
+
+                self.read_bytes_from_stack(address, 4, &mut bytes)?;
+
+                self.registers_f32[register] = f32::from_le_bytes(bytes);
             }
             64 => {
                 check_registerF64!(register);
                 
-                if address >= self.stack.len() as u64 - 7 {
+                if address >= self.stack_len()? as u64 - 7 {
                     return Err(Fault::InvalidAddress(address));
                 }
 
                 let mut bytes = 0.0f64.to_le_bytes();
-                bytes[0] = self.stack[address as usize];
-                bytes[1] = self.stack[address as usize + 1];
-                bytes[2] = self.stack[address as usize + 2];
-                bytes[3] = self.stack[address as usize + 3];
-                bytes[4] = self.stack[address as usize + 4];
-                bytes[5] = self.stack[address as usize + 5];
-                bytes[6] = self.stack[address as usize + 6];
-                bytes[7] = self.stack[address as usize + 7];
+
+                self.read_bytes_from_stack(address, 8, &mut bytes)?;
+
+                self.registers_f64[register] = f64::from_le_bytes(bytes);
                 
             }
             _ => return Err(Fault::InvalidSize),
@@ -8008,35 +8131,30 @@ impl Core {
                 let address = self.program[self.program_counter] as u64;
                 self.advance_by_8_bytes();
 
-                if address >= self.stack.len() as u64 - 3 {
+                if address >= self.stack_len()? as u64 - 3 {
                     return Err(Fault::InvalidAddress(address));
                 }
 
-                let float_bytes = self.registers_f32[register as usize].to_le_bytes();
-                self.stack[address as usize] = float_bytes[0];
-                self.stack[address as usize + 1] = float_bytes[1];
-                self.stack[address as usize + 2] = float_bytes[2];
-                self.stack[address as usize + 3] = float_bytes[3];
+                let mut float_bytes = self.registers_f32[register as usize].to_le_bytes();
+
+                self.read_bytes_from_stack(address, 4, &mut float_bytes)?;
+
+                self.registers_f32[register as usize] = f32::from_le_bytes(float_bytes);
             },
             64 => {
                 check_registerF64!(register as usize);
                 let address = self.program[self.program_counter] as u64;
                 self.advance_by_8_bytes();
 
-                if address >= self.stack.len() as u64 - 7 {
+                if address >= self.stack_len()? as u64 - 7 {
                     return Err(Fault::InvalidAddress(address));
                 }
 
-                let float_bytes = self.registers_f64[register as usize].to_le_bytes();
+                let mut float_bytes = self.registers_f64[register as usize].to_le_bytes();
 
-                self.stack[address as usize] = float_bytes[0];
-                self.stack[address as usize + 1] = float_bytes[1];
-                self.stack[address as usize + 2] = float_bytes[2];
-                self.stack[address as usize + 3] = float_bytes[3];
-                self.stack[address as usize + 4] = float_bytes[4];
-                self.stack[address as usize + 5] = float_bytes[5];
-                self.stack[address as usize + 6] = float_bytes[6];
-                self.stack[address as usize + 7] = float_bytes[7];
+                self.read_bytes_from_stack(address, 8, &mut float_bytes)?;
+
+                self.registers_f64[register as usize] = f64::from_le_bytes(float_bytes);
                 
             },
             _ => return Err(Fault::InvalidSize),
@@ -8069,34 +8187,26 @@ impl Core {
             32 => {
                 check_registerF32!(register);
 
-                if address >= self.stack.len() as u64 - 3 {
+                if address >= self.stack_len()? as u64 - 3 {
                     return Err(Fault::InvalidAddress(address));
                 }
 
                 let mut bytes = 0.0f32.to_le_bytes();
-                bytes[0] = self.stack[address as usize];
-                bytes[1] = self.stack[address as usize + 1];
-                bytes[2] = self.stack[address as usize + 2];
-                bytes[3] = self.stack[address as usize + 3];
+
+                self.read_bytes_from_stack(address, 4, &mut bytes)?;
 
                 self.registers_f32[register] = f32::from_le_bytes(bytes);
             },
             64 => {
                 check_registerF64!(register);
 
-                if address >= self.stack.len() as u64 - 7 {
+                if address >= self.stack_len()? as u64 - 7 {
                     return Err(Fault::InvalidAddress(address));
                 }
 
                 let mut bytes = 0.0f64.to_le_bytes();
-                bytes[0] = self.stack[address as usize];
-                bytes[1] = self.stack[address as usize + 1];
-                bytes[2] = self.stack[address as usize + 2];
-                bytes[3] = self.stack[address as usize + 3];
-                bytes[4] = self.stack[address as usize + 4];
-                bytes[5] = self.stack[address as usize + 5];
-                bytes[6] = self.stack[address as usize + 6];
-                bytes[7] = self.stack[address as usize + 7];
+
+                self.read_bytes_from_stack(address, 8, &mut bytes)?;
 
                 self.registers_f64[register] = f64::from_le_bytes(bytes);
             },
@@ -8354,7 +8464,7 @@ impl Core {
 
         check_register64!(stackptr_reg as usize);
 
-        self.registers_64[stackptr_reg as usize] = self.stack.len() as u64;
+        self.registers_64[stackptr_reg as usize] = self.stack_len()? as u64;
 
         Ok(())
     }
