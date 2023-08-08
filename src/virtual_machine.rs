@@ -13,21 +13,45 @@ use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, ForeignFunction
 use crate::binary::Binary;
 use crate::core::Core;
 
+/// Struct that contains options for the virtual machine
+pub struct MachineOptions {
+    /// The max number of cycles to run before resetting the cycle count
+    pub cycle_size: usize,
+    /// The nth cycle to join threads
+    pub join_thread_cycle: usize,
+    /// The nth cycle to defrag memory
+    pub defrag_cycle: usize,
+}
 
-
+/// A struct that represents our virtual machine
 pub struct Machine {
+    /// The options for the virtual machine
+    options: MachineOptions,
+    /// The memory of the virtual machine in little endian
     memory: Arc<RwLock<Vec<Byte>>>,
+    /// A map of allocated blocks of memory that are in use
     allocated_blocks: HashMap<Pointer, usize>,
+    /// A map of freed blocks of memory that are available for use
     available_blocks: HashMap<Pointer, usize>,
+    /// The cores of the virtual machine that are not running
     cores: Vec<Core>,
+    /// The thread handles for the running cores
     core_threads: Vec<Option<JoinHandle<Result<(),Fault>>>>,
+    /// The program to run
     program: Option<Arc<Vec<Byte>>>,
+    /// The entry point of the program for the program counter
     entry_point: Option<usize>,
+    /// The channels for the cores to communicate with the machine's event loop
     channels: Rc<RefCell<Vec<Option<(Sender<Message>, Receiver<Message>)>>>>,
+    /// The files that are open for the machine
     files: Vec<Box<dyn Write>>,
+    /// A map of child threads to their parent threads
     thread_children: HashMap<CoreId, CoreId>,
+    /// A list of threads to join, this is set by the join instruction. This is so that we don't deadlock when trying to join a thread
     threads_to_join: Rc<RefCell<Vec<CoreId>>>,
+    /// The id of the main thread
     main_thread_id: CoreId,
+    /// A list of foriegn functions that can be called by the program
     foriegn_functions: Vec<(ForeignFunctionArg, ForeignFunction)>,
 }
 
@@ -35,6 +59,11 @@ impl Machine {
 
     pub fn new() -> Machine {
         Machine {
+            options: MachineOptions {
+                cycle_size: 1,
+                join_thread_cycle: 0,
+                defrag_cycle: 0,
+            },
             memory: Arc::new(RwLock::new(Vec::new())),
             allocated_blocks: HashMap::new(),
             available_blocks: HashMap::new(),
@@ -59,6 +88,10 @@ impl Machine {
         machine
     }
 
+    pub fn set_options(&mut self, options: MachineOptions) {
+        self.options = options;
+    }
+
     pub fn add_function(&mut self, func_arg: Option<Arc<RwLock<dyn Any + Send + Sync>>>, function: fn(&mut Core, Option<Arc<RwLock<dyn Any + Send + Sync>>>) -> Result<(),Fault>) {
         self.foriegn_functions.push((func_arg, Arc::new(function)));
     }
@@ -73,15 +106,23 @@ impl Machine {
         let program_counter = self.entry_point.expect("Entry point not set");
         self.run_core(0, program_counter);
         let mut main_thread_done = false;
+        let mut cycle_count = 0;
         loop {
             self.check_main_core(&mut main_thread_done);
             self.check_messages();
-            self.join_joinable_threads();
+            if self.options.join_thread_cycle == cycle_count {
+                self.join_joinable_threads();
+            }
+            if self.options.defrag_cycle == cycle_count {
+                self.defrag_memory();
+            }
 
             //TODO: check for commands from the threads to do various things like allocate more memory, etc.
             if main_thread_done {
                 break;
             }
+
+            cycle_count = (cycle_count + 1) % self.options.cycle_size;
         }
         self.core_threads.clear();
         self.channels.borrow_mut().clear();
@@ -126,6 +167,26 @@ impl Machine {
                 }
 
         self.threads_to_join.borrow_mut().retain(|thread_id| !threads_joined.contains(thread_id));
+    }
+
+    fn defrag_memory(&mut self) {
+        let mut blocks_to_update = Vec::new();
+        for (ptr, size) in self.available_blocks.iter() {
+            match self.allocated_blocks.get(&(*ptr + *size as u64)) {
+                None => {},
+                Some(_) => {
+                    blocks_to_update.push((*ptr, *ptr + *size as u64));
+                },
+            }
+        }
+
+        for (ptr, next_ptr) in blocks_to_update.iter().rev() {
+            let size = self.available_blocks.remove(next_ptr).expect("block no longer exists");
+            let ptr_size = self.available_blocks.get(ptr).expect("block no longer exists");
+            self.available_blocks.insert(*ptr, ptr_size + size);
+
+        }
+
     }
 
     fn check_messages(&mut self) {

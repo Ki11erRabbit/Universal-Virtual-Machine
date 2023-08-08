@@ -131,34 +131,67 @@ impl fmt::Debug for Core {
 
 }
 
+/// A struct that represents a processor core.
 pub struct Core {
-    /* 64-bit registers */
+    /// 64-bit registers
     registers_64: [u64; REGISTER_64_COUNT],
-    /* 128-bit registers */
+    /// 128-bit registers
     registers_128: [u128; REGISTER_128_COUNT],
-    /* floating point registers */
+    /// 32-bit floating point registers
     registers_f32: [f32; REGISTER_F32_COUNT],
+    /// 64-bit floating point registers
     registers_f64: [f64; REGISTER_F64_COUNT],
-    /* Atomic registers */
+    /// 64-bit atomic registers
     registers_atomic_64: [AtomicU64; REGISTER_ATOMIC_64_COUNT],
     /* flags */
+    /// The comparison flag
+    /// This flag is set when a comparison instruction is executed
     comparison_flag: Comparison,
+    /// The odd flag
+    /// This flag is set when a result of an operation is odd
     odd_flag: bool,
+    /// The zero flag
+    /// This flag is set when a result of an operation is zero
     zero_flag: bool,
+    /// The sign flag
+    /// This flag is set when a result of an operation is negative or positive
+    /// When working with unsigned numbers, this flag is always set to positive
     sign_flag: Sign,
+    /// The overflow flag
+    /// This flag is set when we wrap around the maximum or minimum value of a number
     overflow_flag: bool,
+    /// The infinity flag
+    /// This flag is set when a result of an operation is infinity
     infinity_flag: bool,
+    /// The nan flag
+    /// This flag is set when a result of an operation is Not a Number
     nan_flag: bool,
     /* other */
+    /// The remainder of a division operation
     remainder_64: usize,
+    /// The remainder of a division operation
     remainder_128: u128,
+    /// The program counter
     program_counter: usize,
+    /// The stack
+    /// The stack is always local to the core in order to prevent slowdowns from locking memory
     stack: Vec<Byte>,
+    /// The program
     program: Arc<Vec<Byte>>,
+    /// The memory
+    /// This is a reference to the memory of the machine and is shared between all cores
     memory: Arc<RwLock<Vec<Byte>>>,
+    /// The send channel
+    /// This is a channel that is used to send messages to the machine's event loop.
     send_channel: Sender<Message>,
+    /// The receive channel
+    /// This is a channel that is used to receive messages from the machine's event loop.
     recv_channel: Receiver<Message>,
+    /// The threads
+    /// This is a set of all the threads that this core has spawned
     threads: HashSet<CoreId>,
+    /// The main thread
+    /// This is a boolean that is set to true if this core is the main thread
     main_thread: bool,
 }
     
