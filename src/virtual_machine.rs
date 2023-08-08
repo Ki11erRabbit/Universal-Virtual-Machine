@@ -8,6 +8,7 @@ use std::sync::mpsc::{Sender,Receiver, channel};
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::time::{Instant, Duration};
 
 use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, ForeignFunction, ForeignFunctionArg, FileDescriptor};
 use crate::binary::Binary;
@@ -21,6 +22,10 @@ pub struct MachineOptions {
     pub join_thread_cycle: usize,
     /// The nth cycle to defrag memory
     pub defrag_cycle: usize,
+    /// The time to collect garbage
+    /// None for no garbage collection
+    /// Time is in minutes
+    pub gc_time: Option<u64>,
 }
 
 /// A struct that represents our virtual machine
@@ -64,6 +69,7 @@ impl Machine {
                 cycle_size: 1,
                 join_thread_cycle: 0,
                 defrag_cycle: 0,
+                gc_time: Some(0),
             },
             memory: Arc::new(RwLock::new(Vec::new())),
             allocated_blocks: HashMap::new(),
@@ -119,6 +125,10 @@ impl Machine {
         self.run_core(0, program_counter);
         let mut main_thread_done = false;
         let mut cycle_count = 0;
+        let mut time = match self.options.gc_time {
+            Some(_) => Some(Instant::now()),
+            None => None,
+        };
         loop {
             self.check_main_core(&mut main_thread_done);
             self.check_messages();
@@ -132,6 +142,14 @@ impl Machine {
             //TODO: check for commands from the threads to do various things like allocate more memory, etc.
             if main_thread_done {
                 break;
+            }
+
+            if time.is_some() {
+                let time = time.as_mut().unwrap();
+                if time.elapsed().as_secs() >= Duration::from_secs(self.options.gc_time.unwrap() * 60).as_secs() {
+                    //TODO: send signal to collect garbage
+                    *time = Instant::now();
+                }
             }
 
             cycle_count = (cycle_count + 1) % self.options.cycle_size;
