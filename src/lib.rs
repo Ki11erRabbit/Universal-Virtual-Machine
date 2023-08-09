@@ -35,6 +35,7 @@ pub type ForeignFunctionArg = Option<Arc<RwLock<dyn Any + Send + Sync>>>;
 //pub type FFun = Box<dyn FnMut(&mut Core) -> Result<(),Fault> + Send + Sync + 'static>;
 //fn(&mut Core) -> Result<(), Fault>
 /// Messages that a core and the machine can send to each other
+#[derive(Clone)]
 pub enum Message {
     /// Takes a size of memory to allocate
     Malloc(u64),                               // Takes size

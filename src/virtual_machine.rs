@@ -341,6 +341,13 @@ impl Machine {
                 let time = time.as_mut().unwrap();
                 if time.elapsed().as_secs() >= Duration::from_secs(self.options.gc_time.unwrap() * 60).as_secs() {
                     let message = Message::CollectGarbage;
+
+                    for pair in self.channels.borrow().iter() {
+                        if let Some((sender, _)) = pair {
+                            sender.send(message.clone()).unwrap();
+                        }
+                    }
+                    
                     self.gc_channels.as_ref().unwrap().0.send(message).unwrap();
 
                     let message = self.gc_channels.as_ref().unwrap().1.recv().unwrap();
@@ -350,6 +357,12 @@ impl Machine {
                             println!("Garbage Collected");
                         },
                         _ => panic!("Unexpected message from garbage collector"),
+                    }
+
+                    for pair in self.channels.borrow().iter() {
+                        if let Some((sender, _)) = pair {
+                            sender.send(Message::Success).unwrap();
+                        }
                     }
                     
                     *time = Instant::now();

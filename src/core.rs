@@ -251,7 +251,16 @@ impl Core for MachineCore {
     /// Wrapper for making a blocking call to receive a message from the machine's event loop
     fn recv_message(&self) -> CoreResult<Message> {
         match self.recv_channel.as_ref().expect("Recieve channel was not initialized").recv() {
-            Ok(message) => Ok(message),
+            Ok(message) => {
+                match message {
+                    Message::CollectGarbage => {
+                        self.prepare_for_collection();
+                        return self.recv_message();
+                    },
+                    _ => Ok(message),
+                }
+                
+            },
             Err(_) => Err(Fault::MachineCrash("Could not receive message"))
         }
     }
@@ -262,6 +271,9 @@ impl Core for MachineCore {
             Ok(message) => {
                 match message {
                     Message::ThreadDone(core_id) => {
+                    },
+                    Message::CollectGarbage => {
+                        self.prepare_for_collection();
                     },
 
                     _ => unimplemented!(),
@@ -374,6 +386,24 @@ impl MachineCore {
             recv_channel: None,
             threads: HashSet::new(),
         }
+    }
+
+    fn prepare_for_collection(&mut self) -> SimpleResult {
+        let mut reg_memory = Vec::new();
+        for reg in self.registers_64.iter() {
+            reg_memory.extend_from_slice(&reg.to_le_bytes());
+        }
+        self.push_stack(&reg_memory);
+        let message = self.recv_message()?;
+
+        match message {
+            Message::Success => {},
+            _ => return Err(Fault::MachineCrash("Could not prepare for collection")),
+        }
+
+        self.pop_stack(reg_memory.len() * 8);
+        
+        Ok(())
     }
 
     /// Convenience function for getting the bytes of a string from memory
@@ -505,7 +535,7 @@ impl MachineCore {
     }
 
     /// Convenience function for popping a value from the stack
-    fn pop_stack(&mut self, size: u8) -> CoreResult<Vec<Byte>> {
+    fn pop_stack(&mut self, size: usize) -> CoreResult<Vec<Byte>> {
         let size = size / 8;
         match self.stack {
             Stack::Regular(ref mut stack) => {
@@ -7693,7 +7723,7 @@ impl MachineCore {
         let register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
-        let value = self.pop_stack(size)?;
+        let value = self.pop_stack(size as usize)?;
 
         match size {
             8 => {
@@ -7805,7 +7835,7 @@ impl MachineCore {
         let register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
-        let value = self.pop_stack(size)?;
+        let value = self.pop_stack(size as usize)?;
 
 
         match size {
