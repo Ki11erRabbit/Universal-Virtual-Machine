@@ -5,7 +5,7 @@ use std::sync::{RwLock, Arc};
 use std::sync::TryLockError;
 
 use crate::virtual_machine::Memory;
-use crate::{Core, Byte, SimpleResult, Message, CoreResult, Collector, Pointer};
+use crate::{Core, Byte, SimpleResult, Message, CoreResult, Collector, Pointer, GarbageCollectorCore};
 use crate::core::MachineCore;
 
 
@@ -68,7 +68,7 @@ impl Core for GarbageCollector {
 
     fn get_register_f64<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut f64> {
         self.core.get_register_f64(register)
-    }
+    }   
 }
 
 impl Collector for GarbageCollector {
@@ -81,6 +81,8 @@ impl Collector for GarbageCollector {
         self.memory = memory;
     }
 }
+
+impl GarbageCollectorCore for GarbageCollector {}
 
 /// A garbage collector for the virtual machine.
 pub struct GarbageCollector {
@@ -106,12 +108,16 @@ impl GarbageCollector {
 
     fn collect(&mut self) -> CoreResult<bool> {
 
-        //TODO: add in check to see if we got the message to clean up garbage
+        let message = self.recv_message()?;
 
-        if self.core.program.len() != 0 {
-            return self.core.execute_instruction();
+        match message {
+            Message::CollectGarbage => (),
+            _ => return Ok(true),
         }
-
+        
+        if self.core.program.len() != 0 {
+            self.core.execute_instruction()?;
+        }
 
         let mut memory;
 
@@ -162,13 +168,15 @@ impl GarbageCollector {
         
         const POINTER_SIZE: usize = 8;
         const NULL_OFFSET: usize = 1;
+        
         for stack in stacks {
+
 
             for i in (NULL_OFFSET..stack.len()).step_by(POINTER_SIZE) {
 
                 let mut address = u64::from_le_bytes(stack[i..(i + POINTER_SIZE)].try_into().unwrap());
 
-                while address != 0 || address < memory_len as u64 {
+                while address != 0 && address < memory_len as u64 {
                     if memory.allocated_blocks.contains_key(&address) {
                         self.found_ptrs.insert(address, self.found_flag);
                     }
@@ -201,6 +209,8 @@ impl GarbageCollector {
         }
 
         self.found_flag = !self.found_flag;
+
+        self.send_message(Message::Success)?;
 
         Ok(false)
     }

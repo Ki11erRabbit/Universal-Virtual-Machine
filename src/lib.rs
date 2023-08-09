@@ -82,6 +82,8 @@ pub enum Message {
     GetForeignFunction(u64),                   // Takes function name
     /// Return message for foreign function
     ForeignFunction(ForeignFunctionArg, ForeignFunction),// Returns function and its arguments
+    /// Signal to initiate garbage collection
+    CollectGarbage,
 }
 
 impl fmt::Debug for Message {
@@ -110,6 +112,7 @@ impl fmt::Debug for Message {
             Message::Success => write!(f, "Success"),
             Message::GetForeignFunction(address) => write!(f, "GetForeignFunction({})", address),
             Message::ForeignFunction(_, _) => write!(f, "ForeignFunction"),
+            Message::CollectGarbage => write!(f, "CollectGarbage"),
         }
     }
 }
@@ -221,6 +224,7 @@ pub trait Core {
     fn get_register_f32<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut f32>;
 
     fn get_register_f64<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut f64>;
+    
 }
 
 pub trait RegCore: Core {

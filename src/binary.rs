@@ -1143,7 +1143,24 @@ impl Binary {
 
                     assembly.push_str(&format!("${}\n", reg));
                 },
-                
+                Sleep => {
+                    assembly.push_str("sleep ");
+                    let num = u64::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
+                    read_head += 8;
+                    let scale = u64::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
+                    read_head += 8;
+
+                    assembly.push_str(&format!("{}u64, {}u64\n", num, scale));
+                },
+                SleepReg => {
+                    assembly.push_str("sleepreg ");
+                    let reg = self.program[read_head];
+                    read_head += 1;
+                    let scale_reg = self.program[read_head];
+                    read_head += 1;
+
+                    assembly.push_str(&format!("${}, ${}\n", reg, scale_reg));
+                },
                 Illegal => {
                     assembly.push_str("illegal\n");
                 },

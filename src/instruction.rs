@@ -343,6 +343,10 @@ pub enum Opcode {
     StackPointer,
     /// This instruction will call a specified foreign function
     ForeignCall,
+    /// This instruction will sleep for a specified amount of time in seconds with a scale factor
+    Sleep,
+    /// This instruction will sleep for a specified amount of time seconds from the register
+    SleepReg,
     
     
     
@@ -532,6 +536,8 @@ impl From<u16> for Opcode {
             165 => StackPointer,
             166 => ForeignCall,
             167 => Realloc,
+            168 => Sleep,
+            169 => SleepReg,
             
             
             /* Instructions illegal instruction */

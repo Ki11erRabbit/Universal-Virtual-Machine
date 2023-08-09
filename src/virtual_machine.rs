@@ -10,7 +10,8 @@ use std::io::Write;
 use std::time::{Instant, Duration};
 
 use crate::core::MachineCore;
-use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, ForeignFunction, ForeignFunctionArg, FileDescriptor, Core, SimpleResult, GarbageCollectorCore, RegCore};
+use crate::garbage_collector::GarbageCollector;
+use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, ForeignFunction, ForeignFunctionArg, FileDescriptor, Core, SimpleResult, GarbageCollectorCore, RegCore, Collector};
 use crate::binary::Binary;
 
 /// Struct that contains options for the virtual machine
@@ -284,6 +285,11 @@ impl Machine {
     /// This is how we set new options for the machine
     pub fn set_options(&mut self, options: MachineOptions) {
         self.options = options;
+
+        if self.options.gc_time.is_some() {
+            self.add_gc_core();
+        }
+        
     }
 
     /// This is how we add foriegn functions and their arguments to the machine
@@ -327,7 +333,6 @@ impl Machine {
                 self.memory.write().unwrap().defrag_memory();
             }
 
-            //TODO: check for commands from the threads to do various things like allocate more memory, etc.
             if main_thread_done {
                 break;
             }
@@ -335,7 +340,18 @@ impl Machine {
             if time.is_some() {
                 let time = time.as_mut().unwrap();
                 if time.elapsed().as_secs() >= Duration::from_secs(self.options.gc_time.unwrap() * 60).as_secs() {
-                    //TODO: send signal to collect garbage
+                    let message = Message::CollectGarbage;
+                    self.gc_channels.as_ref().unwrap().0.send(message).unwrap();
+
+                    let message = self.gc_channels.as_ref().unwrap().1.recv().unwrap();
+
+                    match message {
+                        Message::Success => {
+                            println!("Garbage Collected");
+                        },
+                        _ => panic!("Unexpected message from garbage collector"),
+                    }
+                    
                     *time = Instant::now();
                 }
             }
@@ -603,6 +619,18 @@ impl Machine {
         self.cores.push(core);
     }
 
+    /// This function adds a garbage collector core to the machine
+    fn add_gc_core(&mut self) {
+        let (core_sender, core_receiver) = channel();
+        let (machine_sender, machine_receiver) = channel();
+        self.gc_channels = Some((core_sender, machine_receiver));
+        let mut core = Box::new(GarbageCollector::new());
+        core.add_memory(self.memory.clone());
+        core.add_channels(machine_sender, core_receiver);
+        core.add_stacks(self.stacks.clone());
+        self.gc = Some(Ok(core));
+    }
+
     /// This function will run a core at a given program counter in a new thread
     fn run_core_threaded(&mut self, core: usize, program_counter: usize) {
         let mut core = self.cores.remove(core);
@@ -658,7 +686,9 @@ impl Machine {
 
         match gc {
             Ok(mut gc) => {
-                gc.add_program(self.options.gc_program.clone().unwrap());
+                if self.options.gc_program.is_some() {
+                    gc.add_program(self.options.gc_program.clone().unwrap());
+                }
                 gc.add_memory(self.memory.clone());
                 gc.add_channels(machine_sender, core_receiver);
 
@@ -804,7 +834,7 @@ ret}
 
         println!("Time: {:?}", now.elapsed().unwrap());
 
-        assert_eq!(machine.memory.read().unwrap()[1..], [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 21, 0, 0, 0, 34, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..], [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 21, 0, 0, 0, 34, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     }
 
     #[test]
@@ -884,7 +914,7 @@ ret
 
         println!("Time: {:?}", now.elapsed().unwrap());
 
-        assert_eq!(machine.memory.read().unwrap()[1..5], [34, 0, 0, 0]);
+        assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..5], [34, 0, 0, 0]);
         
     }
 
@@ -937,7 +967,7 @@ ret}
         machine.run();
 
 
-        assert_eq!(machine.memory.read().unwrap()[1..9], [10, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..9], [10, 0, 0, 0, 0, 0, 0, 0]);
 
 
     }
@@ -976,7 +1006,7 @@ ret}";
 
         machine.run();
 
-        assert_eq!(machine.memory.read().unwrap()[1..9], [45, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..9], [45, 0, 0, 0, 0, 0, 0, 0]);
 
     }
 
@@ -1020,7 +1050,7 @@ ret}";
 
         machine.run();
 
-        assert_eq!(machine.memory.read().unwrap()[1..9], [35, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..9], [35, 0, 0, 0, 0, 0, 0, 0]);
         assert_eq!(argument.unwrap().read().unwrap().downcast_ref::<u64>().unwrap(), &45u64);
 
     }
@@ -1045,7 +1075,7 @@ ret}
 
         machine.run();
 
-        assert_eq!(machine.memory.read().unwrap()[1..9], [10, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..9], [10, 0, 0, 0, 0, 0, 0, 0]);
 
     }
 
@@ -1070,7 +1100,7 @@ ret}
 
         machine.run();
 
-        assert_eq!(machine.memory.read().unwrap()[1..9], [10, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..9], [10, 0, 0, 0, 0, 0, 0, 0]);
 
     }
 
@@ -1102,10 +1132,84 @@ ret}
 
         machine.run();
 
-        println!("{:?}", machine.memory.read().unwrap());
+        println!("{:?}", machine.memory.read().unwrap().memory.read().unwrap());
 
-        assert_eq!(machine.memory.read().unwrap()[1..17], [10, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0 ,0, 0, 0, 0, 0]);
+        assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..17], [10, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0 ,0, 0, 0, 0, 0]);
 
+    }
+
+    #[test]
+    fn test_garbage_collection() {
+        let input = "
+main{
+move 64, $0, 8u64
+malloc $1, $0
+sleep 30u64, 1u64
+malloc $1, $0
+sleep 5u64, 1u64
+malloc $1, $0
+ret}
+";
+        let binary = generate_binary(input, "test").unwrap();
+
+        let mut machine = Machine::new();
+        machine.load_binary(&binary);
+
+        machine.add_core();
+        let options = MachineOptions {
+            cycle_size: 1,
+            join_thread_cycle: 0,
+            defrag_cycle: 0,
+            gc_time: Some(1),
+            gc_program: None,
+        };
+
+        machine.set_options(options);
+
+        machine.run();
+
+        println!("{:?}", machine.memory.read().unwrap().memory.read().unwrap());
+
+        assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn test_garbage_colection_save() {
+        let input = "
+main{
+move 64, $0, 8u64
+malloc $1, $0
+push 64, $1
+sleep 70u64, 1u64
+malloc $1, $0
+pop 64, $1
+ret}
+";
+        let binary = generate_binary(input, "test").unwrap();
+
+        let mut machine = Machine::new();
+        machine.load_binary(&binary);
+
+        machine.add_core();
+        let options = MachineOptions {
+            cycle_size: 1,
+            join_thread_cycle: 0,
+            defrag_cycle: 0,
+            gc_time: Some(1),
+            gc_program: None,
+        };
+
+        machine.set_options(options);
+
+        println!("ASSEMBLY: {}", binary.assembly());
+        println!("PROGRAM: \n{}", binary.program_with_count());
+        
+
+        machine.run();
+
+        println!("{:?}", machine.memory.read().unwrap().memory.read().unwrap());
+
+        assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     }
 
 }

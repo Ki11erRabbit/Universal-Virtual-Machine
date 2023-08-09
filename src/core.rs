@@ -7,6 +7,7 @@ use std::sync::atomic::AtomicU64;
 use std::thread;
 use std::fmt;
 use std::sync::mpsc::{Sender,Receiver, TryRecvError};
+use std::time::Duration;
 
 use crate::instruction::Opcode;
 use crate::{RegisterType,Message,Fault,CoreId,Byte,Pointer,FileDescriptor, Core, SimpleResult, CoreResult, RegCore};
@@ -297,43 +298,33 @@ impl Core for MachineCore {
 
     }
 
-
-    /// Allows for accessing the 64-bit registers of the core for foreign functions
     fn get_register_64<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut u64> {
-        if register < REGISTER_64_COUNT {
-            Ok(&mut self.registers_64[register])
-        } else {
-            Err(Fault::InvalidRegister(register, RegisterType::Register64))
+        if register >= REGISTER_64_COUNT {
+            return Err(Fault::InvalidRegister(register, RegisterType::Register64));
         }
+        Ok(&mut self.registers_64[register])
     }
 
-    /// Allows for accessing the 128-bit registers of the core for foreign functions
     fn get_register_128<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut u128> {
-        if register < REGISTER_128_COUNT {
-            Ok(&mut self.registers_128[register])
-        } else {
-            Err(Fault::InvalidRegister(register, RegisterType::Register128))
+        if register >= REGISTER_128_COUNT {
+            return Err(Fault::InvalidRegister(register, RegisterType::Register128));
         }
+        Ok(&mut self.registers_128[register])
     }
 
-    /// Allows for accessing the 32-bit floating point registers of the core for foreign functions
     fn get_register_f32<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut f32> {
-        if register < REGISTER_F32_COUNT {
-            Ok(&mut self.registers_f32[register])
-        } else {
-            Err(Fault::InvalidRegister(register, RegisterType::RegisterF32))
+        if register >= REGISTER_F32_COUNT {
+            return Err(Fault::InvalidRegister(register, RegisterType::RegisterF32));
         }
+        Ok(&mut self.registers_f32[register])
     }
 
-    /// Allows for accessing the 64-bit floating point registers of the core for foreign functions
     fn get_register_f64<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut f64> {
-        if register < REGISTER_F64_COUNT {
-            Ok(&mut self.registers_f64[register])
-        } else {
-            Err(Fault::InvalidRegister(register, RegisterType::RegisterF64))
+        if register >= REGISTER_F64_COUNT {
+            return Err(Fault::InvalidRegister(register, RegisterType::RegisterF64));
         }
+        Ok(&mut self.registers_f64[register])
     }
-
 }
 
 impl RegCore for MachineCore {
@@ -733,10 +724,12 @@ impl MachineCore {
             Malloc => self.malloc_opcode()?,
             Free => self.free_opcode()?,
             Realloc => self.realloc_opcode()?,
+            Sleep => self.sleep_opcode()?,
+            SleepReg => self.sleepreg_opcode()?,
             
 
             x => {
-                println!("Invalid opcode: {:?} {}", x, u16::from_le_bytes(self.program[self.program_counter - 2..self.program_counter].try_into().unwrap()));
+                println!("Invalid opcode: {:?} {} at {}", x, u16::from_le_bytes(self.program[self.program_counter - 2..self.program_counter].try_into().unwrap()), self.program_counter - 2);
                 return Err(Fault::InvalidOperation)},
             
 
@@ -8570,7 +8563,34 @@ impl MachineCore {
         }
         Ok(())
     }
-    
+
+    fn sleep_opcode(&mut self) -> SimpleResult {
+
+        let time = self.get_8_bytes();
+        self.advance_by_8_bytes();
+        let scale = self.get_8_bytes();
+        self.advance_by_8_bytes();
+
+        thread::sleep(Duration::from_secs(time * scale));
+
+        Ok(())
+    }
+
+    fn sleepreg_opcode(&mut self) -> SimpleResult {
+        let time_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let scale_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(time_reg as usize, scale_reg as usize);
+
+        let time = self.registers_64[time_reg as usize];
+        let scale = self.registers_64[scale_reg as usize];
+
+        thread::sleep(Duration::from_secs(time * scale));
+
+        Ok(())
+    }
     
     
 }

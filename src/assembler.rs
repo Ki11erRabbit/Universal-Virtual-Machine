@@ -1509,7 +1509,50 @@ where
                         _ => return Err("Invalid arguments for foreign".to_owned()),
                     }
                 },
-                //NEXT: 168
+                "sleep" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Number(n) => {
+                                bytes.append(&mut n.to_bytes());
+                                ops.push(MoveOps::Number);
+                            },
+                            _ => return Err("Expected only numbers".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Number, MoveOps::Number] => {
+                            let mut temp = vec![168,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for sleep".to_owned()),
+                    }
+                },
+                "sleepreg" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected only registers".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Register, MoveOps::Register] => {
+                            let mut temp = vec![169,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for sleepreg".to_owned()),
+                    }
+                },
                 instr => return Err(format!("Invalid instruction: {}", instr)),
                 
                     
