@@ -222,5 +222,14 @@ pub trait Core {
     fn get_register_f32<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut f32>;
 
     fn get_register_f64<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut f64>;
-    
+
+    fn set_gc(&mut self, gc: bool);
+
+    fn get_stack(&self) -> Arc<RwLock<Vec<Byte>>>;
+}
+
+pub trait GarbageCollectorCore: Core + Collector {}
+
+pub trait Collector {
+    fn add_stacks(&mut self, stacks: Arc<RwLock<Vec<Option<Arc<RwLock<Vec<Byte>>>>>>>);
 }

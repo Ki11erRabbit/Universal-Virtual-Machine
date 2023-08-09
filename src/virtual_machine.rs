@@ -10,7 +10,7 @@ use std::io::Write;
 use std::time::{Instant, Duration};
 
 use crate::core::MachineCore;
-use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, ForeignFunction, ForeignFunctionArg, FileDescriptor, Core, SimpleResult};
+use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, ForeignFunction, ForeignFunctionArg, FileDescriptor, Core, SimpleResult, GC, GarbageCollectorCore};
 use crate::binary::Binary;
 
 /// Struct that contains options for the virtual machine
@@ -60,8 +60,9 @@ pub struct Machine {
     main_thread_id: CoreId,
     /// A list of foriegn functions that can be called by the program
     foriegn_functions: Vec<(ForeignFunctionArg, ForeignFunction)>,
-    gc: Option<Result<Box<dyn Core + Send>, JoinHandle<SimpleResult>>>,
+    gc: Option<Result<Box<dyn GarbageCollectorCore + Send>, JoinHandle<SimpleResult>>>,
     gc_channels: Option<(Sender<Message>, Receiver<Message>)>,
+    stacks: Arc<RwLock<Vec<Option<Arc<RwLock<Vec<Byte>>>>>>>,
 }
 
 impl Machine {
@@ -90,6 +91,7 @@ impl Machine {
             foriegn_functions: Vec::new(),
             gc: None,
             gc_channels: None,
+            stacks: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
@@ -566,6 +568,12 @@ impl Machine {
         program.push(0);
         let program = Arc::new(program);
         core.add_program(program);
+        if self.options.gc_time.is_some() {
+            core.set_gc(true);
+            let stack = core.get_stack();
+
+            self.stacks.write().unwrap().push(Some(stack));
+        }
         let core_thread = {
             thread::spawn(move || {
                 core.run(new_pc)
@@ -578,6 +586,12 @@ impl Machine {
     pub fn run_core(&mut self, core: usize, program_counter: usize) {
         let mut core = self.cores.remove(core);
         core.add_program(self.program.as_ref().expect("Program Not set").clone());
+        if self.options.gc_time.is_some() {
+            core.set_gc(true);
+            let stack = core.get_stack();
+
+            self.stacks.write().unwrap().push(Some(stack));
+        }
         let core_thread = {
             thread::spawn(move || {
                 core.run(program_counter)

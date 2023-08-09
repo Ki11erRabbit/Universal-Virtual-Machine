@@ -2,7 +2,7 @@
 
 use std::sync::{RwLock, Arc};
 
-use crate::{Core, Byte, SimpleResult, Message, CoreResult};
+use crate::{Core, Byte, SimpleResult, Message, CoreResult, GC, Collector};
 use crate::core::MachineCore;
 
 
@@ -62,6 +62,21 @@ impl Core for GarbageCollector {
 
     fn get_register_f64<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut f64> {
         self.core.get_register_f64(register)
+    }
+
+    fn set_gc(&mut self, gc: bool) {
+        panic!("Cannot set garbage collector on garbage collector.");
+    }
+
+    fn get_stack(&self) -> Arc<RwLock<Vec<Byte>>> {
+        panic!("Cannot get stack from garbage collector.");
+    }
+}
+
+impl Collector for GarbageCollector {
+
+    fn add_stacks(&mut self, stacks: Arc<RwLock<Vec<Option<Arc<RwLock<Vec<Byte>>>>>>>) {
+        self.stacks = stacks;
     }
 }
 

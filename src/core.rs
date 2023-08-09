@@ -338,6 +338,22 @@ impl Core for MachineCore {
         }
     }
 
+    
+    fn set_gc(&mut self, garbage_collection: bool) {
+        match garbage_collection {
+            true => self.stack = Stack::GarbageCollected(Arc::new(RwLock::new(vec![0]))),
+            false => self.stack = Stack::Regular(vec![0]),
+        }
+    }
+
+    fn get_stack(&self) -> Arc<RwLock<Vec<Byte>>> {
+        match &self.stack {
+            Stack::Regular(stack) => panic!("Cannot get stack from regular stack"),
+            Stack::GarbageCollected(stack) => stack.clone(),
+        }
+    }
+
+
 }
     
 impl MachineCore {
@@ -366,14 +382,6 @@ impl MachineCore {
             threads: HashSet::new(),
         }
     }
-
-    pub fn set_garbage_collection(&mut self, garbage_collection: bool) {
-        match garbage_collection {
-            true => self.stack = Stack::GarbageCollected(Arc::new(RwLock::new(vec![0]))),
-            false => self.stack = Stack::Regular(vec![0]),
-        }
-    }
-
 
     /// Convenience function for getting the bytes of a string from memory
     fn get_string(&mut self, address: Pointer, size: u64) -> CoreResult<Vec<u8>> {
