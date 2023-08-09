@@ -4,6 +4,7 @@ pub mod virtual_machine;
 pub mod core;
 pub mod assembler;
 pub mod binary;
+mod garbage_collector;
 
 use std::sync::Arc;
 use std::sync::RwLock;
