@@ -1796,7 +1796,6 @@ pub fn generate_binary(input: &str, program_name: &str) -> Result<Binary, String
 mod tests {
     use super::*;
     //use crate::virtual_machine::Machine;
-    use crate::core::Core;
     use std::sync::{Arc, RwLock};
 
     /*#[test]

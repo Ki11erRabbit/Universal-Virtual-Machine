@@ -1,5 +1,4 @@
 
-use std::arch::x86_64::_CMP_TRUE_UQ;
 use std::collections::HashSet;
 use std::sync::{Arc,RwLock,TryLockError};
 use std::num::Wrapping;
@@ -10,7 +9,7 @@ use std::fmt;
 use std::sync::mpsc::{Sender,Receiver, TryRecvError};
 
 use crate::instruction::Opcode;
-use crate::{RegisterType,Message,Fault,CoreId,Byte,Pointer,FileDescriptor};
+use crate::{RegisterType,Message,Fault,CoreId,Byte,Pointer,FileDescriptor, Core, SimpleResult, CoreResult};
 
 
 macro_rules! check_register64 {
@@ -121,7 +120,7 @@ enum Stack {
     GarbageCollected(Arc<RwLock<Vec<Byte>>>),
 }
 
-impl fmt::Debug for Core {
+impl fmt::Debug for MachineCore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "Core:\n")?;
         write!(f, "    registers_64: {:?}\n", self.registers_64)?;
@@ -147,7 +146,7 @@ impl fmt::Debug for Core {
 }
 
 /// A struct that represents a processor core.
-pub struct Core {
+pub struct MachineCore {
     /// 64-bit registers
     registers_64: [u64; REGISTER_64_COUNT],
     /// 128-bit registers
@@ -198,21 +197,152 @@ pub struct Core {
     memory: Arc<RwLock<Vec<Byte>>>,
     /// The send channel
     /// This is a channel that is used to send messages to the machine's event loop.
-    send_channel: Sender<Message>,
+    send_channel: Option<Sender<Message>>,
     /// The receive channel
     /// This is a channel that is used to receive messages from the machine's event loop.
-    recv_channel: Receiver<Message>,
+    recv_channel: Option<Receiver<Message>>,
     /// The threads
     /// This is a set of all the threads that this core has spawned
     threads: HashSet<CoreId>,
-    /// The main thread
-    /// This is a boolean that is set to true if this core is the main thread
-    main_thread: bool,
+}
+
+impl Core for MachineCore {
+    /// The main loop for the machine
+    /// This function will run the program until it is done
+    fn run(&mut self, program_counter: usize) -> SimpleResult {
+        self.program_counter = program_counter;
+
+        let mut is_done = false;
+        while !is_done {
+            self.check_messages()?;
+            
+            is_done = self.execute_instruction()?;
+        }
+        Ok(())
+    }
+
+    /// Function that runs the machine for one instruction
+    /// This function is useful for debugging
+    fn run_once(&mut self) -> SimpleResult {
+        self.execute_instruction()?;
+        Ok(())
+    }
+
+    /// Used for adding a program to the core
+    /// This should not be called after the core has been started
+    fn add_program(&mut self, program: Arc<Vec<Byte>>) {
+        self.program = program;
+    }
+
+    fn add_channels(&mut self, send: Sender<Message>, recv: Receiver<Message>) {
+        self.send_channel = Some(send);
+        self.recv_channel = Some(recv);
+    }
+
+    fn add_memory(&mut self, memory: Arc<RwLock<Vec<Byte>>>) {
+        self.memory = memory;
+    }
+
+    /// Wrapper for sending a message to the machine's event loop
+    fn send_message(&self, message: Message) -> SimpleResult {
+        match self.send_channel.as_ref().expect("Send channel was not initialized").send(message) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(Fault::MachineCrash("Could not send message"))
+        }
+    }
+
+    /// Wrapper for making a blocking call to receive a message from the machine's event loop
+    fn recv_message(&self) -> CoreResult<Message> {
+        match self.recv_channel.as_ref().expect("Recieve channel was not initialized").recv() {
+            Ok(message) => Ok(message),
+            Err(_) => Err(Fault::MachineCrash("Could not receive message"))
+        }
+    }
+
+    /// Function for checking for messages from the machine thread
+    fn check_messages(&mut self) -> SimpleResult {
+        match self.recv_channel.as_ref().expect("Recieve channel was not initialized").try_recv() {
+            Ok(message) => {
+                match message {
+                    Message::ThreadDone(core_id) => {
+                    },
+
+                    _ => unimplemented!(),
+
+                }
+
+            },
+            Err(TryRecvError::Disconnected) => {
+                return Err(Fault::MachineCrash("Could not check on messages"))
+            },
+            Err(TryRecvError::Empty) => {
+
+            }
+        }
+        Ok(())
+    }
+
+    #[inline]
+    /// Function that checks if the program counter is out of bounds
+    fn check_program_counter(&self) -> CoreResult<bool> {
+
+        if self.program_counter >= self.program.len() {
+            return Ok(true);
+        }
+        return Ok(false);
+    }
+
+
+    /// Function that decodes the opcode from the program
+    fn decode_opcode(&mut self) -> Opcode {
+        let opcode = Opcode::from(self.get_2_bytes());
+        self.advance_by_2_bytes();
+        return opcode;
+
+    }
+
+
+    /// Allows for accessing the 64-bit registers of the core for foreign functions
+    fn get_register_64<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut u64> {
+        if register < REGISTER_64_COUNT {
+            Ok(&mut self.registers_64[register])
+        } else {
+            Err(Fault::InvalidRegister(register, RegisterType::Register64))
+        }
+    }
+
+    /// Allows for accessing the 128-bit registers of the core for foreign functions
+    fn get_register_128<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut u128> {
+        if register < REGISTER_128_COUNT {
+            Ok(&mut self.registers_128[register])
+        } else {
+            Err(Fault::InvalidRegister(register, RegisterType::Register128))
+        }
+    }
+
+    /// Allows for accessing the 32-bit floating point registers of the core for foreign functions
+    fn get_register_f32<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut f32> {
+        if register < REGISTER_F32_COUNT {
+            Ok(&mut self.registers_f32[register])
+        } else {
+            Err(Fault::InvalidRegister(register, RegisterType::RegisterF32))
+        }
+    }
+
+    /// Allows for accessing the 64-bit floating point registers of the core for foreign functions
+    fn get_register_f64<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut f64> {
+        if register < REGISTER_F64_COUNT {
+            Ok(&mut self.registers_f64[register])
+        } else {
+            Err(Fault::InvalidRegister(register, RegisterType::RegisterF64))
+        }
+    }
+
 }
     
-impl Core {
-    pub fn new(memory: Arc<RwLock<Vec<u8>>>, send: Sender<Message>, recv: Receiver<Message>) -> Core {
-        Core {
+impl MachineCore {
+    pub fn new() -> MachineCore {
+        MachineCore {
             registers_64: [0; 16],
             registers_128: [0; 8],
             registers_f32: [0.0; 8],
@@ -230,11 +360,10 @@ impl Core {
             program_counter: 0,
             stack: Stack::Regular(vec![0]),
             program: Arc::new(Vec::new()),
-            memory,
-            send_channel: send,
-            recv_channel: recv,
+            memory: Arc::new(RwLock::new(Vec::new())),
+            send_channel: None,
+            recv_channel: None,
             threads: HashSet::new(),
-            main_thread: false,
         }
     }
 
@@ -245,71 +374,9 @@ impl Core {
         }
     }
 
-    /// Allows for accessing the 64-bit registers of the core for foreign functions
-    pub fn get_register_64<'input>(&'input mut self, register: usize) -> Result<&'input mut u64, Fault> {
-        if register < REGISTER_64_COUNT {
-            Ok(&mut self.registers_64[register])
-        } else {
-            Err(Fault::InvalidRegister(register, RegisterType::Register64))
-        }
-    }
-
-    /// Allows for accessing the 128-bit registers of the core for foreign functions
-    pub fn get_register_128<'input>(&'input mut self, register: usize) -> Result<&'input mut u128, Fault> {
-        if register < REGISTER_128_COUNT {
-            Ok(&mut self.registers_128[register])
-        } else {
-            Err(Fault::InvalidRegister(register, RegisterType::Register128))
-        }
-    }
-
-    /// Allows for accessing the 32-bit floating point registers of the core for foreign functions
-    pub fn get_register_f32<'input>(&'input mut self, register: usize) -> Result<&'input mut f32, Fault> {
-        if register < REGISTER_F32_COUNT {
-            Ok(&mut self.registers_f32[register])
-        } else {
-            Err(Fault::InvalidRegister(register, RegisterType::RegisterF32))
-        }
-    }
-
-    /// Allows for accessing the 64-bit floating point registers of the core for foreign functions
-    pub fn get_register_f64<'input>(&'input mut self, register: usize) -> Result<&'input mut f64, Fault> {
-        if register < REGISTER_F64_COUNT {
-            Ok(&mut self.registers_f64[register])
-        } else {
-            Err(Fault::InvalidRegister(register, RegisterType::RegisterF64))
-        }
-    }
-
-    /// Used for making a core the main thread
-    pub fn set_main_thread(&mut self) {
-        self.main_thread = true;
-    }
-
-    /// Used for adding a program to the core
-    /// This should not be called after the core has been started
-    pub fn add_program(&mut self, program: Arc<Vec<u8>>) {
-        self.program = program;
-    }
-
-    /// Wrapper for sending a message to the machine's event loop
-    fn send_message(&self, message: Message) -> Result<(), Fault> {
-        match self.send_channel.send(message) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(Fault::MachineCrash("Could not send message"))
-        }
-    }
-
-    /// Wrapper for making a blocking call to receive a message from the machine's event loop
-    fn recv_message(&self) -> Result<Message, Fault> {
-        match self.recv_channel.recv() {
-            Ok(message) => Ok(message),
-            Err(_) => Err(Fault::MachineCrash("Could not receive message"))
-        }
-    }
 
     /// Convenience function for getting the bytes of a string from memory
-    fn get_string(&mut self, address: Pointer, size: u64) -> Result<Vec<u8>,Fault> {
+    fn get_string(&mut self, address: Pointer, size: u64) -> CoreResult<Vec<u8>> {
         loop {
             match self.memory.try_read() {
                 Ok(memory) => {
@@ -326,7 +393,7 @@ impl Core {
     }
 
     /// Convenience function for getting the size of the stack.
-    fn stack_len(&self) -> Result<usize, Fault> {
+    fn stack_len(&self) -> CoreResult<usize> {
         match self.stack {
             Stack::Regular(ref stack) => Ok(stack.len()),
             Stack::GarbageCollected(ref stack) => loop {
@@ -341,7 +408,7 @@ impl Core {
     }
 
     /// Convenience function for writing bytes to the stack.
-    fn write_bytes_to_stack(&mut self, address: Pointer, size: u64, value: &[Byte]) -> Result<(),Fault> {
+    fn write_bytes_to_stack(&mut self, address: Pointer, size: u64, value: &[Byte]) -> SimpleResult {
         match self.stack {
             Stack::Regular(ref mut stack) => {
                 if address + size <= stack.len() as u64 {
@@ -376,7 +443,7 @@ impl Core {
     }
 
     /// Convenience function for reading bytes from the stack.
-    fn read_bytes_from_stack(&mut self, address: Pointer, size: u64, bytes: &mut [Byte]) -> Result<(), Fault> {
+    fn read_bytes_from_stack(&mut self, address: Pointer, size: u64, bytes: &mut [Byte]) -> SimpleResult {
         match self.stack {
             Stack::Regular(ref stack) => {
                 if address + size <= stack.len() as u64 {
@@ -437,7 +504,7 @@ impl Core {
     }
 
     /// Convenience function for popping a value from the stack
-    fn pop_stack(&mut self, size: u8) -> Result<Vec<Byte>,Fault> {
+    fn pop_stack(&mut self, size: u8) -> CoreResult<Vec<Byte>> {
         let size = size / 8;
         match self.stack {
             Stack::Regular(ref mut stack) => {
@@ -527,80 +594,16 @@ impl Core {
         value
     }
 
-    /// The main loop for the machine
-    /// This function will run the program until it is done
-    pub fn run(&mut self, program_counter: usize) -> Result<(),Fault> {
-        self.program_counter = program_counter;
-
-        let mut is_done = false;
-        while !is_done {
-            is_done = self.execute_instruction()?;
-        }
-        Ok(())
-    }
-
     /// Convenience function for removing a known thread from the machine
     fn remove_thread(&mut self, core_id: CoreId) {
         self.threads.remove(&core_id);
-    }
-
-    /// Function for checking for messages from the machine thread
-    fn check_messages(&mut self) -> Result<(), Fault> {
-        match self.recv_channel.try_recv() {
-            Ok(message) => {
-                match message {
-                    Message::ThreadDone(core_id) => {
-                    },
-
-                    _ => unimplemented!(),
-
-                }
-
-            },
-            Err(TryRecvError::Disconnected) => {
-                return Err(Fault::MachineCrash("Could not check on messages"))
-            },
-            Err(TryRecvError::Empty) => {
-
-            }
-        }
-        Ok(())
-    }
-
-    /// Function that runs the machine for one instruction
-    /// This function is useful for debugging
-    pub fn run_once(&mut self) -> Result<(),Fault> {
-        self.execute_instruction()?;
-        Ok(())
-    }
-
-    #[inline]
-    /// Function that checks if the program counter is out of bounds
-    fn check_program_counter(&self) -> Result<bool,Fault> {
-
-        if self.program_counter >= self.program.len() {
-            return Ok(true);
-        }
-        return Ok(false);
-    }
-
-
-    /// Function that decodes the opcode from the program
-    fn decode_opcode(&mut self) -> Opcode {
-        let opcode = Opcode::from(self.get_2_bytes());
-        self.advance_by_2_bytes();
-        return opcode;
-
     }
 
     /// The main logic function for the core.
     /// This function will check to see if there are any messages from the machine thread
     /// If not then we see if the program counter is out of bounds
     /// If not then we decode the opcode and execute the instruction
-    fn execute_instruction(&mut self) -> Result<bool, Fault> {
-
-        self.check_messages()?;
-
+    pub fn execute_instruction(&mut self) -> CoreResult<bool> {
         if self.check_program_counter()? {
             return Ok(true);
         }
@@ -733,7 +736,7 @@ impl Core {
             
     }
 
-    fn set_opcode(&mut self) -> Result<(), Fault> {
+    fn set_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as usize;
@@ -774,7 +777,7 @@ impl Core {
         Ok(())
     }
 
-    fn deref_opcode(&mut self) -> Result<(), Fault> {
+    fn deref_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as usize;
@@ -866,7 +869,7 @@ impl Core {
         Ok(())
     }
 
-    fn move_opcode(&mut self) -> Result<(), Fault> {
+    fn move_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let address_register = self.program[self.program_counter] as u8;
@@ -1036,7 +1039,7 @@ impl Core {
         Ok(())
     }
 
-    fn derefreg_opcode(&mut self) -> Result<(), Fault> {
+    fn derefreg_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as u8 as usize;
@@ -1205,7 +1208,7 @@ impl Core {
     }
 
 
-    fn addi_opcode(&mut self) -> Result<(), Fault> {
+    fn addi_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = (self.program[self.program_counter] as u8) as usize;
@@ -1370,7 +1373,7 @@ impl Core {
     }
 
 
-    fn subi_opcode(&mut self) -> Result<(), Fault> {
+    fn subi_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = (self.program[self.program_counter] as u8) as usize;
@@ -1529,7 +1532,7 @@ impl Core {
     }
 
 
-    fn muli_opcode(&mut self) -> Result<(), Fault> {
+    fn muli_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = (self.program[self.program_counter] as u8) as usize;
@@ -1689,7 +1692,7 @@ impl Core {
     }
 
 
-    fn divi_opcode(&mut self) -> Result<(), Fault> {
+    fn divi_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = (self.program[self.program_counter] as u8) as usize;
@@ -2366,7 +2369,7 @@ impl Core {
     }
 
 
-    fn addu_opcode(&mut self) -> Result<(), Fault> {
+    fn addu_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = (self.program[self.program_counter] as u8) as usize;
@@ -2502,7 +2505,7 @@ impl Core {
     }
 
 
-    fn subu_opcode(&mut self) -> Result<(), Fault> {
+    fn subu_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = (self.program[self.program_counter] as u8) as usize;
@@ -2635,7 +2638,7 @@ impl Core {
     }
 
 
-    fn mulu_opcode(&mut self) -> Result<(), Fault> {
+    fn mulu_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = (self.program[self.program_counter] as u8) as usize;
@@ -2771,7 +2774,7 @@ impl Core {
     }
 
 
-    fn divu_opcode(&mut self) -> Result<(), Fault> {
+    fn divu_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = (self.program[self.program_counter] as u8) as usize;
@@ -3421,7 +3424,7 @@ impl Core {
         Ok(())
     }
 
-    fn and_opcode(&mut self) -> Result<(), Fault> {
+    fn and_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = (self.program[self.program_counter] as u8) as usize;
@@ -3749,7 +3752,7 @@ impl Core {
         Ok(())
     }
 
-    fn xor_opcode(&mut self) -> Result<(), Fault> {
+    fn xor_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = self.program[self.program_counter] as u8;
@@ -3913,7 +3916,7 @@ impl Core {
         Ok(())
     }
 
-    fn not_opcode(&mut self) -> Result<(), Fault> {
+    fn not_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as u8;
@@ -4065,7 +4068,7 @@ impl Core {
         Ok(())
     }
 
-    fn shiftleft_opcode(&mut self) -> Result<(), Fault> {
+    fn shiftleft_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as u8;
@@ -4219,7 +4222,7 @@ impl Core {
         Ok(())
     }
 
-    fn shiftright_opcode(&mut self) -> Result<(), Fault> {
+    fn shiftright_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as u8;
@@ -4373,7 +4376,7 @@ impl Core {
         Ok(())
     }
 
-    fn clear_opcode(&mut self) -> Result<(), Fault> {
+    fn clear_opcode(&mut self) -> SimpleResult {
         self.zero_flag = false;
         self.remainder_64 = 0;
         self.remainder_128 = 0;
@@ -4406,7 +4409,7 @@ impl Core {
         Ok(())
     }
 
-    fn write_opcode(&mut self) -> Result<(), Fault> {
+    fn write_opcode(&mut self) -> SimpleResult {
         let fd_register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let pointer_register = self.program[self.program_counter] as u8;
@@ -4437,7 +4440,7 @@ impl Core {
         Ok(())
     }
 
-    fn flush_opcode(&mut self) -> Result<(), Fault> {
+    fn flush_opcode(&mut self) -> SimpleResult {
         let fd_register = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
@@ -4459,7 +4462,7 @@ impl Core {
         Ok(())
     }
 
-    fn remainder_opcode(&mut self) -> Result<(), Fault> {
+    fn remainder_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
@@ -4485,7 +4488,7 @@ impl Core {
         Ok(())
     }
 
-    fn addfi_opcode(&mut self) -> Result<(), Fault> {
+    fn addfi_opcode(&mut self) -> SimpleResult {
         let float_size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
@@ -4552,7 +4555,7 @@ impl Core {
 
     }
 
-    fn subfi_opcode(&mut self) -> Result<(), Fault> {
+    fn subfi_opcode(&mut self) -> SimpleResult {
         let float_size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
@@ -4619,7 +4622,7 @@ impl Core {
 
     }
 
-    fn mulfi_opcode(&mut self) -> Result<(), Fault> {
+    fn mulfi_opcode(&mut self) -> SimpleResult {
         let float_size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
@@ -4686,7 +4689,7 @@ impl Core {
 
     }
 
-    fn divfi_opcode(&mut self) -> Result<(), Fault> {
+    fn divfi_opcode(&mut self) -> SimpleResult {
         let float_size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
@@ -4761,7 +4764,7 @@ impl Core {
         Ok(())
     }
 
-    fn addif_opcode(&mut self) -> Result<(), Fault> {
+    fn addif_opcode(&mut self) -> SimpleResult {
         let int_size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let float_size = self.program[self.program_counter] as u8;
@@ -4975,7 +4978,7 @@ impl Core {
         Ok(())
     }
 
-    fn subif_opcode(&mut self) -> Result<(), Fault> {
+    fn subif_opcode(&mut self) -> SimpleResult {
         let int_size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let float_size = self.program[self.program_counter] as u8;
@@ -5189,7 +5192,7 @@ impl Core {
         Ok(())
     }
 
-    fn mulif_opcode(&mut self) -> Result<(), Fault> {
+    fn mulif_opcode(&mut self) -> SimpleResult {
         let int_size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let float_size = self.program[self.program_counter] as u8;
@@ -5403,7 +5406,7 @@ impl Core {
         Ok(())
     }
 
-    fn divif_opcode(&mut self) -> Result<(), Fault> {
+    fn divif_opcode(&mut self) -> SimpleResult {
         let int_size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let float_size = self.program[self.program_counter] as u8;
@@ -5643,7 +5646,7 @@ impl Core {
         Ok(())
     }
         
-    fn adduf_opcode(&mut self) -> Result<(), Fault> {
+    fn adduf_opcode(&mut self) -> SimpleResult {
         let int_size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let float_size = self.program[self.program_counter] as u8;
@@ -5857,7 +5860,7 @@ impl Core {
         Ok(())
     }
 
-    fn subuf_opcode(&mut self) -> Result<(), Fault> {
+    fn subuf_opcode(&mut self) -> SimpleResult {
         let int_size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let float_size = self.program[self.program_counter] as u8;
@@ -6071,7 +6074,7 @@ impl Core {
         Ok(())
     }
 
-    fn muluf_opcode(&mut self) -> Result<(), Fault> {
+    fn muluf_opcode(&mut self) -> SimpleResult {
         let int_size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let float_size = self.program[self.program_counter] as u8;
@@ -6285,7 +6288,7 @@ impl Core {
         Ok(())
     }
 
-    fn divuf_opcode(&mut self) -> Result<(), Fault> {
+    fn divuf_opcode(&mut self) -> SimpleResult {
         let int_size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let float_size = self.program[self.program_counter] as u8;
@@ -6525,7 +6528,7 @@ impl Core {
     }
 
 
-    fn setf_opcode(&mut self) -> Result<(), Fault> {
+    fn setf_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as usize;
@@ -6564,7 +6567,7 @@ impl Core {
         Ok(())
     }
 
-    fn dereff_opcode(&mut self) -> Result<(), Fault> {
+    fn dereff_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as u8 as usize;
@@ -6629,7 +6632,7 @@ impl Core {
         Ok(())
     }
 
-    fn movef_opcode(&mut self) -> Result<(), Fault> {
+    fn movef_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as u8 as usize;
@@ -6698,7 +6701,7 @@ impl Core {
         Ok(())
     }
 
-    fn derefregf_opcode(&mut self) -> Result<(), Fault> {
+    fn derefregf_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as usize;
@@ -6781,7 +6784,7 @@ impl Core {
         Ok(())
     }
 
-    fn addf_opcode(&mut self) -> Result<(), Fault> {
+    fn addf_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = self.program[self.program_counter] as usize;
@@ -6857,7 +6860,7 @@ impl Core {
         Ok(())
     }
 
-    fn subf_opcode(&mut self) -> Result<(), Fault> {
+    fn subf_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = self.program[self.program_counter] as usize;
@@ -6933,7 +6936,7 @@ impl Core {
         Ok(())
     }
         
-    fn mulf_opcode(&mut self) -> Result<(), Fault> {
+    fn mulf_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = self.program[self.program_counter] as usize;
@@ -7010,7 +7013,7 @@ impl Core {
     }
 
 
-    fn divf_opcode(&mut self) -> Result<(), Fault> {
+    fn divf_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = self.program[self.program_counter] as usize;
@@ -7097,7 +7100,7 @@ impl Core {
     }
 
 
-    fn eqf_opcode(&mut self) -> Result<(), Fault> {
+    fn eqf_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = self.program[self.program_counter] as usize;
@@ -7130,7 +7133,7 @@ impl Core {
         Ok(())
     }
 
-    fn neqf_opcode(&mut self) -> Result<(), Fault> {
+    fn neqf_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = self.program[self.program_counter] as usize;
@@ -7163,7 +7166,7 @@ impl Core {
         Ok(())
     }
 
-    fn ltf_opcode(&mut self) -> Result<(), Fault> {
+    fn ltf_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = self.program[self.program_counter] as usize;
@@ -7196,7 +7199,7 @@ impl Core {
         Ok(())
     }
 
-    fn gtf_opcode(&mut self) -> Result<(), Fault> {
+    fn gtf_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = self.program[self.program_counter] as usize;
@@ -7229,7 +7232,7 @@ impl Core {
         Ok(())
     }
 
-    fn leqf_opcode(&mut self) -> Result<(), Fault> {
+    fn leqf_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = self.program[self.program_counter] as usize;
@@ -7262,7 +7265,7 @@ impl Core {
         Ok(())
     }
 
-    fn geqf_opcode(&mut self) -> Result<(), Fault> {
+    fn geqf_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = self.program[self.program_counter] as usize;
@@ -7295,7 +7298,7 @@ impl Core {
         Ok(())
     }
 
-    fn jump_opcode(&mut self) -> Result<(), Fault> {
+    fn jump_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
@@ -7308,7 +7311,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpeq_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpeq_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
@@ -7322,7 +7325,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpneq_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpneq_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
@@ -7336,7 +7339,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumplt_opcode(&mut self) -> Result<(), Fault> {
+    fn jumplt_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
@@ -7350,7 +7353,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpgt_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpgt_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
@@ -7364,7 +7367,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpleq_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpleq_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
@@ -7378,7 +7381,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpgeq_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpgeq_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
@@ -7392,7 +7395,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpzero_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpzero_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
@@ -7406,7 +7409,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpnotzero_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpnotzero_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
@@ -7420,7 +7423,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpneg_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpneg_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
@@ -7438,7 +7441,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumppos_opcode(&mut self) -> Result<(), Fault> {
+    fn jumppos_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
@@ -7456,7 +7459,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpeven_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpeven_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
@@ -7471,7 +7474,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpodd_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpodd_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
@@ -7486,7 +7489,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpback_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpback_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
@@ -7499,7 +7502,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpforward_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpforward_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
@@ -7512,7 +7515,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpinfinity_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpinfinity_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
@@ -7527,7 +7530,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpnotinfinity_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpnotinfinity_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
@@ -7542,7 +7545,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpoverflow_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpoverflow_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
@@ -7557,7 +7560,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpnotoverflow_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpnotoverflow_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
@@ -7572,7 +7575,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpunderflow_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpunderflow_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
@@ -7587,7 +7590,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpnotunderflow_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpnotunderflow_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
@@ -7602,7 +7605,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpnan_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpnan_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
@@ -7617,7 +7620,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpnotnan_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpnotnan_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
@@ -7632,7 +7635,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpremainder_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpremainder_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
@@ -7647,7 +7650,7 @@ impl Core {
         Ok(())
     }
 
-    fn jumpnotremainder_opcode(&mut self) -> Result<(), Fault> {
+    fn jumpnotremainder_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
@@ -7662,7 +7665,7 @@ impl Core {
         Ok(())
     }
 
-    fn call_opcode(&mut self) -> Result<(), Fault> {
+    fn call_opcode(&mut self) -> SimpleResult {
         let line = self.get_8_bytes() as usize;
         self.advance_by_8_bytes();
 
@@ -7675,13 +7678,13 @@ impl Core {
         Ok(())
     }
 
-    fn return_opcode(&mut self) -> Result<(), Fault> {
+    fn return_opcode(&mut self) -> SimpleResult {
         let line = self.pop_stack(64)?;
         self.program_counter = u64::from_le_bytes(line[..].try_into().unwrap()) as usize;
         Ok(())
     }
 
-    fn pop_opcode(&mut self) -> Result<(), Fault> {
+    fn pop_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as u8;
@@ -7756,7 +7759,7 @@ impl Core {
         Ok(())
     }
 
-    fn push_opcode(&mut self) -> Result<(), Fault> {
+    fn push_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as u8;
@@ -7793,7 +7796,7 @@ impl Core {
         Ok(())
     }
     
-    fn popf_opcode(&mut self) -> Result<(), Fault> {
+    fn popf_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as u8;
@@ -7833,7 +7836,7 @@ impl Core {
         Ok(())
     }
 
-    fn pushf_opcode(&mut self) -> Result<(), Fault> {
+    fn pushf_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as u8;
@@ -7855,7 +7858,7 @@ impl Core {
         Ok(())
     }
 
-    fn derefstack_opcode(&mut self) -> Result<(), Fault> {
+    fn derefstack_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as usize;
@@ -7918,7 +7921,7 @@ impl Core {
         Ok(())
     }
 
-    fn movestack_opcode(&mut self) -> Result<(), Fault> {
+    fn movestack_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
         let address = self.get_8_bytes();
@@ -7985,7 +7988,7 @@ impl Core {
         Ok(())
     }
 
-    fn derefregstack_opcode(&mut self) -> Result<(), Fault> {
+    fn derefregstack_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as usize;
@@ -8080,7 +8083,7 @@ impl Core {
         
     }
 
-    fn derefstackf_opcode(&mut self) -> Result<(), Fault> {
+    fn derefstackf_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as u8 as usize;
@@ -8120,7 +8123,7 @@ impl Core {
         Ok(())
     }
 
-    fn movestackf_opcode(&mut self) -> Result<(), Fault> {
+    fn movestackf_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as u8 as usize;
@@ -8163,7 +8166,7 @@ impl Core {
         Ok(())
     }
 
-    fn derefregstackf_opcode(&mut self) -> Result<(), Fault> {
+    fn derefregstackf_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as usize;
@@ -8219,7 +8222,7 @@ impl Core {
         Ok(())
     }
 
-    fn regmove_opcode(&mut self) -> Result<(), Fault> {
+    fn regmove_opcode(&mut self) -> SimpleResult {
         let register1 = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register2 = self.program[self.program_counter] as u8;
@@ -8245,7 +8248,7 @@ impl Core {
         Ok(())
     }
 
-    fn regmovef_opcode(&mut self) -> Result<(), Fault> {
+    fn regmovef_opcode(&mut self) -> SimpleResult {
         let register1 = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register2 = self.program[self.program_counter] as u8;
@@ -8271,7 +8274,7 @@ impl Core {
         Ok(())
     }
 
-    fn open_opcode(&mut self) -> Result<(), Fault> {
+    fn open_opcode(&mut self) -> SimpleResult {
         let pointer_reg = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let size_reg = self.program[self.program_counter] as u8;
@@ -8310,7 +8313,7 @@ impl Core {
         Ok(())
     }
 
-    fn close_opcode(&mut self) -> Result<(), Fault> {
+    fn close_opcode(&mut self) -> SimpleResult {
         let fd_reg = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
@@ -8337,7 +8340,7 @@ impl Core {
         }
     }
 
-    fn threadspawn_opcode(&mut self) -> Result<(), Fault> {
+    fn threadspawn_opcode(&mut self) -> SimpleResult {
 
         let program_counter_reg = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
@@ -8368,7 +8371,7 @@ impl Core {
         Ok(())
     }
 
-    fn threadreturn_opcode(&mut self) -> Result<(), Fault> {
+    fn threadreturn_opcode(&mut self) -> SimpleResult {
 
         let message = Message::ThreadDone(0);
 
@@ -8389,7 +8392,7 @@ impl Core {
         }
     }
 
-    fn threadjoin_opcode(&mut self) -> Result<(), Fault> {
+    fn threadjoin_opcode(&mut self) -> SimpleResult {
         let thread_id_reg = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
@@ -8416,7 +8419,7 @@ impl Core {
         }
     }
 
-    fn threaddetach_opcode(&mut self) -> Result<(), Fault> {
+    fn threaddetach_opcode(&mut self) -> SimpleResult {
         let thread_id_reg = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
@@ -8429,7 +8432,7 @@ impl Core {
         Ok(())
     }
 
-    fn foreigncall_opcode(&mut self) -> Result<(), Fault> {
+    fn foreigncall_opcode(&mut self) -> SimpleResult {
         let function_id_reg = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
@@ -8458,7 +8461,7 @@ impl Core {
         Ok(())
     }
 
-    fn stackpointer_opcode(&mut self) -> Result<(), Fault> {
+    fn stackpointer_opcode(&mut self) -> SimpleResult {
         let stackptr_reg = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
 
@@ -8469,7 +8472,7 @@ impl Core {
         Ok(())
     }
 
-    fn malloc_opcode(&mut self) -> Result<(), Fault> {
+    fn malloc_opcode(&mut self) -> SimpleResult {
         let ptr_reg = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let size_reg = self.program[self.program_counter] as u8;
@@ -8500,7 +8503,7 @@ impl Core {
         Ok(())
     }
 
-    fn free_opcode(&mut self) -> Result<(), Fault> {
+    fn free_opcode(&mut self) -> SimpleResult {
         let ptr_reg = self.program[self.program_counter] as u8;
 
         check_register64!(ptr_reg as usize);
@@ -8526,7 +8529,7 @@ impl Core {
         }
     }
 
-    fn realloc_opcode(&mut self) -> Result<(), Fault> {
+    fn realloc_opcode(&mut self) -> SimpleResult {
         let ptr_reg = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let size_reg = self.program[self.program_counter] as u8;

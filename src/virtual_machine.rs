@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::any::Any;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock, TryLockError};
@@ -10,9 +9,9 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::time::{Instant, Duration};
 
-use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, ForeignFunction, ForeignFunctionArg, FileDescriptor};
+use crate::core::MachineCore;
+use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, ForeignFunction, ForeignFunctionArg, FileDescriptor, Core, SimpleResult};
 use crate::binary::Binary;
-use crate::core::Core;
 
 /// Struct that contains options for the virtual machine
 pub struct MachineOptions {
@@ -26,6 +25,8 @@ pub struct MachineOptions {
     /// None for no garbage collection
     /// Time is in minutes
     pub gc_time: Option<u64>,
+    /// The program for the garbage collector to run
+    pub gc_program: Option<Arc<Vec<Byte>>>,
 }
 
 /// A struct that represents our virtual machine
@@ -39,9 +40,9 @@ pub struct Machine {
     /// A map of freed blocks of memory that are available for use
     available_blocks: HashMap<Pointer, usize>,
     /// The cores of the virtual machine that are not running
-    cores: Vec<Core>,
+    cores: Vec<Box<dyn Core + Send>>,
     /// The thread handles for the running cores
-    core_threads: Vec<Option<JoinHandle<Result<(),Fault>>>>,
+    core_threads: Vec<Option<JoinHandle<SimpleResult>>>,
     /// The program to run
     program: Option<Arc<Vec<Byte>>>,
     /// The entry point of the program for the program counter
@@ -59,6 +60,8 @@ pub struct Machine {
     main_thread_id: CoreId,
     /// A list of foriegn functions that can be called by the program
     foriegn_functions: Vec<(ForeignFunctionArg, ForeignFunction)>,
+    gc: Option<Result<Box<dyn Core + Send>, JoinHandle<SimpleResult>>>,
+    gc_channels: Option<(Sender<Message>, Receiver<Message>)>,
 }
 
 impl Machine {
@@ -69,7 +72,8 @@ impl Machine {
                 cycle_size: 1,
                 join_thread_cycle: 0,
                 defrag_cycle: 0,
-                gc_time: Some(0),
+                gc_time: None,
+                gc_program: None,
             },
             memory: Arc::new(RwLock::new(Vec::new())),
             allocated_blocks: HashMap::new(),
@@ -84,6 +88,8 @@ impl Machine {
             threads_to_join: Rc::new(RefCell::new(Vec::new())),
             main_thread_id: 0,
             foriegn_functions: Vec::new(),
+            gc: None,
+            gc_channels: None,
         }
     }
 
@@ -123,6 +129,9 @@ impl Machine {
         //TODO: change print to log
         let program_counter = self.entry_point.expect("Entry point not set");
         self.run_core(0, program_counter);
+        if self.options.gc_time.is_some() {
+            self.run_gc();
+        }
         let mut main_thread_done = false;
         let mut cycle_count = 0;
         let mut time = match self.options.gc_time {
@@ -539,7 +548,9 @@ impl Machine {
         let (core_sender, core_receiver) = channel();
         let (machine_sender, machine_receiver) = channel();
         self.channels.borrow_mut().push(Some((core_sender, machine_receiver)));
-        let core = Core::new(self.memory.clone(), machine_sender, core_receiver,);
+        let mut core = Box::new(MachineCore::new());
+        core.add_memory(self.memory.clone());
+        core.add_channels(machine_sender, core_receiver);
         self.cores.push(core);
     }
 
@@ -566,7 +577,6 @@ impl Machine {
     /// This function is for running the first core
     pub fn run_core(&mut self, core: usize, program_counter: usize) {
         let mut core = self.cores.remove(core);
-        core.set_main_thread();
         core.add_program(self.program.as_ref().expect("Program Not set").clone());
         let core_thread = {
             thread::spawn(move || {
@@ -574,6 +584,36 @@ impl Machine {
             })
         };
         self.core_threads.push(Some(core_thread));
+    }
+
+    /// This function runs the garbage collector
+    pub fn run_gc(&mut self) {
+        let gc = self.gc.take().unwrap();
+
+        let (core_sender, core_receiver) = channel();
+        let (machine_sender, machine_receiver) = channel();
+
+        
+
+        match gc {
+            Ok(mut gc) => {
+                gc.add_program(self.options.gc_program.clone().unwrap());
+                gc.add_memory(self.memory.clone());
+                gc.add_channels(machine_sender, core_receiver);
+
+                self.gc_channels = Some((core_sender, machine_receiver));
+                
+                let gc_thread = {
+                    thread::spawn(move || {
+                        gc.run(0)
+                    })
+                };
+                self.gc = Some(Err(gc_thread));
+            },
+            Err(_) => panic!("GC already running"),
+            
+        }
+
     }
 
     /// This function will add a program to the machine
@@ -842,7 +882,7 @@ ret}
     }
 
 
-    fn simple_mutation(core: &mut Core, _args: Option<Arc<RwLock<dyn Any + Send + Sync>>>) -> Result<(),Fault> {
+    fn simple_mutation(core: &mut dyn Core, _args: ForeignFunctionArg) -> SimpleResult {
 
         let reg = core.get_register_64(0)?;
 
@@ -867,7 +907,7 @@ ret}";
 
         let mut machine = Machine::new();
 
-        machine.add_function(None, simple_mutation);
+        machine.add_function(None, Arc::new(simple_mutation));
 
         machine.load_binary(&binary);
 
@@ -879,8 +919,8 @@ ret}";
 
     }
 
-    fn complex_mutation(core: &mut Core, args: Option<Arc<RwLock<dyn Any + Send + Sync>>>) -> Result<(),Fault> {
-
+    fn complex_mutation(core: &mut dyn Core, args: ForeignFunctionArg) -> SimpleResult {
+        
         let reg = core.get_register_64(0)?;
 
         let binding = args.unwrap();
@@ -909,9 +949,9 @@ ret}";
 
         let mut machine = Machine::new();
 
-        let argument: Option<Arc<RwLock<dyn Any + Send + Sync>>> = Some(Arc::new(RwLock::new(10u64)));
+        let argument: ForeignFunctionArg = Some(Arc::new(RwLock::new(10u64)));
 
-        machine.add_function(argument.clone(), complex_mutation);
+        machine.add_function(argument.clone(), Arc::new(complex_mutation));
         
         machine.load_binary(&binary);
 

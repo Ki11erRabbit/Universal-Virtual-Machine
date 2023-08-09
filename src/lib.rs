@@ -5,11 +5,14 @@ pub mod core;
 pub mod assembler;
 pub mod binary;
 
-use crate::core::Core;
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::any::Any;
 use std::fmt;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::Sender;
+
+use instruction::Opcode;
 
 /// The id to identify a core
 pub type CoreId = u8;
@@ -23,7 +26,7 @@ pub type FileDescriptor = u64;
 
 
 /// A foreign function that can be called from the virtual machine
-pub type ForeignFunction = Arc<fn(&mut Core, Option<Arc<RwLock<dyn Any + Send + Sync>>>)-> Result<(),Fault>>;
+pub type ForeignFunction = Arc<fn(&mut dyn Core, Option<Arc<RwLock<dyn Any + Send + Sync>>>)-> SimpleResult>;
 /// The argument to a foreign function
 pub type ForeignFunctionArg = Option<Arc<RwLock<dyn Any + Send + Sync>>>;
 
@@ -183,4 +186,40 @@ impl fmt::Display for Fault {
             Fault::InvalidRealloc => write!(f, "Invalid Realloc"),
         }
     }
+}
+
+pub type CoreResult<T> = Result<T, Fault>;
+pub type SimpleResult = CoreResult<()>;
+
+pub trait Core {
+    /// Runs the core
+    fn run(&mut self, program_counter: usize) -> SimpleResult;
+    /// Runs the core once
+    fn run_once(&mut self) -> SimpleResult;
+
+    /// Takes a program which is just a vector of bytes
+    fn add_program(&mut self, program: Arc<Vec<Byte>>);
+
+    fn add_channels(&mut self, machine_send: Sender<Message>, core_receive: Receiver<Message>);
+
+    fn add_memory(&mut self, memory: Arc<RwLock<Vec<Byte>>>);
+
+    fn send_message(&self, message: Message) -> SimpleResult;
+
+    fn recv_message(&self) -> CoreResult<Message>;
+
+    fn check_messages(&mut self) -> SimpleResult;
+
+    fn check_program_counter(&self) -> CoreResult<bool>;
+
+    fn decode_opcode(&mut self) -> Opcode;
+
+    fn get_register_64<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut u64>;
+
+    fn get_register_128<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut u128>;
+
+    fn get_register_f32<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut f32>;
+
+    fn get_register_f64<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut f64>;
+    
 }
