@@ -1,10 +1,11 @@
 
 
+use std::collections::HashMap;
 use std::sync::{RwLock, Arc};
 use std::sync::TryLockError;
 
 use crate::virtual_machine::Memory;
-use crate::{Core, Byte, SimpleResult, Message, CoreResult, Collector};
+use crate::{Core, Byte, SimpleResult, Message, CoreResult, Collector, Pointer};
 use crate::core::MachineCore;
 
 
@@ -88,6 +89,7 @@ pub struct GarbageCollector {
     /// A vector of stacks, this is so that we can have access to the stacks of the core.
     stacks: Arc<RwLock<Vec<Option<Arc<RwLock<Vec<Byte>>>>>>>,
     memory: Arc<RwLock<Memory>>,
+    found_ptrs: HashMap<Pointer, bool>,
     found_flag: bool,
 }
 
@@ -97,17 +99,21 @@ impl GarbageCollector {
             core: MachineCore::new(),
             stacks: Arc::new(RwLock::new(Vec::new())),
             memory: Arc::new(RwLock::new(Memory::new())),
+            found_ptrs: HashMap::new(),
             found_flag: true,
         }
     }
 
     fn collect(&mut self) -> CoreResult<bool> {
 
+        //TODO: add in check to see if we got the message to clean up garbage
+
         if self.core.program.len() != 0 {
             return self.core.execute_instruction();
         }
 
-        let memory;
+
+        let mut memory;
 
         loop {
             match self.memory.try_write() {
@@ -119,6 +125,25 @@ impl GarbageCollector {
                 Err(_) => panic!("Poisoned lock."),
             }
         }
+
+        let memory_len;
+
+        loop {
+            match memory.memory.try_read() {
+                Ok(mem) => {
+                    memory_len = mem.len();
+                    break;
+                }
+                Err(TryLockError::WouldBlock) => continue,
+                Err(_) => panic!("Poisoned lock."),
+            }
+
+        }
+
+        for (ptr, _) in memory.allocated_blocks.iter() {
+            self.found_ptrs.insert(*ptr, !self.found_flag);
+        }
+
 
         let stacks = self.stacks.read().expect("Could not read from stacks.")
             .iter()
@@ -141,13 +166,41 @@ impl GarbageCollector {
 
             for i in (NULL_OFFSET..stack.len()).step_by(POINTER_SIZE) {
 
-                
+                let mut address = u64::from_le_bytes(stack[i..(i + POINTER_SIZE)].try_into().unwrap());
 
+                while address != 0 || address < memory_len as u64 {
+                    if memory.allocated_blocks.contains_key(&address) {
+                        self.found_ptrs.insert(address, self.found_flag);
+                    }
+
+                    loop {
+                        match memory.memory.try_read() {
+                            Ok(memory) => {
+                                address = u64::from_le_bytes(memory[address as usize..(address as usize + POINTER_SIZE)].try_into().unwrap());
+                                break;
+                            },
+                            Err(TryLockError::WouldBlock) => continue,
+                            Err(_) => panic!("Poisoned lock."),
+                        }
+                    }
+                }
             }
-            
-            
+        }
+
+        let mut ptrs_to_remove = Vec::new();
+
+        for (ptr, flag) in self.found_ptrs.iter() {
+            if *flag != self.found_flag {
+                ptrs_to_remove.push(*ptr);
+                memory.free(*ptr);
+            }
 
         }
+        for ptr in ptrs_to_remove {
+            self.found_ptrs.remove(&ptr);
+        }
+
+        self.found_flag = !self.found_flag;
 
         Ok(false)
     }

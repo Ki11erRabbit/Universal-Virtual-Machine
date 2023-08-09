@@ -29,6 +29,7 @@ pub struct MachineOptions {
     pub gc_program: Option<Arc<Vec<Byte>>>,
 }
 
+#[derive(Debug)]
 pub struct Memory {
     /// The memory of the virtual machine in little endian
     pub memory: Arc<RwLock<Vec<Byte>>>,
@@ -323,7 +324,7 @@ impl Machine {
                 self.join_joinable_threads();
             }
             if self.options.defrag_cycle == cycle_count {
-                self.memory.defrag_memory();
+                self.memory.write().unwrap().defrag_memory();
             }
 
             //TODO: check for commands from the threads to do various things like allocate more memory, etc.
@@ -439,16 +440,46 @@ impl Machine {
                             send.send(Message::ForeignFunction(arg, func)).unwrap();
                         },
                         Message::Malloc(size) => {
-                            let message = self.memory.malloc(size);
-                            send.send(message).unwrap();
+                            loop {
+                                match self.memory.try_write() {
+                                    Ok(mut memory) => {
+                                        let message = memory.malloc(size);
+                                        send.send(message).unwrap();
+                                        break;
+                                    }
+                                    Err(TryLockError::WouldBlock) => continue,
+                                    Err(_) => panic!("Memory Corrupted"),
+                                }
+                                
+                            }
                         },
                         Message::Free(ptr) => {
-                            let message = self.memory.free(ptr);
-                            send.send(message).unwrap();
+                            loop {
+                                match self.memory.try_write() {
+                                    Ok(mut memory) => {
+                                        let message = memory.free(ptr);
+                                        send.send(message).unwrap();
+                                        break;
+                                    }
+                                    Err(TryLockError::WouldBlock) => continue,
+                                    Err(_) => panic!("Memory Corrupted"),
+                                }
+                                
+                            }
                         },
                         Message::Realloc(ptr, size) => {
-                            let message = self.memory.realloc(ptr, size);
-                            send.send(message).unwrap();
+                            loop {
+                                match self.memory.try_write() {
+                                    Ok(mut memory) => {
+                                        let message = memory.realloc(ptr, size);
+                                        send.send(message).unwrap();
+                                        break;
+                                    }
+                                    Err(TryLockError::WouldBlock) => continue,
+                                    Err(_) => panic!("Memory Corrupted"),
+                                }
+                                
+                            }
                         },
                         _ => unimplemented!(),
 

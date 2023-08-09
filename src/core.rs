@@ -111,7 +111,7 @@ pub enum Comparison {
 /// The use of the enum is so that we don't have to worry about the added runtime cost of
 /// protecting the stack when we don't need to.
 #[derive(Debug)]
-enum Stack {
+pub enum Stack {
     /// This is the non-garbage collected stack
     Regular(Vec<Byte>),
     /// This is the garbage collected stack
