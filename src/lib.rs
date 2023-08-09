@@ -14,6 +14,7 @@ use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 
 use instruction::Opcode;
+use virtual_machine::Memory;
 
 /// The id to identify a core
 pub type CoreId = u8;
@@ -203,8 +204,6 @@ pub trait Core {
 
     fn add_channels(&mut self, machine_send: Sender<Message>, core_receive: Receiver<Message>);
 
-    fn add_memory(&mut self, memory: Arc<RwLock<Vec<Byte>>>);
-
     fn send_message(&self, message: Message) -> SimpleResult;
 
     fn recv_message(&self) -> CoreResult<Message>;
@@ -222,6 +221,10 @@ pub trait Core {
     fn get_register_f32<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut f32>;
 
     fn get_register_f64<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut f64>;
+}
+
+pub trait RegCore: Core {
+    fn add_memory(&mut self, memory: Arc<RwLock<Vec<Byte>>>);
 
     fn set_gc(&mut self, gc: bool);
 
@@ -232,4 +235,6 @@ pub trait GarbageCollectorCore: Core + Collector {}
 
 pub trait Collector {
     fn add_stacks(&mut self, stacks: Arc<RwLock<Vec<Option<Arc<RwLock<Vec<Byte>>>>>>>);
+
+    fn add_memory(&mut self, memory: Arc<RwLock<Memory>>);
 }

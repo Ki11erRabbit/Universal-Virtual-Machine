@@ -1,18 +1,28 @@
 
 
 use std::sync::{RwLock, Arc};
+use std::sync::TryLockError;
 
-use crate::{Core, Byte, SimpleResult, Message, CoreResult, GC, Collector};
+use crate::virtual_machine::Memory;
+use crate::{Core, Byte, SimpleResult, Message, CoreResult, Collector};
 use crate::core::MachineCore;
 
 
 impl Core for GarbageCollector {
     fn run(&mut self, program_counter: usize) -> SimpleResult {
+        self.core.program_counter = program_counter;
 
+        let mut is_done = false;
+        while !is_done {
+            self.check_messages()?;
+            
+            is_done = self.collect()?;
+        }
         Ok(())
     }
 
     fn run_once(&mut self) -> SimpleResult {
+        self.collect()?;
         Ok(())
     }
 
@@ -23,11 +33,6 @@ impl Core for GarbageCollector {
     fn add_channels(&mut self, machine_send: std::sync::mpsc::Sender<Message>, core_receive: std::sync::mpsc::Receiver<Message>) {
         self.core.add_channels(machine_send, core_receive);
     }
-
-    fn add_memory(&mut self, memory: Arc<RwLock<Vec<Byte>>>) {
-        self.core.add_memory(memory);
-    }
-
     fn send_message(&self, message: Message) -> SimpleResult {
         self.core.send_message(message)
     }
@@ -63,20 +68,16 @@ impl Core for GarbageCollector {
     fn get_register_f64<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut f64> {
         self.core.get_register_f64(register)
     }
-
-    fn set_gc(&mut self, gc: bool) {
-        panic!("Cannot set garbage collector on garbage collector.");
-    }
-
-    fn get_stack(&self) -> Arc<RwLock<Vec<Byte>>> {
-        panic!("Cannot get stack from garbage collector.");
-    }
 }
 
 impl Collector for GarbageCollector {
 
     fn add_stacks(&mut self, stacks: Arc<RwLock<Vec<Option<Arc<RwLock<Vec<Byte>>>>>>>) {
         self.stacks = stacks;
+    }
+
+    fn add_memory(&mut self, memory: Arc<RwLock<Memory>>) {
+        self.memory = memory;
     }
 }
 
@@ -86,6 +87,8 @@ pub struct GarbageCollector {
     core: MachineCore,
     /// A vector of stacks, this is so that we can have access to the stacks of the core.
     stacks: Arc<RwLock<Vec<Option<Arc<RwLock<Vec<Byte>>>>>>>,
+    memory: Arc<RwLock<Memory>>,
+    found_flag: bool,
 }
 
 impl GarbageCollector {
@@ -93,7 +96,60 @@ impl GarbageCollector {
         Self {
             core: MachineCore::new(),
             stacks: Arc::new(RwLock::new(Vec::new())),
+            memory: Arc::new(RwLock::new(Memory::new())),
+            found_flag: true,
         }
+    }
+
+    fn collect(&mut self) -> CoreResult<bool> {
+
+        if self.core.program.len() != 0 {
+            return self.core.execute_instruction();
+        }
+
+        let memory;
+
+        loop {
+            match self.memory.try_write() {
+                Ok(mem) => {
+                    memory = mem;
+                    break;
+                },
+                Err(TryLockError::WouldBlock) => continue,
+                Err(_) => panic!("Poisoned lock."),
+            }
+        }
+
+        let stacks = self.stacks.read().expect("Could not read from stacks.")
+            .iter()
+            .filter(|stack| stack.is_some())
+            .map(|stack| {
+                loop {
+                    match stack.as_ref().unwrap().try_read() {
+                        Ok(stack) => break stack.clone(),
+                        Err(TryLockError::WouldBlock) => continue,
+                        Err(_) => panic!("Poisoned lock."),
+                    }
+                }
+            })
+            .collect::<Vec<_>>();
+
+        
+        const POINTER_SIZE: usize = 8;
+        const NULL_OFFSET: usize = 1;
+        for stack in stacks {
+
+            for i in (NULL_OFFSET..stack.len()).step_by(POINTER_SIZE) {
+
+                
+
+            }
+            
+            
+
+        }
+
+        Ok(false)
     }
 }
 

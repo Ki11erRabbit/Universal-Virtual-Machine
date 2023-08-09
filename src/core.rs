@@ -9,7 +9,7 @@ use std::fmt;
 use std::sync::mpsc::{Sender,Receiver, TryRecvError};
 
 use crate::instruction::Opcode;
-use crate::{RegisterType,Message,Fault,CoreId,Byte,Pointer,FileDescriptor, Core, SimpleResult, CoreResult};
+use crate::{RegisterType,Message,Fault,CoreId,Byte,Pointer,FileDescriptor, Core, SimpleResult, CoreResult, RegCore};
 
 
 macro_rules! check_register64 {
@@ -148,62 +148,62 @@ impl fmt::Debug for MachineCore {
 /// A struct that represents a processor core.
 pub struct MachineCore {
     /// 64-bit registers
-    registers_64: [u64; REGISTER_64_COUNT],
+    pub registers_64: [u64; REGISTER_64_COUNT],
     /// 128-bit registers
-    registers_128: [u128; REGISTER_128_COUNT],
+    pub registers_128: [u128; REGISTER_128_COUNT],
     /// 32-bit floating point registers
-    registers_f32: [f32; REGISTER_F32_COUNT],
+    pub registers_f32: [f32; REGISTER_F32_COUNT],
     /// 64-bit floating point registers
-    registers_f64: [f64; REGISTER_F64_COUNT],
+    pub registers_f64: [f64; REGISTER_F64_COUNT],
     /// 64-bit atomic registers
-    registers_atomic_64: [AtomicU64; REGISTER_ATOMIC_64_COUNT],
+    pub registers_atomic_64: [AtomicU64; REGISTER_ATOMIC_64_COUNT],
     /* flags */
     /// The comparison flag
     /// This flag is set when a comparison instruction is executed
-    comparison_flag: Comparison,
+    pub comparison_flag: Comparison,
     /// The odd flag
     /// This flag is set when a result of an operation is odd
-    odd_flag: bool,
+    pub odd_flag: bool,
     /// The zero flag
     /// This flag is set when a result of an operation is zero
-    zero_flag: bool,
+    pub zero_flag: bool,
     /// The sign flag
     /// This flag is set when a result of an operation is negative or positive
     /// When working with unsigned numbers, this flag is always set to positive
-    sign_flag: Sign,
+    pub sign_flag: Sign,
     /// The overflow flag
     /// This flag is set when we wrap around the maximum or minimum value of a number
-    overflow_flag: bool,
+    pub overflow_flag: bool,
     /// The infinity flag
     /// This flag is set when a result of an operation is infinity
-    infinity_flag: bool,
+    pub infinity_flag: bool,
     /// The nan flag
     /// This flag is set when a result of an operation is Not a Number
-    nan_flag: bool,
+    pub nan_flag: bool,
     /* other */
     /// The remainder of a division operation
-    remainder_64: usize,
+    pub remainder_64: usize,
     /// The remainder of a division operation
-    remainder_128: u128,
+    pub remainder_128: u128,
     /// The program counter
-    program_counter: usize,
+    pub program_counter: usize,
     /// The stack
     /// The stack is always local to the core in order to prevent slowdowns from locking memory
-    stack: Stack,
+    pub stack: Stack,
     /// The program
-    program: Arc<Vec<Byte>>,
+    pub program: Arc<Vec<Byte>>,
     /// The memory
     /// This is a reference to the memory of the machine and is shared between all cores
-    memory: Arc<RwLock<Vec<Byte>>>,
+    pub memory: Arc<RwLock<Vec<Byte>>>,
     /// The send channel
     /// This is a channel that is used to send messages to the machine's event loop.
-    send_channel: Option<Sender<Message>>,
+    pub send_channel: Option<Sender<Message>>,
     /// The receive channel
     /// This is a channel that is used to receive messages from the machine's event loop.
-    recv_channel: Option<Receiver<Message>>,
+    pub recv_channel: Option<Receiver<Message>>,
     /// The threads
     /// This is a set of all the threads that this core has spawned
-    threads: HashSet<CoreId>,
+    pub threads: HashSet<CoreId>,
 }
 
 impl Core for MachineCore {
@@ -237,10 +237,6 @@ impl Core for MachineCore {
     fn add_channels(&mut self, send: Sender<Message>, recv: Receiver<Message>) {
         self.send_channel = Some(send);
         self.recv_channel = Some(recv);
-    }
-
-    fn add_memory(&mut self, memory: Arc<RwLock<Vec<Byte>>>) {
-        self.memory = memory;
     }
 
     /// Wrapper for sending a message to the machine's event loop
@@ -338,6 +334,12 @@ impl Core for MachineCore {
         }
     }
 
+}
+
+impl RegCore for MachineCore {
+    fn add_memory(&mut self, memory: Arc<RwLock<Vec<Byte>>>) {
+        self.memory = memory;
+    }
     
     fn set_gc(&mut self, garbage_collection: bool) {
         match garbage_collection {
@@ -552,52 +554,52 @@ impl MachineCore {
 
     #[inline]
     /// Function that advances the program counter by a given size
-    fn advance_by_size(&mut self, size: usize) {
+    pub fn advance_by_size(&mut self, size: usize) {
         self.program_counter += size;
     }
     /// Function that advances the program counter by 1 byte or 8 bits
-    fn advance_by_1_byte(&mut self) {
+    pub fn advance_by_1_byte(&mut self) {
         self.advance_by_size(1);
     }
     /// Function that advances the program counter by 2 bytes or 16 bits
-    fn advance_by_2_bytes(&mut self) {
+    pub fn advance_by_2_bytes(&mut self) {
         self.advance_by_size(2);
     }
     /// Function that advances the program counter by 4 bytes or 32 bits
-    fn advance_by_4_bytes(&mut self) {
+    pub fn advance_by_4_bytes(&mut self) {
         self.advance_by_size(4);
     }
     /// Function that advances the program counter by 8 bytes or 64 bits
-    fn advance_by_8_bytes(&mut self) {
+    pub fn advance_by_8_bytes(&mut self) {
         self.advance_by_size(8);
     }
     /// Function that advances the program counter by 16 bytes or 128 bits
-    fn advance_by_16_bytes(&mut self) {
+    pub fn advance_by_16_bytes(&mut self) {
         self.advance_by_size(16);
     }
 
     /// Function that grabs a byte from the program without advancing the program counter
-    fn get_1_byte(&mut self) -> Byte {
+    pub fn get_1_byte(&mut self) -> Byte {
         let value = self.program[self.program_counter];
         value
     }
     /// Function that grabs 2 bytes from the program without advancing the program counter
-    fn get_2_bytes(&mut self) -> u16 {
+    pub fn get_2_bytes(&mut self) -> u16 {
         let value = u16::from_le_bytes([self.program[self.program_counter], self.program[self.program_counter + 1]]);
         value
     }
     /// Function that grabs 4 bytes from the program without advancing the program counter
-    fn get_4_bytes(&mut self) -> u32 {
+    pub fn get_4_bytes(&mut self) -> u32 {
         let value = u32::from_le_bytes([self.program[self.program_counter], self.program[self.program_counter + 1], self.program[self.program_counter + 2], self.program[self.program_counter + 3]]);
         value
     }
     /// Function that grabs 8 bytes from the program without advancing the program counter
-    fn get_8_bytes(&mut self) -> u64 {
+    pub fn get_8_bytes(&mut self) -> u64 {
         let value = u64::from_le_bytes([self.program[self.program_counter], self.program[self.program_counter + 1], self.program[self.program_counter + 2], self.program[self.program_counter + 3], self.program[self.program_counter + 4], self.program[self.program_counter + 5], self.program[self.program_counter + 6], self.program[self.program_counter + 7]]);
         value
     }
     /// Function that grabs 16 bytes from the program without advancing the program counter
-    fn get_16_bytes(&mut self) -> u128 {
+    pub fn get_16_bytes(&mut self) -> u128 {
         let value = u128::from_le_bytes([self.program[self.program_counter], self.program[self.program_counter + 1], self.program[self.program_counter + 2], self.program[self.program_counter + 3], self.program[self.program_counter + 4], self.program[self.program_counter + 5], self.program[self.program_counter + 6], self.program[self.program_counter + 7], self.program[self.program_counter + 8], self.program[self.program_counter + 9], self.program[self.program_counter + 10], self.program[self.program_counter + 11], self.program[self.program_counter + 12], self.program[self.program_counter + 13], self.program[self.program_counter + 14], self.program[self.program_counter + 15]]);
         value
     }
