@@ -164,6 +164,7 @@ pub enum Fault {
     FileOpenError,
     InvalidMessage,
     FileWriteError,
+    FileReadError,
     InvalidFree,
     InvalidRealloc,
 }
@@ -188,6 +189,7 @@ impl fmt::Display for Fault {
             Fault::FileOpenError => write!(f, "File Open Error"),
             Fault::InvalidMessage => write!(f, "Invalid Message"),
             Fault::FileWriteError => write!(f, "File Write Error"),
+            Fault::FileReadError => write!(f, "File Read Error"),
             Fault::InvalidFree => write!(f, "Invalid Free"),
             Fault::InvalidRealloc => write!(f, "Invalid Realloc"),
         }
@@ -210,7 +212,7 @@ pub trait Core {
 
     fn send_message(&self, message: Message) -> SimpleResult;
 
-    fn recv_message(&self) -> CoreResult<Message>;
+    fn recv_message(&mut self) -> CoreResult<Message>;
 
     fn check_messages(&mut self) -> SimpleResult;
 

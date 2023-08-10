@@ -347,6 +347,12 @@ pub enum Opcode {
     Sleep,
     /// This instruction will sleep for a specified amount of time seconds from the register
     SleepReg,
+    /// This function generates a random integer
+    Random,
+    /// This function generates a random float
+    RandomF,
+    /// Reading but rather than writing to the heap it writes to the stack
+    ReadStack,
     
     
     
@@ -538,6 +544,8 @@ impl From<u16> for Opcode {
             167 => Realloc,
             168 => Sleep,
             169 => SleepReg,
+            170 => Random,
+            171 => RandomF,
             
             
             /* Instructions illegal instruction */

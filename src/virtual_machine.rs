@@ -6,7 +6,7 @@ use std::thread::{self,JoinHandle};
 use std::sync::mpsc::{Sender,Receiver, channel};
 use std::fs::File;
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{Write, Read, self};
 use std::time::{Instant, Duration};
 
 use crate::core::MachineCore;
@@ -213,6 +213,8 @@ impl Memory {
     }
 }
 
+pub trait ReadWrite: Read + Write {}
+
 /// A struct that represents our virtual machine
 pub struct Machine {
     /// The options for the virtual machine
@@ -231,7 +233,7 @@ pub struct Machine {
     channels: Rc<RefCell<Vec<Option<(Sender<Message>, Receiver<Message>)>>>>,
     /// The files that are open for the machine
     /// Unfortuately stdin doesn't implement Write so we have to create an offset for the file descriptors when writing
-    files: Vec<Option<Box<dyn Write>>>,
+    files: Vec<Option<Box<dyn ReadWrite>>>,
     /// A map of child threads to their parent threads
     thread_children: HashMap<CoreId, CoreId>,
     /// A list of threads to join, this is set by the join instruction. This is so that we don't deadlock when trying to join a thread
@@ -262,7 +264,7 @@ impl Machine {
             program: None,
             entry_point: None,
             channels: Rc::new(RefCell::new(Vec::new())),
-            files: vec![Some(Box::new(std::io::stdout())), Some(Box::new(std::io::stderr()))],
+            files: vec![None, None, None],
             thread_children: HashMap::new(),
             threads_to_join: Rc::new(RefCell::new(Vec::new())),
             main_thread_id: 0,
@@ -510,6 +512,10 @@ impl Machine {
                                 
                             }
                         },
+                        Message::ReadFile(fd, size) => {
+                            let message = self.read_file(fd, size as usize);
+                            send.send(message).unwrap();
+                        },
                         _ => unimplemented!(),
 
                     }
@@ -539,12 +545,67 @@ impl Machine {
         }
     }
 
-    /// This function writes bytes to a file based on the file descriptor
-    fn write_file(&mut self, fd: FileDescriptor, data: Vec<u8>) -> Message {
-        let fd = fd - 1;
+    fn read_file(&mut self, fd: FileDescriptor, amount: usize) -> Message {
         if fd as usize >= self.files.len() {
             return Message::Error(Fault::InvalidFileDescriptor);
         }
+
+        match fd {
+            0 => {
+                let mut stdin = io::stdin();
+                let mut buffer: Vec<u8> = vec![0; amount];
+                match stdin.read(&mut buffer) {
+                    Ok(size) => {
+                        return Message::FileData(buffer, size as u64);
+                    },
+                    Err(_) => return Message::Error(Fault::FileReadError),
+                }
+            },
+            1 => return Message::Error(Fault::InvalidFileDescriptor),
+            2 => return Message::Error(Fault::InvalidFileDescriptor),
+            _ => {},
+        }
+
+        let file = match &mut self.files[fd as usize] {
+            Some(file) => file,
+            None => return Message::Error(Fault::InvalidFileDescriptor),
+        };
+
+        let mut buffer: Vec<u8> = vec![0; amount];
+
+        match file.read(&mut buffer) {
+            Ok(size) => {
+                return Message::FileData(buffer, size as u64);
+            },
+            Err(_) => return Message::Error(Fault::FileReadError),
+        }
+    }
+
+    /// This function writes bytes to a file based on the file descriptor
+    fn write_file(&mut self, fd: FileDescriptor, data: Vec<u8>) -> Message {
+        if fd as usize >= self.files.len() {
+            return Message::Error(Fault::InvalidFileDescriptor);
+        }
+
+        match fd {
+            0 => return Message::Error(Fault::InvalidFileDescriptor),
+            1 => {
+                let mut stdout = io::stdout();
+                match stdout.write(&data) {
+                    Ok(_) => return Message::Success,
+                    Err(_) => return Message::Error(Fault::FileWriteError),
+                }
+            },
+            2 => {
+                let mut stderr = io::stderr();
+                match stderr.write(&data) {
+                    Ok(_) => return Message::Success,
+                    Err(_) => return Message::Error(Fault::FileWriteError),
+                }
+            },
+            _ => {},
+        }
+        
         let file = match &mut self.files[fd as usize] {
             Some(file) => file,
             None => return Message::Error(Fault::InvalidFileDescriptor),

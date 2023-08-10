@@ -1,4 +1,5 @@
 
+use std::arch::x86_64::_CMP_TRUE_UQ;
 use std::collections::HashSet;
 use std::sync::{Arc,RwLock,TryLockError};
 use std::num::Wrapping;
@@ -249,8 +250,9 @@ impl Core for MachineCore {
     }
 
     /// Wrapper for making a blocking call to receive a message from the machine's event loop
-    fn recv_message(&self) -> CoreResult<Message> {
-        match self.recv_channel.as_ref().expect("Recieve channel was not initialized").recv() {
+    fn recv_message(&mut self) -> CoreResult<Message> {
+        let msg = self.recv_channel.as_ref().expect("Recieve channel was not initialized").recv();
+        match msg {
             Ok(message) => {
                 match message {
                     Message::CollectGarbage => {
@@ -756,6 +758,10 @@ impl MachineCore {
             Realloc => self.realloc_opcode()?,
             Sleep => self.sleep_opcode()?,
             SleepReg => self.sleepreg_opcode()?,
+            Random => self.random_opcode()?,
+            RandomF => self.randomf_opcode()?,
+            Read => self.read_opcode()?,
+            ReadByte => self.readbyte_opcode()?,
             
 
             x => {
@@ -8621,8 +8627,175 @@ impl MachineCore {
 
         Ok(())
     }
-    
-    
+
+    fn random_opcode(&mut self) -> SimpleResult {
+        let size = self.get_1_byte();
+        self.advance_by_1_byte();
+        let reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        match size {
+            8 => {
+                check_register64!(reg as usize);
+                let random = rand::random::<u8>();
+                self.registers_64[reg as usize] = random as u64;
+            },
+            16 => {
+                check_register64!(reg as usize);
+                let random = rand::random::<u16>();
+                self.registers_64[reg as usize] = random as u64;
+            },
+            32 => {
+                check_register64!(reg as usize);
+                let random = rand::random::<u32>();
+                self.registers_64[reg as usize] = random as u64;
+            },
+            64 => {
+                check_register64!(reg as usize);
+                let random = rand::random::<u64>();
+                self.registers_64[reg as usize] = random as u64;
+            },
+            128 => {
+                check_register128!(reg as usize);
+                let random = rand::random::<u128>();
+                self.registers_128[reg as usize] = random;
+            },
+            _ => {
+                return Err(Fault::InvalidSize);
+            }
+        }
+        Ok(())
+    }
+
+    fn randomf_opcode(&mut self) -> SimpleResult {
+        let size = self.get_1_byte();
+        self.advance_by_1_byte();
+        let reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(reg as usize);
+                let random = rand::random::<f32>();
+                self.registers_f32[reg as usize] = random;
+            },
+            64 => {
+                check_registerF64!(reg as usize);
+                let random = rand::random::<f64>();
+                self.registers_f64[reg as usize] = random;
+            },
+            _ => {
+                return Err(Fault::InvalidSize);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn readbyte_opcode(&mut self) -> SimpleResult {
+        let fd_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let value_reg = self.program[self.program_counter] as u8;
+
+        check_register64!(fd_reg as usize, value_reg as usize);
+
+        let fd = self.registers_64[fd_reg as usize];
+
+        let message = Message::ReadFile(fd, 1);
+
+        self.send_message(message)?;
+
+        let message = self.recv_message()?;
+
+        match message {
+            Message::FileData(data,_) => {
+                self.registers_64[value_reg as usize] = data[0] as u64;
+            },
+            Message::Error(fault) => {
+                return Err(fault);
+            },
+            _ => {
+                return Err(Fault::InvalidMessage);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn read_opcode(&mut self) -> SimpleResult {
+        let fd_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let ptr_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let amount_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(fd_reg as usize, ptr_reg as usize, amount_reg as usize);
+
+        let fd = self.registers_64[fd_reg as usize];
+        let ptr = self.registers_64[ptr_reg as usize];
+        let amount = self.registers_64[amount_reg as usize];
+
+        let message = Message::ReadFile(fd, amount);
+
+        self.send_message(message)?;
+
+        let message = self.recv_message()?;
+
+        match message {
+            Message::FileData(bytes, amount) => {
+                self.registers_64[amount_reg as usize] = amount as u64;
+                loop {
+                    match self.memory.try_write() {
+                        Ok(mut memory) => {
+                            for (i, byte) in bytes.iter().enumerate() {
+                                memory[ptr as usize + i] = *byte;
+                            }
+                            break;
+                        },
+                        Err(TryLockError::WouldBlock) => continue,
+                        Err(_) => return Err(Fault::CorruptedMemory),
+                    }
+                }
+            },
+            Message::Error(fault) => return Err(fault),
+            _ => return Err(Fault::InvalidMessage),
+        }
+
+        Ok(())
+    }
+
+    fn readstack_opcode(&mut self) -> SimpleResult {
+        let fd_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let ptr_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let amount_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(fd_reg as usize, ptr_reg as usize, amount_reg as usize);
+
+        let fd = self.registers_64[fd_reg as usize];
+        let ptr = self.registers_64[ptr_reg as usize];
+        let amount = self.registers_64[amount_reg as usize];
+
+        let message = Message::ReadFile(fd, amount);
+
+        self.send_message(message)?;
+
+        let message = self.recv_message()?;
+
+        match message {
+            Message::FileData(bytes, amount) => {
+                self.registers_64[amount_reg as usize] = amount as u64;
+                self.write_bytes_to_stack(ptr, amount, &bytes)?;
+            },
+            Message::Error(fault) => return Err(fault),
+            _ => return Err(Fault::InvalidMessage),
+        }
+
+        Ok(())
+    }
 }
 
 

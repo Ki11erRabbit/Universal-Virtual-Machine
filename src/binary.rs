@@ -1161,6 +1161,35 @@ impl Binary {
 
                     assembly.push_str(&format!("${}, ${}\n", reg, scale_reg));
                 },
+                Random => {
+                    assembly.push_str("rand ");
+                    let size = self.program[read_head];
+                    read_head += 1;
+                    let reg = self.program[read_head];
+                    read_head += 1;
+
+                    assembly.push_str(&format!("{}, ${}\n", size, reg));
+                },
+                RandomF => {
+                    assembly.push_str("randf ");
+                    let size = self.program[read_head];
+                    read_head += 1;
+                    let reg = self.program[read_head];
+                    read_head += 1;
+
+                    assembly.push_str(&format!("{}, ${}\n", size, reg));
+                },
+                ReadStack => {
+                    assembly.push_str("readstack ");
+                    let reg1 = self.program[read_head];
+                    read_head += 1;
+                    let reg2 = self.program[read_head];
+                    read_head += 1;
+                    let reg3 = self.program[read_head];
+                    read_head += 1;
+
+                    assembly.push_str(&format!("${}, ${}, ${}\n", reg1, reg2, reg3));
+                },
                 Illegal => {
                     assembly.push_str("illegal\n");
                 },

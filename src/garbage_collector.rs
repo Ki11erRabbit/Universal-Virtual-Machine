@@ -38,7 +38,7 @@ impl Core for GarbageCollector {
         self.core.send_message(message)
     }
 
-    fn recv_message(&self) -> CoreResult<Message> {
+    fn recv_message(&mut self) -> CoreResult<Message> {
         self.core.recv_message()
     }
 
