@@ -12,6 +12,7 @@ use std::any::Any;
 use std::fmt;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
+use std::io::{Read, Write};
 
 use instruction::Opcode;
 use virtual_machine::Memory;
@@ -245,3 +246,7 @@ pub trait Collector {
 
     fn add_memory(&mut self, memory: Arc<RwLock<Memory>>);
 }
+
+pub trait ReadWrite: Read + Write {}
+
+impl<T: Read + Write> ReadWrite for T {}

@@ -11,7 +11,7 @@ use std::time::{Instant, Duration};
 
 use crate::core::MachineCore;
 use crate::garbage_collector::GarbageCollector;
-use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, ForeignFunction, ForeignFunctionArg, FileDescriptor, Core, SimpleResult, GarbageCollectorCore, RegCore, Collector};
+use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, ForeignFunction, ForeignFunctionArg, FileDescriptor, Core, SimpleResult, GarbageCollectorCore, RegCore, Collector, ReadWrite};
 use crate::binary::Binary;
 
 /// Struct that contains options for the virtual machine
@@ -212,8 +212,6 @@ impl Memory {
 
     }
 }
-
-pub trait ReadWrite: Read + Write {}
 
 /// A struct that represents our virtual machine
 pub struct Machine {
