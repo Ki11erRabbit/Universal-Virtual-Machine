@@ -244,13 +244,13 @@ pub trait RegCore: Core {
 
     fn add_heap(&mut self, memory: Arc<RwLock<Vec<Byte>>>);
 
-    fn add_stack(&mut self, stack: *mut Byte, offset: usize, size: usize);
+    fn add_stack(&mut self, stack: WholeStack, index: usize);
 }
 
 pub trait GarbageCollectorCore: Core + Collector {}
 
 pub trait Collector {
-    fn add_stack(&mut self, stack: Box<[Byte]>, offset: usize);
+    fn add_stack(&mut self, stack: WholeStack, offset: usize);
 
     fn add_heap(&mut self, memory: Arc<RwLock<Memory>>);
 
@@ -260,3 +260,6 @@ pub trait Collector {
 pub trait ReadWrite: Read + Write {}
 
 impl<T: Read + Write> ReadWrite for T {}
+
+pub type Stack = Arc<RwLock<Box<[Byte]>>>;
+pub type WholeStack = Arc<Vec<Stack>>;

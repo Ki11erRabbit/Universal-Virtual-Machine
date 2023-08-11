@@ -5,13 +5,14 @@ use std::sync::{Arc, RwLock, TryLockError};
 use std::thread::{self,JoinHandle};
 use std::sync::mpsc::{Sender,Receiver, channel};
 use std::fs::File;
+use std::array::from_fn;
 use std::fs::OpenOptions;
 use std::io::{Write, Read, self};
 use std::time::{Instant, Duration};
 
 use crate::core::MachineCore;
 use crate::garbage_collector::GarbageCollector;
-use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, ForeignFunction, ForeignFunctionArg, FileDescriptor, Core, SimpleResult, GarbageCollectorCore, RegCore, Collector, ReadWrite};
+use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, ForeignFunction, ForeignFunctionArg, FileDescriptor, Core, SimpleResult, GarbageCollectorCore, RegCore, Collector, ReadWrite, Stack, WholeStack};
 use crate::binary::Binary;
 
 /// Struct that contains options for the virtual machine
@@ -28,8 +29,16 @@ pub struct MachineOptions {
     pub gc_time: Option<u64>,
     /// The program for the garbage collector to run
     pub gc_program: Option<Arc<Vec<Byte>>>,
-    /// The size of the stack in megabytes
+    /// The size of the stack in kilobytes
     pub stack_size: usize,
+    /// A scaler value for the stack size
+    pub stack_scale: usize,
+}
+
+impl MachineOptions {
+    pub fn calculate_stack_size(&self) -> usize {
+        self.stack_size * self.stack_scale * 1024
+    }
 }
 
 #[derive(Debug)]
@@ -220,7 +229,7 @@ pub struct Machine {
     /// The options for the virtual machine
     options: MachineOptions,
     data_segment: Arc<Vec<Byte>>,
-    stack: Box<[Byte]>,
+    stack: WholeStack,
     /// The memory of the virtual machine in little endian
     heap: Arc<RwLock<Memory>>,
     next_stack_offset: usize,
@@ -260,9 +269,10 @@ impl Machine {
                 gc_time: None,
                 gc_program: None,
                 stack_size: 1,
+                stack_scale: 512,
             },
             data_segment: Arc::new(Vec::new()),
-            stack: Box::new([]),
+            stack: Arc::new(Vec::new()),
             heap: Arc::new(RwLock::new(Memory::new())),
             next_stack_offset: 0,
             cores: Vec::new(),
@@ -320,7 +330,8 @@ impl Machine {
     pub fn run(&mut self) {
         //TODO: change print to log
 
-        let stack: Box<[Byte]> = vec![0; 1024 * 1024 * self.options.stack_size * self.cores.len()].into_boxed_slice();
+        let stack: WholeStack = Arc::new(vec![Arc::new(RwLock::new(vec![0; self.options.calculate_stack_size()].into_boxed_slice())); self.cores.len()]);
+
         self.stack = stack;
 
         let program_counter = self.entry_point.expect("Entry point not set");
@@ -738,13 +749,9 @@ impl Machine {
         program.push(0);
         let program = Arc::new(program);
         core.add_program(program);
-        
-        let stack_ptr: *mut Byte = self.stack.as_mut_ptr();
-        let stack_size = self.options.stack_size * 1024 * 1024;
 
-        self.next_stack_offset += stack_size;
-
-        core.add_stack(stack_ptr, self.next_stack_offset, stack_size);
+        core.add_stack(self.stack.clone(), self.next_stack_offset);
+        self.next_stack_offset += 1;
         
         let core_thread = {
             thread::spawn(move || {
@@ -759,12 +766,8 @@ impl Machine {
         let mut core = self.cores.remove(core);
         core.add_program(self.program.as_ref().expect("Program Not set").clone());
 
-        let stack_ptr: *mut Byte = self.stack.as_mut_ptr();
-        let stack_size = self.options.stack_size * 1024 * 1024;
-
-        self.next_stack_offset += stack_size;
-
-        core.add_stack(stack_ptr, self.next_stack_offset, stack_size);
+        core.add_stack(self.stack.clone(), self.next_stack_offset);
+        self.next_stack_offset += 1;
         
         let core_thread = {
             thread::spawn(move || {
@@ -788,7 +791,8 @@ impl Machine {
                 if self.options.gc_program.is_some() {
                     gc.add_program(self.options.gc_program.clone().unwrap());
                 }
-                gc.add_memory(self.memory.clone());
+                gc.add_data_segment(self.data_segment.clone());
+                gc.add_heap(self.heap.clone());
                 gc.add_channels(machine_sender, core_receiver);
 
                 self.gc_channels = Some((core_sender, machine_receiver));
@@ -820,7 +824,8 @@ impl Machine {
     /// A binary is just a struct that contains the program, data segment, and entry point
     pub fn load_binary(&mut self, binary: &Binary) {
         self.program = Some(Arc::new(binary.program().clone()));
-        self.memory.write().unwrap().memory.write().unwrap().extend_from_slice(&binary.data_segment());
+        let segment = binary.data_segment().clone();
+        self.data_segment = Arc::new(segment);
         self.entry_point = Some(binary.entry_address());
     }
 

@@ -1,17 +1,14 @@
 
-use std::arch::x86_64::_CMP_TRUE_UQ;
 use std::collections::HashSet;
 use std::sync::{Arc,RwLock,TryLockError};
 use std::num::Wrapping;
-use std::array::from_fn;
-use std::sync::atomic::AtomicU64;
 use std::thread;
 use std::fmt;
 use std::sync::mpsc::{Sender,Receiver, TryRecvError};
 use std::time::Duration;
 
 use crate::instruction::Opcode;
-use crate::{RegisterType,Message,Fault,CoreId,Byte,Pointer,FileDescriptor, Core, SimpleResult, CoreResult, RegCore};
+use crate::{RegisterType,Message,Fault,CoreId,Byte,Pointer,FileDescriptor, Core, SimpleResult, CoreResult, RegCore, WholeStack};
 
 
 macro_rules! check_register64 {
@@ -114,34 +111,52 @@ pub enum Comparison {
 /// protecting the stack when we don't need to.
 #[derive(Debug)]
 pub struct Stack {
-    buffer: *mut Byte,
-    size: usize,
-    offset: usize,
+    stack: WholeStack,
+    index: usize,
     stack_pointer: usize,
+    size: usize,
 }
 
 impl Stack {
     pub fn new() -> Stack {
         Stack {
-            buffer: std::ptr::null_mut(),
-            size: 0,
-            offset: 0,
+            stack: Arc::new(Vec::new()),
+            index: 0,
             stack_pointer: 0,
+            size: 0,
         }
     }
 
-    pub fn set_buffer(&mut self, buffer: *mut Byte, size: usize, offset: usize) {
-        self.buffer = buffer;
-        self.size = size;
-        self.offset = offset;
+    pub fn set_buffer(&mut self, stack: WholeStack, index: usize) {
+        self.stack = stack;
+        self.index = index;
+
+        self.size = self.local_len() * stack.len();
+        
     }
 
-    pub fn get_offset(&self) -> usize {
-        self.offset
+    pub fn get_index(&self) -> usize {
+        self.index
     }
 
-    pub fn get_size(&self) -> usize {
+    pub fn size(&self) -> usize {
         self.size
+    }
+
+    pub fn local_len(&self) -> usize {
+        loop {
+            match self.stack[self.index].try_read() {
+                Ok(stack) => {
+                    return stack.len();
+                },
+                Err(TryLockError::WouldBlock) => {
+                    thread::yield_now();
+                },
+                Err(TryLockError::Poisoned(_)) => {
+                    panic!("Poisoned Stack");
+                }
+            }
+        }
     }
 
     pub fn get_stack_pointer(&self) -> usize {
@@ -149,19 +164,40 @@ impl Stack {
     }
 
     pub fn get_bytes(&self, start: usize, size: usize) -> &[Byte] {
-        unsafe {
-            std::slice::from_raw_parts(self.buffer.offset(start as isize), size)
+        loop {
+            match self.stack[self.index].try_read() {
+                Ok(stack) => {
+                    return &stack[start..start+size];
+                },
+                Err(TryLockError::WouldBlock) => {
+                    thread::yield_now();
+                },
+                Err(TryLockError::Poisoned(_)) => {
+                    panic!("Poisoned Stack");
+                }
+            }
         }
     }
 
     pub fn write_bytes(&mut self, start: usize, bytes: &[Byte]) {
-        unsafe {
-            std::ptr::copy_nonoverlapping(bytes.as_ptr(), self.buffer.offset(start as isize), bytes.len());
+        loop {
+            match self.stack[self.index].try_write() {
+                Ok(mut stack) => {
+                    stack[start..start+bytes.len()].copy_from_slice(bytes);
+                    return;
+                },
+                Err(TryLockError::WouldBlock) => {
+                    thread::yield_now();
+                },
+                Err(TryLockError::Poisoned(_)) => {
+                    panic!("Poisoned Stack");
+                }
+            }
         }
     }
 
     pub fn push(&mut self, bytes: &[Byte]) -> Result<(),Fault> {
-        if self.stack_pointer + bytes.len() > self.size {
+        if self.stack_pointer + bytes.len() > self.size() {
             return Err(Fault::StackOverflow);
         }
 
@@ -177,6 +213,23 @@ impl Stack {
 
         self.stack_pointer -= size;
         Ok(self.get_bytes(self.stack_pointer, size).to_vec())
+    }
+
+    /// Address must be relative to the stack address space or this will fail.
+    pub fn translate_address(&self, address: u64) -> Result<u64,Fault> {
+        if address > self.size() as u64 {
+            return Err(Fault::InvalidAddress(address));
+        }
+        if address <= self.local_len() as u64 {
+            return Ok(address);
+        }
+        for (i, _) in self.stack.iter().enumerate() {
+            let local_len = self.local_len() as u64 * (i + 1) as u64;
+            if address <= local_len {
+                return Ok(address - local_len * i as u64);
+            }
+        }
+        Err(Fault::InvalidAddress(address))
     }
     
 }
@@ -409,8 +462,8 @@ impl RegCore for MachineCore {
         self.data_segment = data;
     }
 
-    fn add_stack(&mut self, stack: *mut Byte, offset: usize, size: usize) {
-        self.stack.set_buffer(stack, size, offset);
+    fn add_stack(&mut self, stack: WholeStack, index: usize) {
+        self.stack.set_buffer(stack, index);
     }
 }
     
@@ -492,7 +545,7 @@ impl MachineCore {
     /// size is the number of bytes we want to access
     pub fn get_from_memory(&mut self, address: Pointer, size: u64) -> CoreResult<Vec<u8>> {
         let data_segment_size = self.data_segment.len() as u64;
-        let stack_size = self.stack.get_size() as u64;
+        let stack_size = self.stack.size() as u64;
         let heap_size;
 
         loop {
@@ -6012,6 +6065,21 @@ impl MachineCore {
                         self.sign_flag = Sign::Positive;
                     }
                 }
+                let str = self.registers_f32[register1].to_string();
+                for chr in str.chars().rev() {
+                    match chr {
+                        '1' | '3' | '5' | '7' | '9' => {
+                            self.odd_flag = true;
+                            break;
+                        },
+                        '2' | '4' | '6' | '8' => {
+                            self.odd_flag = false;
+                            break;
+                        },
+                        _ => {},
+                    }
+                }
+                
             },
             64 => {
                 check_registerF64!(register1, register2);
@@ -6041,8 +6109,20 @@ impl MachineCore {
                         self.sign_flag = Sign::Positive;
                     }
                 }
-                
-                
+                let str = self.registers_f64[register1].to_string();
+                for chr in str.chars().rev() {
+                    match chr {
+                        '1' | '3' | '5' | '7' | '9' => {
+                            self.odd_flag = true;
+                            break;
+                        },
+                        '2' | '4' | '6' | '8' => {
+                            self.odd_flag = false;
+                            break;
+                        },
+                        _ => {},
+                    }
+                }
                 
             },
             _ => return Err(Fault::InvalidSize),
@@ -6088,6 +6168,20 @@ impl MachineCore {
                         self.sign_flag = Sign::Positive;
                     }
                 }
+                let str = self.registers_f32[register1].to_string();
+                for chr in str.chars().rev() {
+                    match chr {
+                        '1' | '3' | '5' | '7' | '9' => {
+                            self.odd_flag = true;
+                            break;
+                        },
+                        '2' | '4' | '6' | '8' => {
+                            self.odd_flag = false;
+                            break;
+                        },
+                        _ => {},
+                    }
+                }
             },
             64 => {
                 check_registerF64!(register1, register2);
@@ -6115,6 +6209,20 @@ impl MachineCore {
                     }
                     else {
                         self.sign_flag = Sign::Positive;
+                    }
+                }
+                let str = self.registers_f64[register1].to_string();
+                for chr in str.chars().rev() {
+                    match chr {
+                        '1' | '3' | '5' | '7' | '9' => {
+                            self.odd_flag = true;
+                            break;
+                        },
+                        '2' | '4' | '6' | '8' => {
+                            self.odd_flag = false;
+                            break;
+                        },
+                        _ => {},
                     }
                 }
                 
@@ -6164,6 +6272,20 @@ impl MachineCore {
                         self.sign_flag = Sign::Positive;
                     }
                 }
+                let str = self.registers_f32[register1].to_string();
+                for chr in str.chars().rev() {
+                    match chr {
+                        '1' | '3' | '5' | '7' | '9' => {
+                            self.odd_flag = true;
+                            break;
+                        },
+                        '2' | '4' | '6' | '8' => {
+                            self.odd_flag = false;
+                            break;
+                        },
+                        _ => {},
+                    }
+                }
             },
             64 => {
                 check_registerF64!(register1, register2);
@@ -6191,6 +6313,20 @@ impl MachineCore {
                     }
                     else {
                         self.sign_flag = Sign::Positive;
+                    }
+                }
+                let str = self.registers_f64[register1].to_string();
+                for chr in str.chars().rev() {
+                    match chr {
+                        '1' | '3' | '5' | '7' | '9' => {
+                            self.odd_flag = true;
+                            break;
+                        },
+                        '2' | '4' | '6' | '8' => {
+                            self.odd_flag = false;
+                            break;
+                        },
+                        _ => {},
                     }
                 }
                 
@@ -6246,6 +6382,20 @@ impl MachineCore {
                         self.sign_flag = Sign::Positive;
                     }
                 }
+                let str = self.registers_f32[register1].to_string();
+                for chr in str.chars().rev() {
+                    match chr {
+                        '1' | '3' | '5' | '7' | '9' => {
+                            self.odd_flag = true;
+                            break;
+                        },
+                        '2' | '4' | '6' | '8' => {
+                            self.odd_flag = false;
+                            break;
+                        },
+                        _ => {},
+                    }
+                }
             },
             64 => {
                 check_registerF64!(register1, register2);
@@ -6278,6 +6428,20 @@ impl MachineCore {
                     }
                     else {
                         self.sign_flag = Sign::Positive;
+                    }
+                }
+                let str = self.registers_f64[register1].to_string();
+                for chr in str.chars().rev() {
+                    match chr {
+                        '1' | '3' | '5' | '7' | '9' => {
+                            self.odd_flag = true;
+                            break;
+                        },
+                        '2' | '4' | '6' | '8' => {
+                            self.odd_flag = false;
+                            break;
+                        },
+                        _ => {},
                     }
                 }
                 
@@ -6528,6 +6692,20 @@ impl MachineCore {
                         self.sign_flag = Sign::Positive;
                     }
                 }
+                let str = self.registers_f32[register].to_string();
+                for chr in str.chars().rev() {
+                    match chr {
+                        '1' | '3' | '5' | '7' | '9' => {
+                            self.odd_flag = true;
+                            break;
+                        },
+                        '2' | '4' | '6' | '8' => {
+                            self.odd_flag = false;
+                            break;
+                        },
+                        _ => {},
+                    }
+                }
             },
             64 => {
                 check_registerF64!(register);
@@ -6559,6 +6737,20 @@ impl MachineCore {
                     }
                     else {
                         self.sign_flag = Sign::Positive;
+                    }
+                }
+                let str = self.registers_f64[register].to_string();
+                for chr in str.chars().rev() {
+                    match chr {
+                        '1' | '3' | '5' | '7' | '9' => {
+                            self.odd_flag = true;
+                            break;
+                        },
+                        '2' | '4' | '6' | '8' => {
+                            self.odd_flag = false;
+                            break;
+                        },
+                        _ => {},
                     }
                 }
             },
@@ -6607,6 +6799,20 @@ impl MachineCore {
                         self.sign_flag = Sign::Positive;
                     }
                 }
+                let str = self.registers_f32[register].to_string();
+                for chr in str.chars().rev() {
+                    match chr {
+                        '1' | '3' | '5' | '7' | '9' => {
+                            self.odd_flag = true;
+                            break;
+                        },
+                        '2' | '4' | '6' | '8' => {
+                            self.odd_flag = false;
+                            break;
+                        },
+                        _ => {},
+                    }
+                }
             },
             64 => {
                 check_registerF64!(register);
@@ -6638,6 +6844,20 @@ impl MachineCore {
                     }
                     else {
                         self.sign_flag = Sign::Positive;
+                    }
+                }
+                let str = self.registers_f64[register].to_string();
+                for chr in str.chars().rev() {
+                    match chr {
+                        '1' | '3' | '5' | '7' | '9' => {
+                            self.odd_flag = true;
+                            break;
+                        },
+                        '2' | '4' | '6' | '8' => {
+                            self.odd_flag = false;
+                            break;
+                        },
+                        _ => {},
                     }
                 }
             },
@@ -6686,6 +6906,20 @@ impl MachineCore {
                         self.sign_flag = Sign::Positive;
                     }
                 }
+                let str = self.registers_f32[register].to_string();
+                for chr in str.chars().rev() {
+                    match chr {
+                        '1' | '3' | '5' | '7' | '9' => {
+                            self.odd_flag = true;
+                            break;
+                        },
+                        '2' | '4' | '6' | '8' => {
+                            self.odd_flag = false;
+                            break;
+                        },
+                        _ => {},
+                    }
+                }
             },
             64 => {
                 check_registerF64!(register);
@@ -6717,6 +6951,20 @@ impl MachineCore {
                     }
                     else {
                         self.sign_flag = Sign::Positive;
+                    }
+                }
+                let str = self.registers_f64[register].to_string();
+                for chr in str.chars().rev() {
+                    match chr {
+                        '1' | '3' | '5' | '7' | '9' => {
+                            self.odd_flag = true;
+                            break;
+                        },
+                        '2' | '4' | '6' | '8' => {
+                            self.odd_flag = false;
+                            break;
+                        },
+                        _ => {},
                     }
                 }
             },
@@ -6770,6 +7018,20 @@ impl MachineCore {
                         self.sign_flag = Sign::Positive;
                     }
                 }
+                let str = self.registers_f32[register].to_string();
+                for chr in str.chars().rev() {
+                    match chr {
+                        '1' | '3' | '5' | '7' | '9' => {
+                            self.odd_flag = true;
+                            break;
+                        },
+                        '2' | '4' | '6' | '8' => {
+                            self.odd_flag = false;
+                            break;
+                        },
+                        _ => {},
+                    }
+                }
             },
             64 => {
                 check_registerF64!(register);
@@ -6805,6 +7067,20 @@ impl MachineCore {
                     }
                     else {
                         self.sign_flag = Sign::Positive;
+                    }
+                }
+                let str = self.registers_f64[register].to_string();
+                for chr in str.chars().rev() {
+                    match chr {
+                        '1' | '3' | '5' | '7' | '9' => {
+                            self.odd_flag = true;
+                            break;
+                        },
+                        '2' | '4' | '6' | '8' => {
+                            self.odd_flag = false;
+                            break;
+                        },
+                        _ => {},
                     }
                 }
             },
