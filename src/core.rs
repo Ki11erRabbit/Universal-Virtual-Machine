@@ -8,7 +8,7 @@ use std::sync::mpsc::{Sender,Receiver, TryRecvError};
 use std::time::Duration;
 
 use crate::instruction::Opcode;
-use crate::{RegisterType,Message,Fault,CoreId,Byte,Pointer,FileDescriptor, Core, SimpleResult, CoreResult, RegCore, WholeStack};
+use crate::{RegisterType,Message,Fault,CoreId,Byte,Pointer,FileDescriptor, Core, SimpleResult, CoreResult, RegCore, WholeStack, access_heap, get_heap_len_err};
 
 
 macro_rules! check_register64 {
@@ -63,18 +63,6 @@ macro_rules! check_registerF64 {
     };
 }
 
-macro_rules! check_registerAtomic64 {
-    ($e:expr) => {
-        if $e >= REGISTER_ATOMIC_64_COUNT {
-            return Err(Fault::InvalidRegister($e,RegisterType::RegisterAtomic64));
-        }
-    };
-
-    ($e:expr, $($es:expr),+) => {
-        check_registerAtomic64!($e);
-        check_registerAtomic64!($(es),+);
-    };
-}
 
 
 
@@ -131,7 +119,7 @@ impl Stack {
         self.stack = stack;
         self.index = index;
 
-        self.size = self.local_len() * stack.len();
+        self.size = self.local_len() * self.stack.len();
         
     }
 
@@ -163,11 +151,28 @@ impl Stack {
         self.stack_pointer
     }
 
-    pub fn get_bytes(&self, start: usize, size: usize) -> &[Byte] {
+    /// This translates an address to the correct address for each stack and gets the index of that stack.
+    /// Address must be relative to the stack address space or this will fail.
+    fn translate_address(&self, address: usize) -> (usize, usize) {
+        if address <= self.local_len() {
+            return (address, 0);
+        }
+        for (i, _) in self.stack.iter().enumerate() {
+            let local_len = self.local_len();
+            if address <= local_len * (i + 1){
+                return (address - local_len * i, i);
+            }
+        }
+        unreachable!();
+    }
+
+
+    pub fn get_bytes(&self, start: usize, size: usize) -> Vec<Byte> {
+        let (start, index) = self.translate_address(start);
         loop {
-            match self.stack[self.index].try_read() {
-                Ok(stack) => {
-                    return &stack[start..start+size];
+            match self.stack[index].try_read() {
+                Ok(ref stack) => {
+                    return stack[start..start+size].to_vec();
                 },
                 Err(TryLockError::WouldBlock) => {
                     thread::yield_now();
@@ -180,8 +185,9 @@ impl Stack {
     }
 
     pub fn write_bytes(&mut self, start: usize, bytes: &[Byte]) {
+        let (start, index) = self.translate_address(start);
         loop {
-            match self.stack[self.index].try_write() {
+            match self.stack[index].try_write() {
                 Ok(mut stack) => {
                     stack[start..start+bytes.len()].copy_from_slice(bytes);
                     return;
@@ -215,22 +221,6 @@ impl Stack {
         Ok(self.get_bytes(self.stack_pointer, size).to_vec())
     }
 
-    /// Address must be relative to the stack address space or this will fail.
-    pub fn translate_address(&self, address: u64) -> Result<u64,Fault> {
-        if address > self.size() as u64 {
-            return Err(Fault::InvalidAddress(address));
-        }
-        if address <= self.local_len() as u64 {
-            return Ok(address);
-        }
-        for (i, _) in self.stack.iter().enumerate() {
-            let local_len = self.local_len() as u64 * (i + 1) as u64;
-            if address <= local_len {
-                return Ok(address - local_len * i as u64);
-            }
-        }
-        Err(Fault::InvalidAddress(address))
-    }
     
 }
 
@@ -604,7 +594,7 @@ impl MachineCore {
 
     pub fn write_to_memory(&mut self, address: Pointer, bytes: &[Byte]) -> SimpleResult {
         let data_segment_size = self.data_segment.len() as u64;
-        let stack_size = self.stack.get_size() as u64;
+        let stack_size = self.stack.size() as u64;
         let heap_size;
 
         loop {
@@ -648,14 +638,14 @@ impl MachineCore {
 
     /// Convenience function for getting the size of the stack.
     fn stack_len(&self) -> usize {
-        self.stack.get_size()
+        self.stack.size()
     }
 
 
 
     /// Convenience function for pushing a value to the stack
     fn push_stack(&mut self,value: &[Byte]) -> SimpleResult {
-        if value.len() + self.stack.get_size() > self.stack.get_size() {
+        if value.len() + self.stack.local_len() > self.stack.local_len() {
             return Err(Fault::StackOverflow);
         }
 
@@ -973,7 +963,7 @@ impl MachineCore {
                 self.write_to_memory(address, &bytes)?;
             },
             32 => {
-                let register = self.program[self.program_counter] as u8;;
+                let register = self.program[self.program_counter] as u8;
                 check_register64!(register as usize);
                 self.advance_by_1_byte();
 
@@ -1661,6 +1651,8 @@ impl MachineCore {
 
                 let remainder = reg1_value % reg2_value;
 
+                self.remainder_64 = remainder as usize;
+
                 let new_value = (Wrapping(reg1_value) / Wrapping(reg2_value)).0;
 
                 if new_value < reg1_value {
@@ -1698,6 +1690,8 @@ impl MachineCore {
                 }
 
                 let remainder = reg1_value % reg2_value;
+
+                self.remainder_64 = remainder as usize;
 
                 let new_value = (Wrapping(reg1_value) / Wrapping(reg2_value)).0;
 
@@ -1739,6 +1733,8 @@ impl MachineCore {
 
                 let remainder = reg1_value % reg2_value;
 
+                self.remainder_64 = remainder as usize;
+
                 let new_value = (Wrapping(reg1_value) / Wrapping(reg2_value)).0;
 
                 if new_value < reg1_value {
@@ -1777,6 +1773,8 @@ impl MachineCore {
                 }
 
                 let remainder = reg1_value % reg2_value;
+
+                self.remainder_64 = remainder as usize;
 
                 let new_value = (Wrapping(reg1_value) / Wrapping(reg2_value)).0;
 
@@ -1823,6 +1821,8 @@ impl MachineCore {
                 }
 
                 let remainder = reg1_value % reg2_value;
+
+                self.remainder_128 = remainder;
 
                 let new_value = (Wrapping(reg1_value) / Wrapping(reg2_value)).0;
 
@@ -2934,7 +2934,7 @@ impl MachineCore {
                     return Err(Fault::DivideByZero);
                 }
 
-                let remainder_64 = reg_value % constant;
+                self.remainder_64 = (reg_value % constant) as usize;
 
                 let new_value = (Wrapping(reg_value) / Wrapping(constant)).0;
 
@@ -2975,7 +2975,7 @@ impl MachineCore {
                     return Err(Fault::DivideByZero);
                 }
 
-                let remainder_64 = reg_value % constant;
+                self.remainder_64 = (reg_value % constant) as usize;
 
                 let new_value = (Wrapping(reg_value) / Wrapping(constant)).0;
 
@@ -3016,7 +3016,7 @@ impl MachineCore {
                     return Err(Fault::DivideByZero);
                 }
 
-                let remainder_64 = reg_value % constant;
+                self.remainder_64 = (reg_value % constant) as usize;
 
                 let new_value = (Wrapping(reg_value) / Wrapping(constant)).0;
 
@@ -3057,7 +3057,7 @@ impl MachineCore {
                     return Err(Fault::DivideByZero);
                 }
 
-                let remainder_64 = reg_value % constant;
+                self.remainder_64 = (reg_value % constant) as usize;
 
                 let new_value = (Wrapping(reg_value) / Wrapping(constant)).0;
 
@@ -3098,7 +3098,7 @@ impl MachineCore {
                     return Err(Fault::DivideByZero);
                 }
 
-                let remainder_128 = reg_value % constant;
+                self.remainder_128 = reg_value % constant;
 
                 let new_value = (Wrapping(reg_value) / Wrapping(constant)).0;
 
@@ -8154,6 +8154,14 @@ impl MachineCore {
 
         match message {
             Message::MemoryPointer(ptr) => {
+                let data_segment_size = self.data_segment.len() as u64;
+                let stack_size = self.stack.size() as u64;
+                let heap_size;
+                get_heap_len_err!(self.heap, heap_size);
+
+                // Here we offset the pointer so that it points to the start of the heap address space
+                let ptr = ptr + data_segment_size + stack_size + heap_size as u64;
+                
                 self.registers_64[ptr_reg as usize] = ptr as u64;
             },
             Message::Error(fault) => {
@@ -8173,6 +8181,15 @@ impl MachineCore {
         check_register64!(ptr_reg as usize);
 
         let ptr = self.registers_64[ptr_reg as usize];
+
+        let data_segment_size = self.data_segment.len() as u64;
+        let stack_size = self.stack.size() as u64;
+        let heap_size;
+        get_heap_len_err!(self.heap, heap_size);
+
+        // Here we reset the offset the pointer so that it points to the start of the heap
+        let ptr = ptr - data_segment_size - stack_size - heap_size as u64;
+        
 
         let message = Message::Free(ptr);
 
@@ -8205,6 +8222,14 @@ impl MachineCore {
 
         let size = self.registers_64[size_reg as usize];
 
+        let data_segment_size = self.data_segment.len() as u64;
+        let stack_size = self.stack.size() as u64;
+        let heap_size;
+        get_heap_len_err!(self.heap, heap_size);
+
+        // Here we reset the offset the pointer so that it points to the start of the heap
+        let ptr = ptr - data_segment_size - stack_size - heap_size as u64;
+        
         let message = Message::Realloc(ptr, size);
 
         self.send_message(message)?;
@@ -8213,6 +8238,10 @@ impl MachineCore {
 
         match message {
             Message::MemoryPointer(ptr) => {
+
+                // Here we add the offset back to the pointer so that it points to the start of the heap address space
+                let ptr = ptr + data_segment_size + stack_size + heap_size as u64;
+                
                 self.registers_64[ptr_reg as usize] = ptr as u64;
             },
             Message::Error(fault) => {

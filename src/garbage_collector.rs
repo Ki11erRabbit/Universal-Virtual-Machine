@@ -5,7 +5,7 @@ use std::sync::{RwLock, Arc};
 use std::sync::TryLockError;
 
 use crate::virtual_machine::Memory;
-use crate::{Core, Byte, SimpleResult, Message, CoreResult, Collector, Pointer, GarbageCollectorCore};
+use crate::{Core, Byte, SimpleResult, Message, CoreResult, Collector, Pointer, GarbageCollectorCore, WholeStack, get_heap_len_panic, access_heap};
 use crate::core::MachineCore;
 
 
@@ -73,9 +73,8 @@ impl Core for GarbageCollector {
 
 impl Collector for GarbageCollector {
 
-    fn add_stack(&mut self, stack: Box<[Byte]>, offset_size: usize) {
+    fn add_stack(&mut self, stack: WholeStack) {
         self.stack = stack;
-        self.stack_offset_size = offset_size;
     }
 
     fn add_heap(&mut self, memory: Arc<RwLock<Memory>>) {
@@ -94,8 +93,7 @@ pub struct GarbageCollector {
     /// This, with the Core trait, should allow us to do C style inheritance.
     core: MachineCore,
     data_segment: Arc<Vec<Byte>>,
-    stack: Box<[Byte]>,
-    stack_offset_size: usize,
+    stack: WholeStack,
     heap: Arc<RwLock<Memory>>,
     found_ptrs: HashMap<Pointer, bool>,
     found_flag: bool,
@@ -106,8 +104,7 @@ impl GarbageCollector {
         Self {
             core: MachineCore::new(),
             data_segment: Arc::new(Vec::new()),
-            stack: Box::new([]),
-            stack_offset_size: 0,
+            stack: Arc::new(Vec::new()),
             heap: Arc::new(RwLock::new(Memory::new())),
             found_ptrs: HashMap::new(),
             found_flag: true,
@@ -129,40 +126,63 @@ impl GarbageCollector {
             self.core.execute_instruction()?;
         }
 
-        let mut memory;
+        let mut heap;
+        loop {
+            match self.heap.try_write() {
+                Ok(mem) => {
+                    heap = mem;
+                    break;
+                },
+                Err(TryLockError::WouldBlock) => continue,
+                Err(_) => panic!("Poisoned lock."),
+            }
+        }
 
-
-        let memory_len;
-
-        for (ptr, _) in memory.allocated_blocks.iter() {
+        for (ptr, _) in heap.allocated_blocks.iter() {
             self.found_ptrs.insert(*ptr, !self.found_flag);
         }
+
+        let mut stacks = Vec::new();
+
+        for stack in self.stack.iter() {
+            loop {
+                match stack.try_read() {
+                    Ok(stack) => {
+                        stacks.push(stack.clone());
+                        break;
+                    },
+                    Err(TryLockError::WouldBlock) => continue,
+                    Err(_) => panic!("Poisoned lock."),
+                }
+            }
+        }
+
+        let data_segment_size = self.data_segment.len();
+        let stack_len = stacks.iter().map(|stack| stack.len()).sum::<usize>();
+        let heap_len;
+        get_heap_len_panic!(heap.memory, heap_len);
+
+        let memory_len = data_segment_size + stack_len + heap_len;
         
         const POINTER_SIZE: usize = 8;
-        const NULL_OFFSET: usize = 1;
         
-        for stack in stacks {
+        for (stack, stack_pointer) in stacks.iter().zip(stack_pointers.iter()) {
 
 
-            for i in (NULL_OFFSET..stack.len()).step_by(POINTER_SIZE) {
+            for i in (0..stack.len()).step_by(POINTER_SIZE) {
 
                 let mut address = u64::from_le_bytes(stack[i..(i + POINTER_SIZE)].try_into().unwrap());
 
-                while address != 0 && address < memory_len as u64 {
-                    if memory.allocated_blocks.contains_key(&address) {
+                while address != 0 && address < memory_len as u64 && address <= *stack_pointer{
+                    if heap.allocated_blocks.contains_key(&address) {
                         self.found_ptrs.insert(address, self.found_flag);
                     }
 
-                    loop {
-                        match memory.memory.try_read() {
-                            Ok(memory) => {
-                                address = u64::from_le_bytes(memory[address as usize..(address as usize + POINTER_SIZE)].try_into().unwrap());
-                                break;
-                            },
-                            Err(TryLockError::WouldBlock) => continue,
-                            Err(_) => panic!("Poisoned lock."),
-                        }
-                    }
+                    access_heap!(heap.memory.try_read(), memory, {
+                        address = u64::from_le_bytes(memory[address as usize..(address as usize + POINTER_SIZE)].try_into().unwrap());
+                    }, {
+                        panic!("Poisoned lock.");
+                    });
                 }
             }
         }
@@ -172,7 +192,7 @@ impl GarbageCollector {
         for (ptr, flag) in self.found_ptrs.iter() {
             if *flag != self.found_flag {
                 ptrs_to_remove.push(*ptr);
-                memory.free(*ptr);
+                heap.free(*ptr);
             }
 
         }

@@ -5,7 +5,6 @@ use std::sync::{Arc, RwLock, TryLockError};
 use std::thread::{self,JoinHandle};
 use std::sync::mpsc::{Sender,Receiver, channel};
 use std::fs::File;
-use std::array::from_fn;
 use std::fs::OpenOptions;
 use std::io::{Write, Read, self};
 use std::time::{Instant, Duration};
@@ -732,7 +731,7 @@ impl Machine {
         let (machine_sender, machine_receiver) = channel();
         self.gc_channels = Some((core_sender, machine_receiver));
         let mut core = Box::new(GarbageCollector::new());
-        core.add_memory(self.heap.clone());
+        core.add_heap(self.heap.clone());
         core.add_channels(machine_sender, core_receiver);
         self.gc = Some(Ok(core));
     }
@@ -793,6 +792,7 @@ impl Machine {
                 }
                 gc.add_data_segment(self.data_segment.clone());
                 gc.add_heap(self.heap.clone());
+                gc.add_stack(self.stack.clone());
                 gc.add_channels(machine_sender, core_receiver);
 
                 self.gc_channels = Some((core_sender, machine_receiver));

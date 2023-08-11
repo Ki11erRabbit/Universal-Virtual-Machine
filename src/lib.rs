@@ -250,7 +250,7 @@ pub trait RegCore: Core {
 pub trait GarbageCollectorCore: Core + Collector {}
 
 pub trait Collector {
-    fn add_stack(&mut self, stack: WholeStack, offset: usize);
+    fn add_stack(&mut self, stack: WholeStack);
 
     fn add_heap(&mut self, memory: Arc<RwLock<Memory>>);
 
@@ -263,3 +263,41 @@ impl<T: Read + Write> ReadWrite for T {}
 
 pub type Stack = Arc<RwLock<Box<[Byte]>>>;
 pub type WholeStack = Arc<Vec<Stack>>;
+
+
+#[macro_export]
+macro_rules! access_heap {
+    ($method:expr, $id:ident ,$block:block, $err:block) => {
+        loop {
+            match $method {
+                Ok($id) => {$block; break;},
+                Err(std::sync::TryLockError::WouldBlock) => {
+                    std::thread::yield_now();
+                },
+                Err(_) => $err,
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! get_heap_len_err {
+    ($method:expr, $var:ident) => {
+        access_heap!($method.try_read(), heap, {
+            $var = heap.len();
+        }, {
+            return Err(Fault::CorruptedMemory);
+        })
+    };
+}
+
+#[macro_export]
+macro_rules! get_heap_len_panic {
+    ($method:expr, $var:ident) => {
+        access_heap!($method.try_read(), heap, {
+            $var = heap.len();
+        }, {
+            panic!("Corrupted Memory");
+        })
+    };
+}
