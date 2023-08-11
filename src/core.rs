@@ -478,6 +478,8 @@ impl MachineCore {
         }
     }
 
+    /// Function allows us to access the 3 parts of memory with a single address space
+    /// size is the number of bytes we want to access
     pub fn get_from_memory(&mut self, address: Pointer, size: u64) -> CoreResult<Vec<u8>> {
         let data_segment_size = self.data_segment.len() as u64;
         let stack_size = self.stack.get_size() as u64;
@@ -859,83 +861,19 @@ impl MachineCore {
         self.advance_by_8_bytes();
         match size {
             8 => {
-                loop {
-                    match self.memory.try_read() {
-                        Ok(memory) => {
-                            if address >= memory.len() as u64 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            self.registers_64[register] = (memory[address as usize] as u8) as u64;
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => continue,
-                        Err(_) => return Err(Fault::CorruptedMemory),
-                    }
-                }
+                self.registers_64[register] = u8::from_le_bytes(self.get_from_memory(address, 1)?.try_into().unwrap()) as u64;
             },
             16 => {
-                loop {
-                    match self.memory.try_read() {
-                        Ok(memory) => {
-                            if address >= memory.len() as u64 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            let value = u16::from_le_bytes(memory[address as usize..address as usize + 2].try_into().unwrap());
-                            self.registers_64[register] = value as u64;
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => continue,
-                        Err(_) => return Err(Fault::CorruptedMemory),
-                    }
-                }
+                self.registers_64[register] = u16::from_le_bytes(self.get_from_memory(address, 2)?.try_into().unwrap()) as u64;
             },
             32 => {
-                loop {
-                    match self.memory.try_read() {
-                        Ok(memory) => {
-                            if address >= memory.len() as u64 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            let value = u32::from_le_bytes(memory[address as usize..address as usize + 4].try_into().unwrap());
-                            self.registers_64[register] = value as u64;
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => continue,
-                        Err(_) => return Err(Fault::CorruptedMemory),
-                    }
-                }
+                self.registers_64[register] = u32::from_le_bytes(self.get_from_memory(address, 4)?.try_into().unwrap()) as u64;
             },
             64 => {
-                loop {
-                    match self.memory.try_read() {
-                        Ok(memory) => {
-                            if address >= memory.len() as u64 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            let value = u64::from_le_bytes(memory[address as usize..address as usize + 8].try_into().unwrap());
-                            self.registers_64[register] = value as u64;
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => continue,
-                        Err(_) => return Err(Fault::CorruptedMemory),
-                    }
-                }
+                self.registers_64[register] = u64::from_le_bytes(self.get_from_memory(address, 8)?.try_into().unwrap()) as u64;
             },
             128 => {
-                loop {
-                    match self.memory.try_read() {
-                        Ok(memory) => {
-                            if address >= memory.len() as u64 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            let value = u128::from_le_bytes(memory[address as usize..address as usize + 16].try_into().unwrap());
-                            self.registers_128[register] = value as u128;
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => continue,
-                        Err(_) => return Err(Fault::CorruptedMemory),
-                    }
-                }
+                self.registers_128[register] = u128::from_le_bytes(self.get_from_memory(address, 16)?.try_into().unwrap()) as u128;
             },
             _ => return Err(Fault::InvalidSize),
         }
@@ -954,156 +892,49 @@ impl MachineCore {
         
         match size {
             8 => {
-                let register = self.program[self.program_counter] as u8 as usize;
-                check_register64!(register);
+                let register = self.program[self.program_counter] as u8;
+                check_register64!(register as usize);
                 self.advance_by_1_byte();
-                loop {
-                    match self.memory.try_write() {
-                        Ok(mut memory) => {
-                            if address >= memory.len() as u64 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            memory[address as usize] = self.registers_64[register] as u8;
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => {
-                            thread::yield_now();
-                            continue;
-                        },
-                        Err(_) => {
-                            return Err(Fault::CorruptedMemory);
-                        },
-                    }
-                }
+
+                let bytes = (self.registers_64[register as usize] as u8).to_le_bytes();
+
+                self.write_to_memory(address, &bytes)?;
             },
             16 => {
-                let register = self.program[self.program_counter] as u8 as usize;
-                check_register64!(register);
+                let register = self.program[self.program_counter] as u8;
+                check_register64!(register as usize);
                 self.advance_by_1_byte();
-                loop {
-                    match self.memory.try_write() {
-                        Ok(mut memory) => {
-                            if address >= memory.len() as u64 - 1 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            let bytes = self.registers_64[register].to_le_bytes();
 
-                            memory[address as usize] = bytes[0];
-                            memory[address as usize + 1] = bytes[1];
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => {
-                            thread::yield_now();
-                            continue;
-                        },
-                        Err(_) => {
-                            return Err(Fault::CorruptedMemory);
-                        },
-                    }
-                }
+                let bytes = (self.registers_64[register as usize] as u16).to_le_bytes();
+
+                self.write_to_memory(address, &bytes)?;
             },
             32 => {
-                let register = self.program[self.program_counter] as u8 as usize;
-                check_register64!(register);
+                let register = self.program[self.program_counter] as u8;;
+                check_register64!(register as usize);
                 self.advance_by_1_byte();
-                loop {
-                    match self.memory.try_write() {
-                        Ok(mut memory) => {
-                            if address >= memory.len() as u64 - 3 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            let bytes = self.registers_64[register].to_le_bytes();
 
-                            memory[address as usize] = bytes[0];
-                            memory[address as usize + 1] = bytes[1];
-                            memory[address as usize + 2] = bytes[2];
-                            memory[address as usize + 3] = bytes[3];
-                            
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => {
-                            thread::yield_now();
-                            continue;
-                        },
-                        Err(_) => {
-                            return Err(Fault::CorruptedMemory);
-                        },
-                    }
-                }
+                let bytes = (self.registers_64[register as usize] as u32).to_le_bytes();
+
+                self.write_to_memory(address, &bytes)?;
             },
             64 => {
-                let register = self.program[self.program_counter] as u8 as usize;
-                check_register64!(register);
+                let register = self.program[self.program_counter] as u8;
+                check_register64!(register as usize);
                 self.advance_by_1_byte();
-                loop {
-                    match self.memory.try_write() {
-                        Ok(mut memory) => {
-                            if address >= memory.len() as u64 - 7 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            let bytes = self.registers_64[register].to_le_bytes();
 
-                            memory[address as usize] = bytes[0];
-                            memory[address as usize + 1] = bytes[1];
-                            memory[address as usize + 2] = bytes[2];
-                            memory[address as usize + 3] = bytes[3];
-                            memory[address as usize + 4] = bytes[4];
-                            memory[address as usize + 5] = bytes[5];
-                            memory[address as usize + 6] = bytes[6];
-                            memory[address as usize + 7] = bytes[7];
+                let bytes = (self.registers_64[register as usize] as u64).to_le_bytes();
 
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => {
-                            thread::yield_now();
-                            continue;
-                        },
-                        Err(_) => {
-                            return Err(Fault::CorruptedMemory);
-                        },
-                    }
-                }
+                self.write_to_memory(address, &bytes)?;
             },
             128 => {
-                let register = self.program[self.program_counter] as u8 as usize;
-                check_register128!(register);
+                let register = self.program[self.program_counter] as u8;
+                check_register128!(register as usize);
                 self.advance_by_1_byte();
-                loop {
-                    match self.memory.try_write() {
-                        Ok(mut memory) => {
-                            if address >= memory.len() as u64 - 15 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            let bytes = self.registers_128[register].to_le_bytes();
 
-                            memory[address as usize] = bytes[0];
-                            memory[address as usize + 1] = bytes[1];
-                            memory[address as usize + 2] = bytes[2];
-                            memory[address as usize + 3] = bytes[3];
-                            memory[address as usize + 4] = bytes[4];
-                            memory[address as usize + 5] = bytes[5];
-                            memory[address as usize + 6] = bytes[6];
-                            memory[address as usize + 7] = bytes[7];
-                            memory[address as usize + 8] = bytes[8];
-                            memory[address as usize + 9] = bytes[9];
-                            memory[address as usize + 10] = bytes[10];
-                            memory[address as usize + 11] = bytes[11];
-                            memory[address as usize + 12] = bytes[12];
-                            memory[address as usize + 13] = bytes[13];
-                            memory[address as usize + 14] = bytes[14];
-                            memory[address as usize + 15] = bytes[15];
-                            
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => {
-                            thread::yield_now();
-                            continue;
-                        },
-                        Err(_) => {
-                            return Err(Fault::CorruptedMemory);
-                        },
-                    }
-                }
+                let bytes = self.registers_128[register as usize].to_le_bytes();
+
+                self.write_to_memory(address, &bytes)?;
 
             },
             _ => return Err(Fault::InvalidSize),
@@ -1135,140 +966,37 @@ impl MachineCore {
             8 => {
                 check_register64!(register);
 
-                loop {
-                    match self.memory.try_read() {
-                        Ok(memory) => {
-                            if address >= memory.len() as u64 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            self.registers_64[register] = (memory[address as usize] as u8) as u64;
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => {
-                            thread::yield_now();
-                            continue;
-                        },
-                        Err(_) => {
-                            return Err(Fault::CorruptedMemory);
-                        },
-                    }
-                }
-                
+                let bytes = self.get_from_memory(address, 1)?;
+
+                self.registers_64[register] = u8::from_le_bytes(bytes.try_into().unwrap()) as u64;
             },
             16 => {
                 check_register64!(register);
 
-                loop {
-                    match self.memory.try_read() {
-                        Ok(memory) => {
-                            if address >= memory.len() as u64 - 1 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            self.registers_64[register] = ((memory[address as usize] as u8) as u64) << 8;
-                            self.registers_64[register] |= (memory[address as usize + 1] as u8) as u64;
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => {
-                            thread::yield_now();
-                            continue;
-                        },
-                        Err(_) => {
-                            return Err(Fault::CorruptedMemory);
-                        },
-                    }
-                }
+                let bytes = self.get_from_memory(address, 2)?;
+
+                self.registers_64[register] = u16::from_le_bytes(bytes.try_into().unwrap()) as u64;
             },
             32 => {
                 check_register64!(register);
 
-                loop {
-                    match self.memory.try_read() {
-                        Ok(memory) => {
-                            if address >= memory.len() as u64 - 3 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            self.registers_64[register] = ((memory[address as usize] as u8) as u64) << 24;
-                            self.registers_64[register] |= ((memory[address as usize + 1] as u8) as u64) << 16;
-                            self.registers_64[register] |= ((memory[address as usize + 2] as u8) as u64) << 8;
-                            self.registers_64[register] |= (memory[address as usize + 3] as u8) as u64;
+                let bytes = self.get_from_memory(address, 4)?;
 
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => {
-                            thread::yield_now();
-                            continue;
-                        },
-                        Err(_) => {
-                            return Err(Fault::CorruptedMemory);
-                        },
-                    }
-                }
+                self.registers_64[register] = u32::from_le_bytes(bytes.try_into().unwrap()) as u64;
             },
             64 => {
                 check_register64!(register);
 
-                loop {
-                    match self.memory.try_read() {
-                        Ok(memory) => {
-                            if address >= memory.len() as u64 - 7 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            self.registers_64[register] = ((memory[address as usize] as u8) as u64) << 56;
-                            self.registers_64[register] |= ((memory[address as usize + 1] as u8) as u64) << 48;
-                            self.registers_64[register] |= ((memory[address as usize + 2] as u8) as u64) << 40;
-                            self.registers_64[register] |= ((memory[address as usize + 3] as u8) as u64) << 32;
-                            self.registers_64[register] |= ((memory[address as usize + 4] as u8) as u64) << 24;
-                            self.registers_64[register] |= ((memory[address as usize + 5] as u8) as u64) << 16;
-                            self.registers_64[register] |= ((memory[address as usize + 6] as u8) as u64) << 8;
-                            self.registers_64[register] |= (memory[address as usize + 7] as u8) as u64;
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => {
-                            thread::yield_now();
-                            continue;
-                        },
-                        Err(_) => {
-                            return Err(Fault::CorruptedMemory);
-                        },
-                    }
-                }
+                let bytes = self.get_from_memory(address, 8)?;
+
+                self.registers_64[register] = u64::from_le_bytes(bytes.try_into().unwrap()) as u64;
             },
             128 => {
                 check_register128!(register);
 
-                loop {
-                    match self.memory.try_read() {
-                        Ok(memory) => {
-                            if address >= memory.len() as u64 - 15 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            self.registers_128[register] = ((memory[address as usize] as u8) as u128) << 120;
-                            self.registers_128[register] |= ((memory[address as usize + 1] as u8) as u128) << 112;
-                            self.registers_128[register] |= ((memory[address as usize + 2] as u8) as u128) << 104;
-                            self.registers_128[register] |= ((memory[address as usize + 3] as u8) as u128) << 96;
-                            self.registers_128[register] |= ((memory[address as usize + 4] as u8) as u128) << 88;
-                            self.registers_128[register] |= ((memory[address as usize + 5] as u8) as u128) << 80;
-                            self.registers_128[register] |= ((memory[address as usize + 6] as u8) as u128) << 72;
-                            self.registers_128[register] |= ((memory[address as usize + 7] as u8) as u128) << 64;
-                            self.registers_128[register] |= ((memory[address as usize + 8] as u8) as u128) << 56;
-                            self.registers_128[register] |= ((memory[address as usize + 9] as u8) as u128) << 48;
-                            self.registers_128[register] |= ((memory[address as usize + 10] as u8) as u128) << 40;
-                            self.registers_128[register] |= ((memory[address as usize + 11] as u8) as u128) << 32;
-                            self.registers_128[register] |= ((memory[address as usize + 12] as u8) as u128) << 24;
-                            self.registers_128[register] |= ((memory[address as usize + 13] as u8) as u128) << 16;
-                            self.registers_128[register] |= ((memory[address as usize + 14] as u8) as u128) << 8;
-                            self.registers_128[register] |= (memory[address as usize + 15] as u8) as u128;
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => {
-                            thread::yield_now();
-                            continue;
-                        },
-                        Err(_) => {
-                            return Err(Fault::CorruptedMemory);
-                        },
-                    }
-                }
+                let bytes = self.get_from_memory(address, 16)?;
+
+                self.registers_128[register] = u128::from_le_bytes(bytes.try_into().unwrap()) as u128;
             }
             _ => {
                 return Err(Fault::InvalidSize);
@@ -1281,7 +1009,7 @@ impl MachineCore {
     }
 
 
-    fn addi_opcode(&mut self) -> SimpleResult {
+    fn add_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = (self.program[self.program_counter] as u8) as usize;
@@ -1292,8 +1020,8 @@ impl MachineCore {
         match size {
             8 => {
                 check_register64!(register1, register2);
-                let reg1_value = i8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
-                let reg2_value = i8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
+                let reg1_value = u8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
+                let reg2_value = u8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) + Wrapping(reg2_value)).0;
 
@@ -1305,14 +1033,19 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
-                    if new_value < 0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80 == (Wrapping(new_value) + Wrapping(0x80)).0 {
                         self.sign_flag = Sign::Positive;
                     }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
 
@@ -1320,8 +1053,8 @@ impl MachineCore {
             },
             16 => {
                 check_register64!(register1, register2);
-                let reg1_value = i16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
-                let reg2_value = i16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
+                let reg1_value = u16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
+                let reg2_value = u16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) + Wrapping(reg2_value)).0;
 
@@ -1333,14 +1066,19 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
-                    if new_value < 0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x8000 == (Wrapping(new_value) + Wrapping(0x8000)).0 {
                         self.sign_flag = Sign::Positive;
                     }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
 
@@ -1349,8 +1087,8 @@ impl MachineCore {
 
             32 => {
                 check_register64!(register1, register2);
-                let reg1_value = i32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
-                let reg2_value = i32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
+                let reg1_value = u32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
+                let reg2_value = u32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) + Wrapping(reg2_value)).0;
 
@@ -1362,14 +1100,19 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
-                    if new_value < 0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80000000 == (Wrapping(new_value) + Wrapping(0x80000000)).0 {
                         self.sign_flag = Sign::Positive;
                     }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
 
@@ -1377,8 +1120,8 @@ impl MachineCore {
             },
             64 => {
                 check_register64!(register1, register2);
-                let reg1_value = i64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
-                let reg2_value = i64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
+                let reg1_value = u64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = u64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) + Wrapping(reg2_value)).0;
 
@@ -1397,14 +1140,19 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
-                    if new_value < 0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x8000000000000000 == (Wrapping(new_value) + Wrapping(0x8000000000000000)).0 {
                         self.sign_flag = Sign::Positive;
                     }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
 
@@ -1412,8 +1160,8 @@ impl MachineCore {
             },
             128 => {
                 check_register128!(register1, register2);
-                let reg1_value = i128::from_le_bytes(self.registers_128[register1].to_le_bytes().try_into().unwrap());
-                let reg2_value = i128::from_le_bytes(self.registers_128[register2].to_le_bytes().try_into().unwrap());
+                let reg1_value = u128::from_le_bytes(self.registers_128[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = u128::from_le_bytes(self.registers_128[register2].to_le_bytes().try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) + Wrapping(reg2_value)).0;
 
@@ -1426,14 +1174,19 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
-                    if new_value < 0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80000000000000000000000000000000 == (Wrapping(new_value) + Wrapping(0x80000000000000000000000000000000)).0 {
                         self.sign_flag = Sign::Positive;
                     }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
 
@@ -1446,7 +1199,7 @@ impl MachineCore {
     }
 
 
-    fn subi_opcode(&mut self) -> SimpleResult {
+    fn sub_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = (self.program[self.program_counter] as u8) as usize;
@@ -1457,12 +1210,12 @@ impl MachineCore {
         match size {
             8 => {
                 check_register64!(register1, register2);
-                let reg1_value = i8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
-                let reg2_value = i8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
+                let reg1_value = u8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
+                let reg2_value = u8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) - Wrapping(reg2_value)).0;
 
-                if new_value > reg1_value {
+                if new_value < reg1_value {
                     self.overflow_flag = true;
                 }
                 if new_value == 0 {
@@ -1470,14 +1223,19 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
-                    if new_value < 0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80 == (Wrapping(new_value) + Wrapping(0x80)).0 {
                         self.sign_flag = Sign::Positive;
                     }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
 
@@ -1485,8 +1243,8 @@ impl MachineCore {
             },
             16 => {
                 check_register64!(register1, register2);
-                let reg1_value = i16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
-                let reg2_value = i16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
+                let reg1_value = u16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
+                let reg2_value = u16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) - Wrapping(reg2_value)).0;
 
@@ -1498,23 +1256,29 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
-                    if new_value < 0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x8000 == (Wrapping(new_value) + Wrapping(0x8000)).0 {
                         self.sign_flag = Sign::Positive;
                     }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
 
                 self.registers_64[register1] = new_value as u64;
             },
+
             32 => {
                 check_register64!(register1, register2);
-                let reg1_value = i32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
-                let reg2_value = i32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
+                let reg1_value = u32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
+                let reg2_value = u32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) - Wrapping(reg2_value)).0;
 
@@ -1526,14 +1290,19 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
-                    if new_value < 0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80000000 == (Wrapping(new_value) + Wrapping(0x80000000)).0 {
                         self.sign_flag = Sign::Positive;
                     }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
 
@@ -1541,8 +1310,8 @@ impl MachineCore {
             },
             64 => {
                 check_register64!(register1, register2);
-                let reg1_value = i64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
-                let reg2_value = i64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
+                let reg1_value = u64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = u64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) - Wrapping(reg2_value)).0;
 
@@ -1555,14 +1324,25 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
-                    if new_value < 0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
+                }
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x8000000000000000 == (Wrapping(new_value) + Wrapping(0x8000000000000000)).0 {
                         self.sign_flag = Sign::Positive;
                     }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
 
@@ -1570,9 +1350,8 @@ impl MachineCore {
             },
             128 => {
                 check_register128!(register1, register2);
-                let reg1_value = i128::from_le_bytes(self.registers_128[register1].to_le_bytes().try_into().unwrap());
-                let reg2_value = i128::from_le_bytes(self.registers_128[register2].to_le_bytes().try_into().unwrap());
-                
+                let reg1_value = u128::from_le_bytes(self.registers_128[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = u128::from_le_bytes(self.registers_128[register2].to_le_bytes().try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) - Wrapping(reg2_value)).0;
 
@@ -1585,14 +1364,19 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
-                    if new_value < 0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80000000000000000000000000000000 == (Wrapping(new_value) + Wrapping(0x80000000000000000000000000000000)).0 {
                         self.sign_flag = Sign::Positive;
                     }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
 
@@ -1605,7 +1389,7 @@ impl MachineCore {
     }
 
 
-    fn muli_opcode(&mut self) -> SimpleResult {
+    fn mul_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = (self.program[self.program_counter] as u8) as usize;
@@ -1616,37 +1400,8 @@ impl MachineCore {
         match size {
             8 => {
                 check_register64!(register1, register2);
-                let reg1_value = i8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
-                let reg2_value = i8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
-                
-
-                let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
-
-                if new_value > reg1_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    if new_value < 0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
-                        self.sign_flag = Sign::Positive;
-                    }
-                }
-                if new_value % 2 != 0 {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register1] = new_value as u64;
-            },
-            16 => {
-                check_register64!(register1, register2);
-                let reg1_value = i16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
-                let reg2_value = i16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
+                let reg1_value = u8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
+                let reg2_value = u8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
 
@@ -1658,14 +1413,52 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
-                    if new_value < 0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80 == (Wrapping(new_value) + Wrapping(0x80)).0 {
                         self.sign_flag = Sign::Positive;
                     }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+
+                self.registers_64[register1] = new_value as u64;
+            },
+            16 => {
+                check_register64!(register1, register2);
+                let reg1_value = u16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
+                let reg2_value = u16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
+
+                let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
+
+                if new_value < reg1_value {
+                    self.overflow_flag = true;
+                }
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x8000 == (Wrapping(new_value) + Wrapping(0x8000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
+                }
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
 
@@ -1674,8 +1467,8 @@ impl MachineCore {
 
             32 => {
                 check_register64!(register1, register2);
-                let reg1_value = i32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
-                let reg2_value = i32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
+                let reg1_value = u32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
+                let reg2_value = u32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
 
@@ -1687,14 +1480,19 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
-                    if new_value < 0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80000000 == (Wrapping(new_value) + Wrapping(0x80000000)).0 {
                         self.sign_flag = Sign::Positive;
                     }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
 
@@ -1702,8 +1500,8 @@ impl MachineCore {
             },
             64 => {
                 check_register64!(register1, register2);
-                let reg1_value = i64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
-                let reg2_value = i64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
+                let reg1_value = u64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = u64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
 
@@ -1716,14 +1514,25 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
-                    if new_value < 0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
+                }
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x8000000000000000 == (Wrapping(new_value) + Wrapping(0x8000000000000000)).0 {
                         self.sign_flag = Sign::Positive;
                     }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
 
@@ -1731,8 +1540,8 @@ impl MachineCore {
             },
             128 => {
                 check_register128!(register1, register2);
-                let reg1_value = i128::from_le_bytes(self.registers_128[register1].to_le_bytes().try_into().unwrap());
-                let reg2_value = i128::from_le_bytes(self.registers_128[register2].to_le_bytes().try_into().unwrap());
+                let reg1_value = u128::from_le_bytes(self.registers_128[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = u128::from_le_bytes(self.registers_128[register2].to_le_bytes().try_into().unwrap());
 
                 let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
 
@@ -1745,14 +1554,19 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
-                    if new_value < 0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80000000000000000000000000000000 == (Wrapping(new_value) + Wrapping(0x80000000000000000000000000000000)).0 {
                         self.sign_flag = Sign::Positive;
                     }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
 
@@ -1765,7 +1579,7 @@ impl MachineCore {
     }
 
 
-    fn divi_opcode(&mut self) -> SimpleResult {
+    fn div_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = (self.program[self.program_counter] as u8) as usize;
@@ -1776,18 +1590,17 @@ impl MachineCore {
         match size {
             8 => {
                 check_register64!(register1, register2);
-                let reg1_value = i8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
-                let reg2_value = i8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
-
+                let reg1_value = u8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
+                let reg2_value = u8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
                 if reg2_value == 0 {
                     return Err(Fault::DivideByZero);
                 }
 
-                self.remainder_64 = (Wrapping(reg1_value) % Wrapping(reg2_value)).0 as usize;
-                
+                let remainder = reg1_value % reg2_value;
+
                 let new_value = (Wrapping(reg1_value) / Wrapping(reg2_value)).0;
 
-                if new_value > reg1_value {
+                if new_value < reg1_value {
                     self.overflow_flag = true;
                 }
                 if new_value == 0 {
@@ -1795,14 +1608,19 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
-                    if new_value < 0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80 == (Wrapping(new_value) + Wrapping(0x80)).0 {
                         self.sign_flag = Sign::Positive;
                     }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
 
@@ -1810,15 +1628,14 @@ impl MachineCore {
             },
             16 => {
                 check_register64!(register1, register2);
-                let reg1_value = i16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
-                let reg2_value = i16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
-
+                let reg1_value = u16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
+                let reg2_value = u16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
                 if reg2_value == 0 {
                     return Err(Fault::DivideByZero);
                 }
 
-                self.remainder_64 = (Wrapping(reg1_value) % Wrapping(reg2_value)).0 as usize;
-                
+                let remainder = reg1_value % reg2_value;
+
                 let new_value = (Wrapping(reg1_value) / Wrapping(reg2_value)).0;
 
                 if new_value < reg1_value {
@@ -1829,30 +1646,36 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
-                    if new_value < 0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x8000 == (Wrapping(new_value) + Wrapping(0x8000)).0 {
                         self.sign_flag = Sign::Positive;
                     }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
 
                 self.registers_64[register1] = new_value as u64;
             },
+
             32 => {
                 check_register64!(register1, register2);
-                let reg1_value = i32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
-                let reg2_value = i32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
+                let reg1_value = u32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
+                let reg2_value = u32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
 
                 if reg2_value == 0 {
                     return Err(Fault::DivideByZero);
                 }
 
-                self.remainder_64 = (Wrapping(reg1_value) % Wrapping(reg2_value)).0 as usize;
-                
+                let remainder = reg1_value % reg2_value;
+
                 let new_value = (Wrapping(reg1_value) / Wrapping(reg2_value)).0;
 
                 if new_value < reg1_value {
@@ -1863,14 +1686,19 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
-                    if new_value < 0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80000000 == (Wrapping(new_value) + Wrapping(0x80000000)).0 {
                         self.sign_flag = Sign::Positive;
                     }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
 
@@ -1878,15 +1706,15 @@ impl MachineCore {
             },
             64 => {
                 check_register64!(register1, register2);
-                let reg1_value = i64::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..8].try_into().unwrap());
-                let reg2_value = i64::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..8].try_into().unwrap());
+                let reg1_value = u64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = u64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
 
                 if reg2_value == 0 {
                     return Err(Fault::DivideByZero);
                 }
 
-                self.remainder_64 = (Wrapping(reg1_value) % Wrapping(reg2_value)).0 as usize;
-                
+                let remainder = reg1_value % reg2_value;
+
                 let new_value = (Wrapping(reg1_value) / Wrapping(reg2_value)).0;
 
                 if new_value < reg1_value {
@@ -1898,14 +1726,25 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
-                    if new_value < 0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
+                }
+                if new_value == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x8000000000000000 == (Wrapping(new_value) + Wrapping(0x8000000000000000)).0 {
                         self.sign_flag = Sign::Positive;
                     }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
 
@@ -1913,15 +1752,15 @@ impl MachineCore {
             },
             128 => {
                 check_register128!(register1, register2);
-                let reg1_value = i128::from_le_bytes(self.registers_128[register1].to_le_bytes());
-                let reg2_value = i128::from_le_bytes(self.registers_128[register2].to_le_bytes());
+                let reg1_value = u128::from_le_bytes(self.registers_128[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = u128::from_le_bytes(self.registers_128[register2].to_le_bytes().try_into().unwrap());
 
                 if reg2_value == 0 {
                     return Err(Fault::DivideByZero);
                 }
 
-                self.remainder_128 = (Wrapping(reg1_value) % Wrapping(reg2_value)).0 as u128;
-                
+                let remainder = reg1_value % reg2_value;
+
                 let new_value = (Wrapping(reg1_value) / Wrapping(reg2_value)).0;
 
                 if new_value < reg1_value {
@@ -1933,14 +1772,19 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
-                    if new_value < 0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80000000000000000000000000000000 == (Wrapping(new_value) + Wrapping(0x80000000000000000000000000000000)).0 {
                         self.sign_flag = Sign::Positive;
                     }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
 
@@ -1952,7 +1796,7 @@ impl MachineCore {
         Ok(())
     }
 
-    fn neqi_opcode(&mut self) -> Result<(),Fault> {
+    fn neq_opcode(&mut self) -> Result<(),Fault> {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = (self.program[self.program_counter] as u8) as usize;
@@ -1964,8 +1808,8 @@ impl MachineCore {
             8 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
-                let reg2_value = i8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
+                let reg1_value = u8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
+                let reg2_value = u8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
 
                 if reg1_value != reg2_value {
                     self.comparison_flag = Comparison::NotEqual;
@@ -1977,8 +1821,8 @@ impl MachineCore {
             16 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
-                let reg2_value = i16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
+                let reg1_value = u16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
+                let reg2_value = u16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
 
                 if reg1_value != reg2_value {
                     self.comparison_flag = Comparison::NotEqual;
@@ -1990,8 +1834,8 @@ impl MachineCore {
             32 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
-                let reg2_value = i32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
+                let reg1_value = u32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
+                let reg2_value = u32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
 
                 if reg1_value != reg2_value {
                     self.comparison_flag = Comparison::NotEqual;
@@ -2003,8 +1847,8 @@ impl MachineCore {
             64 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
-                let reg2_value = i64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
+                let reg1_value = u64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = u64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
                 
 
                 if reg1_value != reg2_value {
@@ -2017,8 +1861,8 @@ impl MachineCore {
             128 => {
                 check_register128!(register1, register2);
 
-                let reg1_value = i128::from_le_bytes(self.registers_128[register1].to_le_bytes());
-                let reg2_value = i128::from_le_bytes(self.registers_128[register2].to_le_bytes());
+                let reg1_value = u128::from_le_bytes(self.registers_128[register1].to_le_bytes());
+                let reg2_value = u128::from_le_bytes(self.registers_128[register2].to_le_bytes());
 
                 if reg1_value != reg2_value {
                     self.comparison_flag = Comparison::NotEqual;
@@ -2035,7 +1879,7 @@ impl MachineCore {
         Ok(())
     }
     
-    fn eqi_opcode(&mut self) -> Result<(),Fault> {
+    fn eq_opcode(&mut self) -> Result<(),Fault> {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = (self.program[self.program_counter] as u8) as usize;
@@ -2047,8 +1891,8 @@ impl MachineCore {
             8 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
-                let reg2_value = i8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
+                let reg1_value = u8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
+                let reg2_value = u8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
 
                 if reg1_value == reg2_value {
                     self.comparison_flag = Comparison::Equal;
@@ -2060,8 +1904,8 @@ impl MachineCore {
             16 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
-                let reg2_value = i16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
+                let reg1_value = u16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
+                let reg2_value = u16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
 
                 if reg1_value == reg2_value {
                     self.comparison_flag = Comparison::Equal;
@@ -2073,8 +1917,8 @@ impl MachineCore {
             32 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
-                let reg2_value = i32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
+                let reg1_value = u32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
+                let reg2_value = u32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
 
                 if reg1_value == reg2_value {
                     self.comparison_flag = Comparison::Equal;
@@ -2086,8 +1930,8 @@ impl MachineCore {
             64 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
-                let reg2_value = i64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
+                let reg1_value = u64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = u64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
 
                 if reg1_value == reg2_value {
                     self.comparison_flag = Comparison::Equal;
@@ -2099,8 +1943,8 @@ impl MachineCore {
             128 => {
                 check_register128!(register1, register2);
 
-                let reg1_value = i128::from_le_bytes(self.registers_128[register1].to_le_bytes());
-                let reg2_value = i128::from_le_bytes(self.registers_128[register2].to_le_bytes());
+                let reg1_value = u128::from_le_bytes(self.registers_128[register1].to_le_bytes());
+                let reg2_value = u128::from_le_bytes(self.registers_128[register2].to_le_bytes());
 
                 if reg1_value == reg2_value {
                     self.comparison_flag = Comparison::Equal;
@@ -2117,7 +1961,7 @@ impl MachineCore {
         Ok(())
     }
 
-    fn lti_opcode(&mut self) -> Result<(),Fault> {
+    fn lt_opcode(&mut self) -> Result<(),Fault> {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = (self.program[self.program_counter] as u8) as usize;
@@ -2129,8 +1973,8 @@ impl MachineCore {
             8 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
-                let reg2_value = i8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
+                let reg1_value = u8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
+                let reg2_value = u8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
 
                 if reg1_value < reg2_value {
                     self.comparison_flag = Comparison::LessThan;
@@ -2142,8 +1986,8 @@ impl MachineCore {
             16 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
-                let reg2_value = i16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
+                let reg1_value = u16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
+                let reg2_value = u16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
 
                 if reg1_value < reg2_value {
                     self.comparison_flag = Comparison::LessThan;
@@ -2155,8 +1999,8 @@ impl MachineCore {
             32 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
-                let reg2_value = i32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
+                let reg1_value = u32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
+                let reg2_value = u32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
 
                 if reg1_value < reg2_value {
                     self.comparison_flag = Comparison::LessThan;
@@ -2168,8 +2012,8 @@ impl MachineCore {
             64 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
-                let reg2_value = i64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
+                let reg1_value = u64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = u64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
 
                 if reg1_value < reg2_value {
                     self.comparison_flag = Comparison::LessThan;
@@ -2181,8 +2025,8 @@ impl MachineCore {
             128 => {
                 check_register128!(register1, register2);
 
-                let reg1_value = i128::from_le_bytes(self.registers_128[register1].to_le_bytes());
-                let reg2_value = i128::from_le_bytes(self.registers_128[register2].to_le_bytes());
+                let reg1_value = u128::from_le_bytes(self.registers_128[register1].to_le_bytes());
+                let reg2_value = u128::from_le_bytes(self.registers_128[register2].to_le_bytes());
 
                 if reg1_value < reg2_value {
                     self.comparison_flag = Comparison::LessThan;
@@ -2198,7 +2042,7 @@ impl MachineCore {
         Ok(())
     }
 
-    fn gti_opcode(&mut self) -> Result<(),Fault> {
+    fn gt_opcode(&mut self) -> Result<(),Fault> {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = (self.program[self.program_counter] as u8) as usize;
@@ -2210,8 +2054,8 @@ impl MachineCore {
             8 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
-                let reg2_value = i8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
+                let reg1_value = u8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
+                let reg2_value = u8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
 
                 if reg1_value > reg2_value {
                     self.comparison_flag = Comparison::GreaterThan;
@@ -2223,8 +2067,8 @@ impl MachineCore {
             16 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
-                let reg2_value = i16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
+                let reg1_value = u16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
+                let reg2_value = u16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
 
                 if reg1_value > reg2_value {
                     self.comparison_flag = Comparison::GreaterThan;
@@ -2236,8 +2080,8 @@ impl MachineCore {
             32 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
-                let reg2_value = i32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
+                let reg1_value = u32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
+                let reg2_value = u32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
 
                 if reg1_value > reg2_value {
                     self.comparison_flag = Comparison::GreaterThan;
@@ -2249,8 +2093,8 @@ impl MachineCore {
             64 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
-                let reg2_value = i64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
+                let reg1_value = u64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = u64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
 
                 if reg1_value > reg2_value {
                     self.comparison_flag = Comparison::GreaterThan;
@@ -2262,8 +2106,8 @@ impl MachineCore {
             128 => {
                 check_register128!(register1, register2);
 
-                let reg1_value = i128::from_le_bytes(self.registers_128[register1].to_le_bytes());
-                let reg2_value = i128::from_le_bytes(self.registers_128[register2].to_le_bytes());
+                let reg1_value = u128::from_le_bytes(self.registers_128[register1].to_le_bytes());
+                let reg2_value = u128::from_le_bytes(self.registers_128[register2].to_le_bytes());
 
                 if reg1_value > reg2_value {
                     self.comparison_flag = Comparison::GreaterThan;
@@ -2279,7 +2123,7 @@ impl MachineCore {
         Ok(())
     }
         
-    fn leqi_opcode(&mut self) -> Result<(),Fault> {
+    fn leq_opcode(&mut self) -> Result<(),Fault> {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = (self.program[self.program_counter] as u8) as usize;
@@ -2291,8 +2135,8 @@ impl MachineCore {
             8 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
-                let reg2_value = i8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
+                let reg1_value = u8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
+                let reg2_value = u8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
                 
                 if reg1_value <= reg2_value {
                     self.comparison_flag = Comparison::LessThanOrEqual;
@@ -2304,8 +2148,8 @@ impl MachineCore {
             16 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
-                let reg2_value = i16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
+                let reg1_value = u16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
+                let reg2_value = u16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
 
                 if reg1_value <= reg2_value {
                     self.comparison_flag = Comparison::LessThanOrEqual;
@@ -2317,8 +2161,8 @@ impl MachineCore {
             32 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
-                let reg2_value = i32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
+                let reg1_value = u32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
+                let reg2_value = u32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
 
                 if reg1_value <= reg2_value {
                     self.comparison_flag = Comparison::LessThanOrEqual;
@@ -2330,8 +2174,8 @@ impl MachineCore {
             64 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
-                let reg2_value = i64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
+                let reg1_value = u64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = u64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
 
                 if reg1_value <= reg2_value {
                     self.comparison_flag = Comparison::LessThanOrEqual;
@@ -2343,8 +2187,8 @@ impl MachineCore {
             128 => {
                 check_register128!(register1, register2);
 
-                let reg1_value = i128::from_le_bytes(self.registers_128[register1].to_le_bytes());
-                let reg2_value = i128::from_le_bytes(self.registers_128[register2].to_le_bytes());
+                let reg1_value = u128::from_le_bytes(self.registers_128[register1].to_le_bytes());
+                let reg2_value = u128::from_le_bytes(self.registers_128[register2].to_le_bytes());
 
                 if reg1_value <= reg2_value {
                     self.comparison_flag = Comparison::LessThanOrEqual;
@@ -2360,7 +2204,7 @@ impl MachineCore {
         Ok(())
     }
         
-    fn geqi_opcode(&mut self) -> Result<(),Fault> {
+    fn geq_opcode(&mut self) -> Result<(),Fault> {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register1 = (self.program[self.program_counter] as u8) as usize;
@@ -2372,8 +2216,8 @@ impl MachineCore {
             8 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
-                let reg2_value = i8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
+                let reg1_value = u8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
+                let reg2_value = u8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
 
                 if reg1_value >= reg2_value {
                     self.comparison_flag = Comparison::GreaterThanOrEqual;
@@ -2385,8 +2229,8 @@ impl MachineCore {
             16 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
-                let reg2_value = i16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
+                let reg1_value = u16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
+                let reg2_value = u16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
 
                 if reg1_value >= reg2_value {
                     self.comparison_flag = Comparison::GreaterThanOrEqual;
@@ -2398,8 +2242,8 @@ impl MachineCore {
             32 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
-                let reg2_value = i32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
+                let reg1_value = u32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
+                let reg2_value = u32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
 
                 if reg1_value >= reg2_value {
                     self.comparison_flag = Comparison::GreaterThanOrEqual;
@@ -2411,8 +2255,8 @@ impl MachineCore {
             64 => {
                 check_register64!(register1, register2);
 
-                let reg1_value = i64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
-                let reg2_value = i64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
+                let reg1_value = u64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
+                let reg2_value = u64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
 
                 if reg1_value >= reg2_value {
                     self.comparison_flag = Comparison::GreaterThanOrEqual;
@@ -2424,8 +2268,8 @@ impl MachineCore {
             128 => {
                 check_register128!(register1, register2);
 
-                let reg1_value = i128::from_le_bytes(self.registers_128[register1].to_le_bytes());
-                let reg2_value = i128::from_le_bytes(self.registers_128[register2].to_le_bytes());
+                let reg1_value = u128::from_le_bytes(self.registers_128[register1].to_le_bytes());
+                let reg2_value = u128::from_le_bytes(self.registers_128[register2].to_le_bytes());
 
                 if reg1_value >= reg2_value {
                     self.comparison_flag = Comparison::GreaterThanOrEqual;
@@ -2442,23 +2286,23 @@ impl MachineCore {
     }
 
 
-    fn addu_opcode(&mut self) -> SimpleResult {
+    fn addc_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
-        self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
+        let register = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
             8 => {
-                check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as u8;
-                let reg2_value = self.registers_64[register2] as u8;
+                check_register64!(register);
+                let reg_value = self.registers_64[register] as u8;
 
-                let new_value = (Wrapping(reg1_value) + Wrapping(reg2_value)).0;
+                let constant = self.get_1_byte() as u8;
+                self.advance_by_1_byte();
 
-                if new_value < reg1_value {
+                let new_value = (Wrapping(reg_value) + Wrapping(constant)).0;
+
+                if new_value < reg_value {
                     self.overflow_flag = true;
                 }
                 if new_value == 0 {
@@ -2466,22 +2310,34 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80 == (Wrapping(new_value) + Wrapping(0x80)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
-                self.sign_flag = Sign::Positive;
 
-                self.registers_64[register1] = new_value as u64;
+                self.registers_64[register] = new_value as u64;
             },
             16 => {
-                check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as u16;
-                let reg2_value = self.registers_64[register2] as u16;
+                check_register64!(register);
+                let reg_value = self.registers_64[register] as u16;
 
-                let new_value = (Wrapping(reg1_value) + Wrapping(reg2_value)).0;
+                let constant = self.get_2_bytes() as u16;
+                self.advance_by_2_bytes();
 
-                if new_value < reg1_value {
+                let new_value = (Wrapping(reg_value) + Wrapping(constant)).0;
+
+                if new_value < reg_value {
                     self.overflow_flag = true;
                 }
                 if new_value == 0 {
@@ -2489,23 +2345,34 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x8000 == (Wrapping(new_value) + Wrapping(0x8000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
-                self.sign_flag = Sign::Positive;
 
-                self.registers_64[register1] = new_value as u64;
+                self.registers_64[register] = new_value as u64;
             },
-
             32 => {
-                check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as u32;
-                let reg2_value = self.registers_64[register2] as u32;
+                check_register64!(register);
+                let reg_value = self.registers_64[register] as u32;
 
-                let new_value = (Wrapping(reg1_value) + Wrapping(reg2_value)).0;
+                let constant = self.get_4_bytes() as u32;
+                self.advance_by_4_bytes();
 
-                if new_value < reg1_value {
+                let new_value = (Wrapping(reg_value) + Wrapping(constant)).0;
+
+                if new_value < reg_value {
                     self.overflow_flag = true;
                 }
                 if new_value == 0 {
@@ -2513,63 +2380,93 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80000000 == (Wrapping(new_value) + Wrapping(0x80000000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
-                self.sign_flag = Sign::Positive;
 
-                self.registers_64[register1] = new_value as u64;
+                self.registers_64[register] = new_value as u64;
             },
             64 => {
-                check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as u64;
-                let reg2_value = self.registers_64[register2] as u64;
+                check_register64!(register);
+                let reg_value = self.registers_64[register];
 
-                let new_value = (Wrapping(reg1_value) + Wrapping(reg2_value)).0;
+                let constant = self.get_8_bytes();
+                self.advance_by_8_bytes();
 
-                if new_value < reg1_value {
+                let new_value = (Wrapping(reg_value) + Wrapping(constant)).0;
+
+                if new_value < reg_value {
                     self.overflow_flag = true;
                 }
-
                 if new_value == 0 {
                     self.zero_flag = true;
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x8000000000000000 == (Wrapping(new_value) + Wrapping(0x8000000000000000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
-                self.sign_flag = Sign::Positive;
 
-                self.registers_64[register1] = new_value as u64;
+                self.registers_64[register] = new_value;
             },
             128 => {
-                check_register128!(register1, register2);
-                let reg1_value = self.registers_128[register1] as u128;
-                let reg2_value = self.registers_128[register2] as u128;
+                check_register128!(register);
+                let reg_value = self.registers_128[register];
 
-                let new_value = (Wrapping(reg1_value) + Wrapping(reg2_value)).0;
+                let constant = self.get_16_bytes();
+                self.advance_by_16_bytes();
 
-                if new_value < reg1_value {
+                let new_value = (Wrapping(reg_value) + Wrapping(constant)).0;
+
+                if new_value < reg_value {
                     self.overflow_flag = true;
                 }
-
                 if new_value == 0 {
                     self.zero_flag = true;
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80000000000000000000000000000000 == (Wrapping(new_value) + Wrapping(0x80000000000000000000000000000000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
-                
-                self.sign_flag = Sign::Positive;
 
-
-                self.registers_128[register1] = new_value as u128;
+                self.registers_128[register] = new_value;
             },
             _ => return Err(Fault::InvalidSize),
 
@@ -2578,23 +2475,23 @@ impl MachineCore {
     }
 
 
-    fn subu_opcode(&mut self) -> SimpleResult {
+    fn subc_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
-        self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
+        let register = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
             8 => {
-                check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as u8;
-                let reg2_value = self.registers_64[register2] as u8;
+                check_register64!(register);
+                let reg_value = self.registers_64[register] as u8;
 
-                let new_value = (Wrapping(reg1_value) - Wrapping(reg2_value)).0;
+                let constant = self.get_1_byte() as u8;
+                self.advance_by_1_byte();
 
-                if new_value > reg1_value {
+                let new_value = (Wrapping(reg_value) - Wrapping(constant)).0;
+
+                if new_value < reg_value {
                     self.overflow_flag = true;
                 }
                 if new_value == 0 {
@@ -2602,22 +2499,34 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80 == (Wrapping(new_value) + Wrapping(0x80)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
-                self.sign_flag = Sign::Positive;
 
-                self.registers_64[register1] = new_value as u64;
+                self.registers_64[register] = new_value as u64;
             },
             16 => {
-                check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as u16;
-                let reg2_value = self.registers_64[register2] as u16;
+                check_register64!(register);
+                let reg_value = self.registers_64[register] as u16;
 
-                let new_value = (Wrapping(reg1_value) - Wrapping(reg2_value)).0;
+                let constant = self.get_2_bytes() as u16;
+                self.advance_by_2_bytes();
 
-                if new_value < reg1_value {
+                let new_value = (Wrapping(reg_value) - Wrapping(constant)).0;
+
+                if new_value < reg_value {
                     self.overflow_flag = true;
                 }
                 if new_value == 0 {
@@ -2625,22 +2534,34 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x8000 == (Wrapping(new_value) + Wrapping(0x8000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
-                self.sign_flag = Sign::Positive;
 
-                self.registers_64[register1] = new_value as u64;
+                self.registers_64[register] = new_value as u64;
             },
             32 => {
-                check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as u32;
-                let reg2_value = self.registers_64[register2] as u32;
+                check_register64!(register);
+                let reg_value = self.registers_64[register] as u32;
 
-                let new_value = (Wrapping(reg1_value) - Wrapping(reg2_value)).0;
+                let constant = self.get_4_bytes() as u32;
+                self.advance_by_4_bytes();
 
-                if new_value < reg1_value {
+                let new_value = (Wrapping(reg_value) - Wrapping(constant)).0;
+
+                if new_value < reg_value {
                     self.overflow_flag = true;
                 }
                 if new_value == 0 {
@@ -2648,61 +2569,93 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80000000 == (Wrapping(new_value) + Wrapping(0x80000000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
-                self.sign_flag = Sign::Positive;
 
-                self.registers_64[register1] = new_value as u64;
+                self.registers_64[register] = new_value as u64;
             },
             64 => {
-                check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as u64;
-                let reg2_value = self.registers_64[register2] as u64;
+                check_register64!(register);
+                let reg_value = self.registers_64[register];
 
-                let new_value = (Wrapping(reg1_value) - Wrapping(reg2_value)).0;
+                let constant = self.get_8_bytes();
+                self.advance_by_8_bytes();
 
-                if new_value < reg1_value {
+                let new_value = (Wrapping(reg_value) - Wrapping(constant)).0;
+
+                if new_value < reg_value {
                     self.overflow_flag = true;
                 }
-
                 if new_value == 0 {
                     self.zero_flag = true;
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x8000000000000000 == (Wrapping(new_value) + Wrapping(0x8000000000000000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
-                self.sign_flag = Sign::Positive;
 
-                self.registers_64[register1] = new_value as u64;
+                self.registers_64[register] = new_value;
             },
             128 => {
-                check_register128!(register1, register2);
-                let reg1_value = self.registers_128[register1] as u128;
-                let reg2_value = self.registers_128[register2] as u128;
+                check_register128!(register);
+                let reg_value = self.registers_128[register];
 
-                let new_value = (Wrapping(reg1_value) - Wrapping(reg2_value)).0;
+                let constant = self.get_16_bytes();
+                self.advance_by_16_bytes();
 
-                if new_value < reg1_value {
+                let new_value = (Wrapping(reg_value) - Wrapping(constant)).0;
+
+                if new_value < reg_value {
                     self.overflow_flag = true;
                 }
-
                 if new_value == 0 {
                     self.zero_flag = true;
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80000000000000000000000000000000 == (Wrapping(new_value) + Wrapping(0x80000000000000000000000000000000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
-                self.sign_flag = Sign::Positive;
 
-                self.registers_128[register1] = new_value as u128;
+                self.registers_128[register] = new_value;
             },
             _ => return Err(Fault::InvalidSize),
 
@@ -2711,23 +2664,23 @@ impl MachineCore {
     }
 
 
-    fn mulu_opcode(&mut self) -> SimpleResult {
+    fn mulc_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
-        self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
+        let register = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
             8 => {
-                check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as u8;
-                let reg2_value = self.registers_64[register2] as u8;
+                check_register64!(register);
+                let reg_value = self.registers_64[register] as u8;
 
-                let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
+                let constant = self.get_1_byte() as u8;
+                self.advance_by_1_byte();
 
-                if new_value > reg1_value {
+                let new_value = (Wrapping(reg_value) * Wrapping(constant)).0;
+
+                if new_value < reg_value {
                     self.overflow_flag = true;
                 }
                 if new_value == 0 {
@@ -2735,22 +2688,34 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80 == (Wrapping(new_value) + Wrapping(0x80)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
-                self.sign_flag = Sign::Positive;
 
-                self.registers_64[register1] = new_value as u64;
+                self.registers_64[register] = new_value as u64;
             },
             16 => {
-                check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as u16;
-                let reg2_value = self.registers_64[register2] as u16;
+                check_register64!(register);
+                let reg_value = self.registers_64[register] as u16;
 
-                let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
+                let constant = self.get_2_bytes() as u16;
+                self.advance_by_2_bytes();
 
-                if new_value < reg1_value {
+                let new_value = (Wrapping(reg_value) * Wrapping(constant)).0;
+
+                if new_value < reg_value {
                     self.overflow_flag = true;
                 }
                 if new_value == 0 {
@@ -2758,25 +2723,34 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x8000 == (Wrapping(new_value) + Wrapping(0x8000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
-                
-                self.sign_flag = Sign::Positive;
 
-
-                self.registers_64[register1] = new_value as u64;
+                self.registers_64[register] = new_value as u64;
             },
-
             32 => {
-                check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as u32;
-                let reg2_value = self.registers_64[register2] as u32;
+                check_register64!(register);
+                let reg_value = self.registers_64[register] as u32;
 
-                let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
+                let constant = self.get_4_bytes() as u32;
+                self.advance_by_4_bytes();
 
-                if new_value < reg1_value {
+                let new_value = (Wrapping(reg_value) * Wrapping(constant)).0;
+
+                if new_value < reg_value {
                     self.overflow_flag = true;
                 }
                 if new_value == 0 {
@@ -2784,61 +2758,93 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80000000 == (Wrapping(new_value) + Wrapping(0x80000000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
-                self.sign_flag = Sign::Positive;
 
-                self.registers_64[register1] = new_value as u64;
+                self.registers_64[register] = new_value as u64;
             },
             64 => {
-                check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as u64;
-                let reg2_value = self.registers_64[register2] as u64;
+                check_register64!(register);
+                let reg_value = self.registers_64[register];
 
-                let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
+                let constant = self.get_8_bytes();
+                self.advance_by_8_bytes();
 
-                if new_value < reg1_value {
+                let new_value = (Wrapping(reg_value) * Wrapping(constant)).0;
+
+                if new_value < reg_value {
                     self.overflow_flag = true;
                 }
-
                 if new_value == 0 {
                     self.zero_flag = true;
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x8000000000000000 == (Wrapping(new_value) + Wrapping(0x8000000000000000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
-                self.sign_flag = Sign::Positive;
 
-                self.registers_64[register1] = new_value as u64;
+                self.registers_64[register] = new_value;
             },
             128 => {
-                check_register128!(register1, register2);
-                let reg1_value = self.registers_128[register1] as u128;
-                let reg2_value = self.registers_128[register2] as u128;
+                check_register128!(register);
+                let reg_value = self.registers_128[register];
 
-                let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
+                let constant = self.get_16_bytes();
+                self.advance_by_16_bytes();
 
-                if new_value < reg1_value {
+                let new_value = (Wrapping(reg_value) * Wrapping(constant)).0;
+
+                if new_value < reg_value {
                     self.overflow_flag = true;
                 }
-
                 if new_value == 0 {
                     self.zero_flag = true;
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80000000000000000000000000000000 == (Wrapping(new_value) + Wrapping(0x80000000000000000000000000000000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
-                self.sign_flag = Sign::Positive;
 
-                self.registers_128[register1] = new_value as u128;
+                self.registers_128[register] = new_value;
             },
             _ => return Err(Fault::InvalidSize),
 
@@ -2850,26 +2856,26 @@ impl MachineCore {
     fn divu_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
-        self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
+        let register = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
             8 => {
-                check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as u8;
-                let reg2_value = self.registers_64[register2] as u8;
+                check_register64!(register);
+                let reg_value = self.registers_64[register] as u8;
 
-                if reg2_value == 0 {
+                let constant = self.get_1_byte() as u8;
+                self.advance_by_1_byte();
+
+                if constant == 0 {
                     return Err(Fault::DivideByZero);
                 }
 
-                self.remainder_64 = (Wrapping(reg1_value) % Wrapping(reg2_value)).0 as usize;
-                
-                let new_value = (Wrapping(reg1_value) / Wrapping(reg2_value)).0;
+                let remainder_64 = reg_value % constant;
 
-                if new_value > reg1_value {
+                let new_value = (Wrapping(reg_value) / Wrapping(constant)).0;
+
+                if new_value < reg_value {
                     self.overflow_flag = true;
                 }
                 if new_value == 0 {
@@ -2877,28 +2883,40 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80 == (Wrapping(new_value) + Wrapping(0x80)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
-                self.sign_flag = Sign::Positive;
 
-                self.registers_64[register1] = new_value as u64;
+                self.registers_64[register] = new_value as u64;
             },
             16 => {
-                check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as u16;
-                let reg2_value = self.registers_64[register2] as u16;
+                check_register64!(register);
+                let reg_value = self.registers_64[register] as u16;
 
-                if reg2_value == 0 {
+                let constant = self.get_2_bytes() as u16;
+                self.advance_by_2_bytes();
+
+                if constant == 0 {
                     return Err(Fault::DivideByZero);
                 }
 
-                self.remainder_64 = (Wrapping(reg1_value) % Wrapping(reg2_value)).0 as usize;
-                
-                let new_value = (Wrapping(reg1_value) / Wrapping(reg2_value)).0;
+                let remainder_64 = reg_value % constant;
 
-                if new_value < reg1_value {
+                let new_value = (Wrapping(reg_value) / Wrapping(constant)).0;
+
+                if new_value < reg_value {
                     self.overflow_flag = true;
                 }
                 if new_value == 0 {
@@ -2906,28 +2924,40 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x8000 == (Wrapping(new_value) + Wrapping(0x8000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
-                self.sign_flag = Sign::Positive;
 
-                self.registers_64[register1] = new_value as u64;
+                self.registers_64[register] = new_value as u64;
             },
             32 => {
-                check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as u32;
-                let reg2_value = self.registers_64[register2] as u32;
+                check_register64!(register);
+                let reg_value = self.registers_64[register] as u32;
 
-                if reg2_value == 0 {
+                let constant = self.get_4_bytes() as u32;
+                self.advance_by_4_bytes();
+
+                if constant == 0 {
                     return Err(Fault::DivideByZero);
                 }
 
-                self.remainder_64 = (Wrapping(reg1_value) % Wrapping(reg2_value)).0 as usize;
-                
-                let new_value = (Wrapping(reg1_value) / Wrapping(reg2_value)).0;
+                let remainder_64 = reg_value % constant;
 
-                if new_value < reg1_value {
+                let new_value = (Wrapping(reg_value) / Wrapping(constant)).0;
+
+                if new_value < reg_value {
                     self.overflow_flag = true;
                 }
                 if new_value == 0 {
@@ -2935,73 +2965,105 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80000000 == (Wrapping(new_value) + Wrapping(0x80000000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
-                self.sign_flag = Sign::Positive;
 
-                self.registers_64[register1] = new_value as u64;
+                self.registers_64[register] = new_value as u64;
             },
             64 => {
-                check_register64!(register1, register2);
-                let reg1_value = self.registers_64[register1] as u64;
-                let reg2_value = self.registers_64[register2] as u64;
+                check_register64!(register);
+                let reg_value = self.registers_64[register];
 
-                if reg2_value == 0 {
+                let constant = self.get_8_bytes();
+                self.advance_by_8_bytes();
+
+                if constant == 0 {
                     return Err(Fault::DivideByZero);
                 }
 
-                self.remainder_64 = (Wrapping(reg1_value) % Wrapping(reg2_value)).0 as usize;
-                
-                let new_value = (Wrapping(reg1_value) / Wrapping(reg2_value)).0;
+                let remainder_64 = reg_value % constant;
 
-                if new_value < reg1_value {
+                let new_value = (Wrapping(reg_value) / Wrapping(constant)).0;
+
+                if new_value < reg_value {
                     self.overflow_flag = true;
                 }
-
                 if new_value == 0 {
                     self.zero_flag = true;
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x8000000000000000 == (Wrapping(new_value) + Wrapping(0x8000000000000000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
-                self.sign_flag = Sign::Positive;
 
-                self.registers_64[register1] = new_value as u64;
+                self.registers_64[register] = new_value;
             },
             128 => {
-                check_register128!(register1, register2);
-                let reg1_value = self.registers_128[register1] as u128;
-                let reg2_value = self.registers_128[register2] as u128;
+                check_register128!(register);
+                let reg_value = self.registers_128[register];
 
-                if reg2_value == 0 {
+                let constant = self.get_16_bytes();
+                self.advance_by_16_bytes();
+
+                if constant == 0 {
                     return Err(Fault::DivideByZero);
                 }
 
-                self.remainder_128 = (Wrapping(reg1_value) % Wrapping(reg2_value)).0 as u128;
-                
-                let new_value = (Wrapping(reg1_value) / Wrapping(reg2_value)).0;
+                let remainder_128 = reg_value % constant;
 
-                if new_value < reg1_value {
+                let new_value = (Wrapping(reg_value) / Wrapping(constant)).0;
+
+                if new_value < reg_value {
                     self.overflow_flag = true;
                 }
-
                 if new_value == 0 {
                     self.zero_flag = true;
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80000000000000000000000000000000 == (Wrapping(new_value) + Wrapping(0x80000000000000000000000000000000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if new_value % 2 != 0 {
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
+                }
+                else {
                     self.odd_flag = true;
                 }
-                self.sign_flag = Sign::Positive;
 
-                self.registers_128[register1] = new_value as u128;
+                self.registers_128[register] = new_value;
             },
             _ => return Err(Fault::InvalidSize),
 
@@ -3009,22 +3071,21 @@ impl MachineCore {
         Ok(())
     }
 
-    fn nequ_opcode(&mut self) -> Result<(),Fault> {
+    fn neqc_opcode(&mut self) -> Result<(),Fault> {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
-        self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
+        let register = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
             8 => {
-                check_register64!(register1, register2);
+                check_register64!(register);
 
-                let reg1_value = self.registers_64[register1] as u8;
-                let reg2_value = self.registers_64[register2] as u8;
+                let reg_value = self.registers_64[register] as u8;
+                let constant = self.get_1_byte() as u8;
+                self.advance_by_1_byte();
 
-                if reg1_value != reg2_value {
+                if reg_value != constant {
                     self.comparison_flag = Comparison::NotEqual;
                 }
                 else {
@@ -3032,12 +3093,13 @@ impl MachineCore {
                 }
             },
             16 => {
-                check_register64!(register1, register2);
+                check_register64!(register);
 
-                let reg1_value = self.registers_64[register1] as u16;
-                let reg2_value = self.registers_64[register2] as u16;
+                let reg_value = self.registers_64[register] as u16;
+                let constant = self.get_2_bytes() as u16;
+                self.advance_by_2_bytes();
 
-                if reg1_value != reg2_value {
+                if reg_value != constant {
                     self.comparison_flag = Comparison::NotEqual;
                 }
                 else {
@@ -3045,12 +3107,13 @@ impl MachineCore {
                 }
             },
             32 => {
-                check_register64!(register1, register2);
+                check_register64!(register);
 
-                let reg1_value = self.registers_64[register1] as u32;
-                let reg2_value = self.registers_64[register2] as u32;
+                let reg_value = self.registers_64[register] as u32;
+                let constant = self.get_4_bytes() as u32;
+                self.advance_by_4_bytes();
 
-                if reg1_value != reg2_value {
+                if reg_value != constant {
                     self.comparison_flag = Comparison::NotEqual;
                 }
                 else {
@@ -3058,12 +3121,13 @@ impl MachineCore {
                 }
             },
             64 => {
-                check_register64!(register1, register2);
+                check_register64!(register);
 
-                let reg1_value = self.registers_64[register1] as u64;
-                let reg2_value = self.registers_64[register2] as u64;
+                let reg_value = self.registers_64[register] as u64;
+                let constant = self.get_8_bytes() as u64;
+                self.advance_by_8_bytes();
 
-                if reg1_value != reg2_value {
+                if reg_value != constant {
                     self.comparison_flag = Comparison::NotEqual;
                 }
                 else {
@@ -3071,12 +3135,13 @@ impl MachineCore {
                 }
             },
             128 => {
-                check_register128!(register1, register2);
+                check_register128!(register);
 
-                let reg1_value = self.registers_128[register1] as u128;
-                let reg2_value = self.registers_128[register2] as u128;
+                let reg_value = self.registers_128[register] as u128;
+                let constant = self.get_16_bytes() as u128;
+                self.advance_by_16_bytes();
 
-                if reg1_value != reg2_value {
+                if reg_value != constant {
                     self.comparison_flag = Comparison::NotEqual;
                 }
                 else {
@@ -3091,22 +3156,21 @@ impl MachineCore {
         Ok(())
     }
     
-    fn equ_opcode(&mut self) -> Result<(),Fault> {
+    fn eqc_opcode(&mut self) -> Result<(),Fault> {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
-        self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
+        let register = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
             8 => {
-                check_register64!(register1, register2);
+                check_register64!(register);
 
-                let reg1_value = self.registers_64[register1] as u8;
-                let reg2_value = self.registers_64[register2] as u8;
+                let reg_value = self.registers_64[register] as u8;
+                let constant = self.get_1_byte() as u8;
+                self.advance_by_1_byte();
 
-                if reg1_value == reg2_value {
+                if reg_value == constant {
                     self.comparison_flag = Comparison::Equal;
                 }
                 else {
@@ -3114,12 +3178,13 @@ impl MachineCore {
                 }
             },
             16 => {
-                check_register64!(register1, register2);
+                check_register64!(register);
 
-                let reg1_value = self.registers_64[register1] as u16;
-                let reg2_value = self.registers_64[register2] as u16;
+                let reg_value = self.registers_64[register] as u16;
+                let constant = self.get_2_bytes() as u16;
+                self.advance_by_2_bytes();
 
-                if reg1_value == reg2_value {
+                if reg_value == constant {
                     self.comparison_flag = Comparison::Equal;
                 }
                 else {
@@ -3127,12 +3192,13 @@ impl MachineCore {
                 }
             },
             32 => {
-                check_register64!(register1, register2);
+                check_register64!(register);
 
-                let reg1_value = self.registers_64[register1] as u32;
-                let reg2_value = self.registers_64[register2] as u32;
+                let reg_value = self.registers_64[register] as u32;
+                let constant = self.get_4_bytes() as u32;
+                self.advance_by_4_bytes();
 
-                if reg1_value == reg2_value {
+                if reg_value == constant {
                     self.comparison_flag = Comparison::Equal;
                 }
                 else {
@@ -3140,12 +3206,13 @@ impl MachineCore {
                 }
             },
             64 => {
-                check_register64!(register1, register2);
+                check_register64!(register);
 
-                let reg1_value = self.registers_64[register1] as u64;
-                let reg2_value = self.registers_64[register2] as u64;
+                let reg_value = self.registers_64[register] as u64;
+                let constant = self.get_8_bytes() as u64;
+                self.advance_by_8_bytes();
 
-                if reg1_value == reg2_value {
+                if reg_value == constant {
                     self.comparison_flag = Comparison::Equal;
                 }
                 else {
@@ -3153,16 +3220,17 @@ impl MachineCore {
                 }
             },
             128 => {
-                check_register128!(register1, register2);
+                check_register128!(register);
 
-                let reg1_value = self.registers_128[register1] as u128;
-                let reg2_value = self.registers_128[register2] as u128;
+                let reg_value = self.registers_128[register] as u128;
+                let constant = self.get_16_bytes() as u128;
+                self.advance_by_16_bytes();
 
-                if reg1_value == reg2_value {
+                if reg_value == constant {
                     self.comparison_flag = Comparison::Equal;
                 }
                 else {
-                    self.comparison_flag = Comparison::NotEqual;
+                    self.comparison_flag = Comparison::Equal;
                 }
             },
 
@@ -3173,22 +3241,21 @@ impl MachineCore {
         Ok(())
     }
 
-    fn ltu_opcode(&mut self) -> Result<(),Fault> {
+    fn ltc_opcode(&mut self) -> Result<(),Fault> {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
-        self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
+        let register = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
             8 => {
-                check_register64!(register1, register2);
+                check_register64!(register);
 
-                let reg1_value = self.registers_64[register1] as u8;
-                let reg2_value = self.registers_64[register2] as u8;
+                let reg_value = self.registers_64[register] as u8;
+                let constant = self.get_1_byte() as u8;
+                self.advance_by_1_byte();
 
-                if reg1_value < reg2_value {
+                if reg_value < constant {
                     self.comparison_flag = Comparison::LessThan;
                 }
                 else {
@@ -3196,12 +3263,13 @@ impl MachineCore {
                 }
             },
             16 => {
-                check_register64!(register1, register2);
+                check_register64!(register);
 
-                let reg1_value = self.registers_64[register1] as u16;
-                let reg2_value = self.registers_64[register2] as u16;
+                let reg_value = self.registers_64[register] as u16;
+                let constant = self.get_2_bytes() as u16;
+                self.advance_by_2_bytes();
 
-                if reg1_value < reg2_value {
+                if reg_value < constant {
                     self.comparison_flag = Comparison::LessThan;
                 }
                 else {
@@ -3209,12 +3277,13 @@ impl MachineCore {
                 }
             },
             32 => {
-                check_register64!(register1, register2);
+                check_register64!(register);
 
-                let reg1_value = self.registers_64[register1] as u32;
-                let reg2_value = self.registers_64[register2] as u32;
+                let reg_value = self.registers_64[register] as u32;
+                let constant = self.get_4_bytes() as u32;
+                self.advance_by_4_bytes();
 
-                if reg1_value < reg2_value {
+                if reg_value < constant {
                     self.comparison_flag = Comparison::LessThan;
                 }
                 else {
@@ -3222,12 +3291,13 @@ impl MachineCore {
                 }
             },
             64 => {
-                check_register64!(register1, register2);
+                check_register64!(register);
 
-                let reg1_value = self.registers_64[register1] as u64;
-                let reg2_value = self.registers_64[register2] as u64;
+                let reg_value = self.registers_64[register] as u64;
+                let constant = self.get_8_bytes() as u64;
+                self.advance_by_8_bytes();
 
-                if reg1_value < reg2_value {
+                if reg_value < constant {
                     self.comparison_flag = Comparison::LessThan;
                 }
                 else {
@@ -3235,12 +3305,13 @@ impl MachineCore {
                 }
             },
             128 => {
-                check_register128!(register1, register2);
+                check_register128!(register);
 
-                let reg1_value = self.registers_128[register1] as u128;
-                let reg2_value = self.registers_128[register2] as u128;
+                let reg_value = self.registers_128[register] as u128;
+                let constant = self.get_16_bytes() as u128;
+                self.advance_by_16_bytes();
 
-                if reg1_value < reg2_value {
+                if reg_value < constant {
                     self.comparison_flag = Comparison::LessThan;
                 }
                 else {
@@ -3254,22 +3325,21 @@ impl MachineCore {
         Ok(())
     }
 
-    fn gtu_opcode(&mut self) -> Result<(),Fault> {
+    fn gtc_opcode(&mut self) -> Result<(),Fault> {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
-        self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
+        let register = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
             8 => {
-                check_register64!(register1, register2);
+                check_register64!(register);
 
-                let reg1_value = self.registers_64[register1] as u8;
-                let reg2_value = self.registers_64[register2] as u8;
+                let reg_value = self.registers_64[register] as u8;
+                let constant = self.get_1_byte() as u8;
+                self.advance_by_1_byte();
 
-                if reg1_value > reg2_value {
+                if reg_value > constant {
                     self.comparison_flag = Comparison::GreaterThan;
                 }
                 else {
@@ -3277,12 +3347,13 @@ impl MachineCore {
                 }
             },
             16 => {
-                check_register64!(register1, register2);
+                check_register64!(register);
 
-                let reg1_value = self.registers_64[register1] as u16;
-                let reg2_value = self.registers_64[register2] as u16;
+                let reg_value = self.registers_64[register] as u16;
+                let constant = self.get_2_bytes() as u16;
+                self.advance_by_2_bytes();
 
-                if reg1_value > reg2_value {
+                if reg_value > constant {
                     self.comparison_flag = Comparison::GreaterThan;
                 }
                 else {
@@ -3290,12 +3361,13 @@ impl MachineCore {
                 }
             },
             32 => {
-                check_register64!(register1, register2);
+                check_register64!(register);
 
-                let reg1_value = self.registers_64[register1] as u32;
-                let reg2_value = self.registers_64[register2] as u32;
+                let reg_value = self.registers_64[register] as u32;
+                let constant = self.get_4_bytes() as u32;
+                self.advance_by_4_bytes();
 
-                if reg1_value > reg2_value {
+                if reg_value > constant {
                     self.comparison_flag = Comparison::GreaterThan;
                 }
                 else {
@@ -3303,12 +3375,13 @@ impl MachineCore {
                 }
             },
             64 => {
-                check_register64!(register1, register2);
+                check_register64!(register);
 
-                let reg1_value = self.registers_64[register1] as u64;
-                let reg2_value = self.registers_64[register2] as u64;
+                let reg_value = self.registers_64[register] as u64;
+                let constant = self.get_8_bytes() as u64;
+                self.advance_by_8_bytes();
 
-                if reg1_value > reg2_value {
+                if reg_value > constant {
                     self.comparison_flag = Comparison::GreaterThan;
                 }
                 else {
@@ -3316,97 +3389,17 @@ impl MachineCore {
                 }
             },
             128 => {
-                check_register128!(register1, register2);
+                check_register128!(register);
 
-                let reg1_value = self.registers_128[register1] as u128;
-                let reg2_value = self.registers_128[register2] as u128;
+                let reg_value = self.registers_128[register] as u128;
+                let constant = self.get_16_bytes() as u128;
+                self.advance_by_16_bytes();
 
-                if reg1_value > reg2_value {
+                if reg_value > constant {
                     self.comparison_flag = Comparison::GreaterThan;
                 }
                 else {
                     self.comparison_flag = Comparison::LessThanOrEqual;
-                }
-            },
-            _ => return Err(Fault::InvalidSize),
-
-        }
-
-        Ok(())
-    }
-        
-    fn lequ_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
-        self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
-        self.advance_by_1_byte();
-
-        match size {
-            8 => {
-                check_register64!(register1, register2);
-
-                let reg1_value = self.registers_64[register1] as u8;
-                let reg2_value = self.registers_64[register2] as u8;
-
-                if reg1_value <= reg2_value {
-                    self.comparison_flag = Comparison::LessThanOrEqual;
-                }
-                else {
-                    self.comparison_flag = Comparison::GreaterThan;
-                }
-            },
-            16 => {
-                check_register64!(register1, register2);
-
-                let reg1_value = self.registers_64[register1] as u16;
-                let reg2_value = self.registers_64[register2] as u16;
-
-                if reg1_value <= reg2_value {
-                    self.comparison_flag = Comparison::LessThanOrEqual;
-                }
-                else {
-                    self.comparison_flag = Comparison::GreaterThan;
-                }
-            },
-            32 => {
-                check_register64!(register1, register2);
-
-                let reg1_value = self.registers_64[register1] as u32;
-                let reg2_value = self.registers_64[register2] as u32;
-
-                if reg1_value <= reg2_value {
-                    self.comparison_flag = Comparison::LessThanOrEqual;
-                }
-                else {
-                    self.comparison_flag = Comparison::GreaterThan;
-                }
-            },
-            64 => {
-                check_register64!(register1, register2);
-
-                let reg1_value = self.registers_64[register1] as u64;
-                let reg2_value = self.registers_64[register2] as u64;
-
-                if reg1_value <= reg2_value {
-                    self.comparison_flag = Comparison::LessThanOrEqual;
-                }
-                else {
-                    self.comparison_flag = Comparison::GreaterThan;
-                }
-            },
-            128 => {
-                check_register128!(register1, register2);
-
-                let reg1_value = self.registers_128[register1] as u128;
-                let reg2_value = self.registers_128[register2] as u128;
-
-                if reg1_value <= reg2_value {
-                    self.comparison_flag = Comparison::LessThanOrEqual;
-                }
-                else {
-                    self.comparison_flag = Comparison::GreaterThan;
                 }
             },
             _ => return Err(Fault::InvalidSize),
@@ -3416,22 +3409,105 @@ impl MachineCore {
         Ok(())
     }
         
-    fn gequ_opcode(&mut self) -> Result<(),Fault> {
+    fn leqc_opcode(&mut self) -> Result<(),Fault> {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
-        self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
+        let register = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
             8 => {
-                check_register64!(register1, register2);
+                check_register64!(register);
 
-                let reg1_value = self.registers_64[register1] as u8;
-                let reg2_value = self.registers_64[register2] as u8;
+                let reg_value = self.registers_64[register] as u8;
+                let constant = self.get_1_byte() as u8;
+                self.advance_by_1_byte();
 
-                if reg1_value >= reg2_value {
+                if reg_value <= constant {
+                    self.comparison_flag = Comparison::LessThanOrEqual;
+                }
+                else {
+                    self.comparison_flag = Comparison::GreaterThan;
+                }
+            },
+            16 => {
+                check_register64!(register);
+
+                let reg_value = self.registers_64[register] as u16;
+                let constant = self.get_2_bytes() as u16;
+                self.advance_by_2_bytes();
+
+                if reg_value <= constant {
+                    self.comparison_flag = Comparison::LessThanOrEqual;
+                }
+                else {
+                    self.comparison_flag = Comparison::GreaterThan;
+                }
+            },
+            32 => {
+                check_register64!(register);
+
+                let reg_value = self.registers_64[register] as u32;
+                let constant = self.get_4_bytes() as u32;
+                self.advance_by_4_bytes();
+
+                if reg_value <= constant {
+                    self.comparison_flag = Comparison::LessThanOrEqual;
+                }
+                else {
+                    self.comparison_flag = Comparison::GreaterThan;
+                }
+            },
+            64 => {
+                check_register64!(register);
+
+                let reg_value = self.registers_64[register] as u64;
+                let constant = self.get_8_bytes() as u64;
+                self.advance_by_8_bytes();
+
+                if reg_value <= constant {
+                    self.comparison_flag = Comparison::LessThanOrEqual;
+                }
+                else {
+                    self.comparison_flag = Comparison::GreaterThan;
+                }
+            },
+            128 => {
+                check_register128!(register);
+
+                let reg_value = self.registers_128[register] as u128;
+                let constant = self.get_16_bytes() as u128;
+                self.advance_by_16_bytes();
+
+                if reg_value <= constant {
+                    self.comparison_flag = Comparison::LessThanOrEqual;
+                }
+                else {
+                    self.comparison_flag = Comparison::GreaterThan;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+
+        }
+
+        Ok(())
+    }
+        
+    fn geqc_opcode(&mut self) -> Result<(),Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register = (self.program[self.program_counter] as u8) as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            8 => {
+                check_register64!(register);
+
+                let reg_value = self.registers_64[register] as u8;
+                let constant = self.get_1_byte() as u8;
+                self.advance_by_1_byte();
+
+                if reg_value >= constant {
                     self.comparison_flag = Comparison::GreaterThanOrEqual;
                 }
                 else {
@@ -3439,12 +3515,13 @@ impl MachineCore {
                 }
             },
             16 => {
-                check_register64!(register1, register2);
+                check_register64!(register);
 
-                let reg1_value = self.registers_64[register1] as u16;
-                let reg2_value = self.registers_64[register2] as u16;
+                let reg_value = self.registers_64[register] as u16;
+                let constant = self.get_2_bytes() as u16;
+                self.advance_by_2_bytes();
 
-                if reg1_value >= reg2_value {
+                if reg_value >= constant {
                     self.comparison_flag = Comparison::GreaterThanOrEqual;
                 }
                 else {
@@ -3452,12 +3529,13 @@ impl MachineCore {
                 }
             },
             32 => {
-                check_register64!(register1, register2);
+                check_register64!(register);
 
-                let reg1_value = self.registers_64[register1] as u32;
-                let reg2_value = self.registers_64[register2] as u32;
+                let reg_value = self.registers_64[register] as u32;
+                let constant = self.get_4_bytes() as u32;
+                self.advance_by_4_bytes();
 
-                if reg1_value >= reg2_value {
+                if reg_value >= constant {
                     self.comparison_flag = Comparison::GreaterThanOrEqual;
                 }
                 else {
@@ -3465,12 +3543,13 @@ impl MachineCore {
                 }
             },
             64 => {
-                check_register64!(register1, register2);
+                check_register64!(register);
 
-                let reg1_value = self.registers_64[register1] as u64;
-                let reg2_value = self.registers_64[register2] as u64;
+                let reg_value = self.registers_64[register] as u64;
+                let constant = self.get_8_bytes() as u64;
+                self.advance_by_8_bytes();
 
-                if reg1_value >= reg2_value {
+                if reg_value >= constant {
                     self.comparison_flag = Comparison::GreaterThanOrEqual;
                 }
                 else {
@@ -3478,12 +3557,13 @@ impl MachineCore {
                 }
             },
             128 => {
-                check_register128!(register1, register2);
+                check_register128!(register);
 
-                let reg1_value = self.registers_128[register1] as u128;
-                let reg2_value = self.registers_128[register2] as u128;
+                let reg_value = self.registers_128[register] as u128;
+                let constant = self.get_16_bytes() as u128;
+                self.advance_by_16_bytes();
 
-                if reg1_value >= reg2_value {
+                if reg_value >= constant {
                     self.comparison_flag = Comparison::GreaterThanOrEqual;
                 }
                 else {
@@ -4851,7 +4931,7 @@ impl MachineCore {
 
         match int_size {
             8 => {
-                let int_value = self.program[self.program_counter] as i8;
+                let int_value = i8::from_le_bytes((self.registers_64[int_register as usize] as u8).to_le_bytes().try_into().unwrap());
                 
                 let float_value = match float_size {
                     32 => {
@@ -4871,7 +4951,7 @@ impl MachineCore {
 
                 let new_value = (Wrapping(int_value) + Wrapping(float_value)).0;
 
-                self.registers_64[int_register as usize] = new_value as u64;
+                self.registers_64[int_register as usize] = u8::from_le_bytes(new_value.to_le_bytes().try_into().unwrap()) as u64;
 
                 if new_value > int_value {
                     self.overflow_flag = true;
@@ -4881,16 +4961,24 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x8000 == (Wrapping(new_value) + Wrapping(0x8000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if self.registers_64[int_register as usize] as i8 > 0 {
-                    self.sign_flag = Sign::Positive;
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
                 }
                 else {
-                    self.sign_flag = Sign::Negative;
+                    self.odd_flag = true;
                 }
             },
             16 => {
-                let int_value = self.program[self.program_counter] as i16;
+                let int_value = i16::from_le_bytes((self.registers_64[int_register as usize] as u16).to_le_bytes().try_into().unwrap());
                 
                 let float_value = match float_size {
                     32 => {
@@ -4910,7 +4998,7 @@ impl MachineCore {
 
                 let new_value = (Wrapping(int_value) + Wrapping(float_value)).0;
 
-                self.registers_64[int_register as usize] = new_value as u64;
+                self.registers_64[int_register as usize] = u16::from_le_bytes(new_value.to_le_bytes().try_into().unwrap()) as u64;
 
                 if new_value > int_value {
                     self.overflow_flag = true;
@@ -4920,16 +5008,24 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x8000 == (Wrapping(new_value) + Wrapping(0x8000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if self.registers_64[int_register as usize] as i16 > 0 {
-                    self.sign_flag = Sign::Positive;
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
                 }
                 else {
-                    self.sign_flag = Sign::Negative;
+                    self.odd_flag = true;
                 }
             },
             32 => {
-                let int_value = self.program[self.program_counter] as i32;
+                let int_value = i32::from_le_bytes((self.registers_64[int_register as usize] as u32).to_le_bytes().try_into().unwrap());
                 
                 let float_value = match float_size {
                     32 => {
@@ -4949,7 +5045,7 @@ impl MachineCore {
 
                 let new_value = (Wrapping(int_value) + Wrapping(float_value)).0;
 
-                self.registers_64[int_register as usize] = new_value as u64;
+                self.registers_64[int_register as usize] = u32::from_le_bytes(new_value.to_le_bytes().try_into().unwrap()) as u64;
 
                 if new_value > int_value {
                     self.overflow_flag = true;
@@ -4959,16 +5055,24 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80000000 == (Wrapping(new_value) + Wrapping(0x80000000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if self.registers_64[int_register as usize] as i32 > 0 {
-                    self.sign_flag = Sign::Positive;
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
                 }
                 else {
-                    self.sign_flag = Sign::Negative;
+                    self.odd_flag = true;
                 }
             },
             64 => {
-                let int_value = self.program[self.program_counter] as i64;
+                let int_value = i64::from_le_bytes((self.registers_64[int_register as usize] as u64).to_le_bytes().try_into().unwrap());
                 
                 let float_value = match float_size {
                     32 => {
@@ -4988,7 +5092,7 @@ impl MachineCore {
 
                 let new_value = (Wrapping(int_value) + Wrapping(float_value)).0;
 
-                self.registers_64[int_register as usize] = new_value as u64;
+                self.registers_64[int_register as usize] = u64::from_le_bytes(new_value.to_le_bytes().try_into().unwrap());
 
                 if new_value > int_value {
                     self.overflow_flag = true;
@@ -4998,12 +5102,20 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ 0x80000000 == (Wrapping(new_value) + Wrapping(0x80000000)).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if self.registers_64[int_register as usize] > 0 {
-                    self.sign_flag = Sign::Positive;
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
                 }
                 else {
-                    self.sign_flag = Sign::Negative;
+                    self.odd_flag = true;
                 }
             },
             128 => {
@@ -5065,7 +5177,7 @@ impl MachineCore {
 
         match int_size {
             8 => {
-                let int_value = self.program[self.program_counter] as i8;
+                let int_value = i8::from_le_bytes((self.registers_64[int_register as usize] as u8).to_le_bytes().try_into().unwrap());
                 
                 let float_value = match float_size {
                     32 => {
@@ -5085,7 +5197,7 @@ impl MachineCore {
 
                 let new_value = (Wrapping(int_value) - Wrapping(float_value)).0;
 
-                self.registers_64[int_register as usize] = new_value as u64;
+                self.registers_64[int_register as usize] = u8::from_le_bytes(new_value.to_le_bytes().try_into().unwrap()) as u64;
 
                 if new_value > int_value {
                     self.overflow_flag = true;
@@ -5104,7 +5216,7 @@ impl MachineCore {
                 }
             },
             16 => {
-                let int_value = self.program[self.program_counter] as i16;
+                let int_value = i16::from_le_bytes((self.registers_64[int_register as usize] as u16).to_le_bytes().try_into().unwrap());
                 
                 let float_value = match float_size {
                     32 => {
@@ -5124,7 +5236,7 @@ impl MachineCore {
 
                 let new_value = (Wrapping(int_value) - Wrapping(float_value)).0;
 
-                self.registers_64[int_register as usize] = new_value as u64;
+                self.registers_64[int_register as usize] = u16::from_le_bytes(new_value.to_le_bytes().try_into().unwrap()) as u64;
 
                 if new_value > int_value {
                     self.overflow_flag = true;
@@ -5143,7 +5255,7 @@ impl MachineCore {
                 }
             },
             32 => {
-                let int_value = self.program[self.program_counter] as i32;
+                let int_value = i32::from_le_bytes((self.registers_64[int_register as usize] as u32).to_le_bytes().try_into().unwrap());
                 
                 let float_value = match float_size {
                     32 => {
@@ -5163,7 +5275,7 @@ impl MachineCore {
 
                 let new_value = (Wrapping(int_value) - Wrapping(float_value)).0;
 
-                self.registers_64[int_register as usize] = new_value as u64;
+                self.registers_64[int_register as usize] = u32::from_le_bytes(new_value.to_le_bytes().try_into().unwrap()) as u64;
 
                 if new_value > int_value {
                     self.overflow_flag = true;
@@ -5182,7 +5294,7 @@ impl MachineCore {
                 }
             },
             64 => {
-                let int_value = self.program[self.program_counter] as i64;
+                let int_value = i64::from_le_bytes(self.registers_64[int_register as usize].to_le_bytes().try_into().unwrap());
                 
                 let float_value = match float_size {
                     32 => {
@@ -5221,7 +5333,7 @@ impl MachineCore {
                 }
             },
             128 => {
-                let int_value = self.program[self.program_counter] as i128;
+                let int_value = i128::from_le_bytes(self.registers_128[int_register as usize].to_le_bytes().try_into().unwrap());
                 
                 let float_value = match float_size {
                     32 => {
@@ -5279,7 +5391,7 @@ impl MachineCore {
 
         match int_size {
             8 => {
-                let int_value = self.program[self.program_counter] as i8;
+                let int_value = i8::from_le_bytes((self.registers_64[int_register as usize] as u8).to_le_bytes().try_into().unwrap());
                 
                 let float_value = match float_size {
                     32 => {
@@ -5299,7 +5411,7 @@ impl MachineCore {
 
                 let new_value = (Wrapping(int_value) * Wrapping(float_value)).0;
 
-                self.registers_64[int_register as usize] = new_value as u64;
+                self.registers_64[int_register as usize] = u8::from_le_bytes(new_value.to_le_bytes().try_into().unwrap()) as u64;
 
                 if new_value > int_value {
                     self.overflow_flag = true;
@@ -5318,7 +5430,7 @@ impl MachineCore {
                 }
             },
             16 => {
-                let int_value = self.program[self.program_counter] as i16;
+                let int_value = i16::from_le_bytes((self.registers_64[int_register as usize] as u16).to_le_bytes().try_into().unwrap());
                 
                 let float_value = match float_size {
                     32 => {
@@ -5338,7 +5450,7 @@ impl MachineCore {
 
                 let new_value = (Wrapping(int_value) * Wrapping(float_value)).0;
 
-                self.registers_64[int_register as usize] = new_value as u64;
+                self.registers_64[int_register as usize] = u16::from_le_bytes(new_value.to_le_bytes().try_into().unwrap()) as u64;
 
                 if new_value > int_value {
                     self.overflow_flag = true;
@@ -5357,7 +5469,7 @@ impl MachineCore {
                 }
             },
             32 => {
-                let int_value = self.program[self.program_counter] as i32;
+                let int_value = i32::from_le_bytes((self.registers_64[int_register as usize] as u32).to_le_bytes().try_into().unwrap());
                 
                 let float_value = match float_size {
                     32 => {
@@ -5377,7 +5489,7 @@ impl MachineCore {
 
                 let new_value = (Wrapping(int_value) * Wrapping(float_value)).0;
 
-                self.registers_64[int_register as usize] = new_value as u64;
+                self.registers_64[int_register as usize] = u32::from_le_bytes(new_value.to_le_bytes().try_into().unwrap()) as u64;
 
                 if new_value > int_value {
                     self.overflow_flag = true;
@@ -5396,7 +5508,7 @@ impl MachineCore {
                 }
             },
             64 => {
-                let int_value = self.program[self.program_counter] as i64;
+                let int_value = i64::from_le_bytes(self.registers_64[int_register as usize].to_le_bytes().try_into().unwrap());
                 
                 let float_value = match float_size {
                     32 => {
@@ -5435,7 +5547,7 @@ impl MachineCore {
                 }
             },
             128 => {
-                let int_value = self.program[self.program_counter] as i128;
+                let int_value = i128::from_le_bytes(self.registers_128[int_register as usize].to_le_bytes().try_into().unwrap());
                 
                 let float_value = match float_size {
                     32 => {
@@ -5493,7 +5605,7 @@ impl MachineCore {
 
         match int_size {
             8 => {
-                let int_value = self.program[self.program_counter] as i8;
+                let int_value = i8::from_le_bytes((self.registers_64[int_register as usize] as u8).to_le_bytes().try_into().unwrap());
                 
                 let float_value = match float_size {
                     32 => {
@@ -5518,7 +5630,7 @@ impl MachineCore {
 
                 let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
 
-                self.registers_64[int_register as usize] = new_value as u64;
+                self.registers_64[int_register as usize] = u8::from_le_bytes(new_value.to_le_bytes().try_into().unwrap()) as u64;
 
                 if new_value > int_value {
                     self.overflow_flag = true;
@@ -5537,7 +5649,7 @@ impl MachineCore {
                 }
             },
             16 => {
-                let int_value = self.program[self.program_counter] as i16;
+                let int_value = i16::from_le_bytes((self.registers_64[int_register as usize] as u16).to_le_bytes().try_into().unwrap());
                 
                 let float_value = match float_size {
                     32 => {
@@ -5562,7 +5674,7 @@ impl MachineCore {
 
                 let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
 
-                self.registers_64[int_register as usize] = new_value as u64;
+                self.registers_64[int_register as usize] = u16::from_le_bytes(new_value.to_le_bytes().try_into().unwrap()) as u64;
 
                 if new_value > int_value {
                     self.overflow_flag = true;
@@ -5581,7 +5693,7 @@ impl MachineCore {
                 }
             },
             32 => {
-                let int_value = self.program[self.program_counter] as i32;
+                let int_value = i32::from_le_bytes((self.registers_64[int_register as usize] as u32).to_le_bytes().try_into().unwrap());
                 
                 let float_value = match float_size {
                     32 => {
@@ -5606,7 +5718,7 @@ impl MachineCore {
 
                 let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
 
-                self.registers_64[int_register as usize] = new_value as u64;
+                self.registers_64[int_register as usize] = u32::from_le_bytes(new_value.to_le_bytes().try_into().unwrap()) as u64;
 
                 if new_value > int_value {
                     self.overflow_flag = true;
@@ -5625,7 +5737,7 @@ impl MachineCore {
                 }
             },
             64 => {
-                let int_value = self.program[self.program_counter] as i64;
+                let int_value = i64::from_le_bytes((self.registers_64[int_register as usize] as u64).to_le_bytes().try_into().unwrap());
                 
                 let float_value = match float_size {
                     32 => {
@@ -5650,7 +5762,7 @@ impl MachineCore {
 
                 let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
 
-                self.registers_64[int_register as usize] = new_value as u64;
+                self.registers_64[int_register as usize] = u64::from_le_bytes(new_value.to_le_bytes().try_into().unwrap());
 
                 if new_value > int_value {
                     self.overflow_flag = true;
@@ -5669,7 +5781,7 @@ impl MachineCore {
                 }
             },
             128 => {
-                let int_value = self.program[self.program_counter] as i128;
+                let int_value = i128::from_le_bytes((self.registers_64[int_register as usize] as u128).to_le_bytes().try_into().unwrap());
                 
                 let float_value = match float_size {
                     32 => {
@@ -5694,7 +5806,7 @@ impl MachineCore {
 
                 let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
 
-                self.registers_64[int_register as usize] = new_value as u64;
+                self.registers_128[int_register as usize] = u128::from_le_bytes(new_value.to_le_bytes().try_into().unwrap());
 
                 if new_value > int_value {
                     self.overflow_flag = true;
@@ -5718,888 +5830,6 @@ impl MachineCore {
         }
         Ok(())
     }
-        
-    fn adduf_opcode(&mut self) -> SimpleResult {
-        let int_size = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-        let float_size = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-        let int_register = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-        let float_register = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-
-        check_register64!(int_register as usize);
-
-        match int_size {
-            8 => {
-                let int_value = self.program[self.program_counter] as u8;
-                
-                let float_value = match float_size {
-                    32 => {
-                        check_registerF32!(float_register as usize);
-
-                        self.registers_f32[float_register as usize] as u8
-                    },
-                    64 => {
-                        check_registerF64!(float_register as usize);
-
-                        self.registers_f64[float_register as usize] as u8
-                    },
-                    _ => return Err(Fault::InvalidSize),
-
-                };
-
-
-                let new_value = (Wrapping(int_value) + Wrapping(float_value)).0;
-
-                self.registers_64[int_register as usize] = new_value as u64;
-
-                if new_value > int_value {
-                    self.overflow_flag = true;
-                }
-                if self.registers_64[int_register as usize] as u8 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if self.registers_64[int_register as usize] as u8 > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
-                }
-            },
-            16 => {
-                let int_value = self.program[self.program_counter] as u16;
-                
-                let float_value = match float_size {
-                    32 => {
-                        check_registerF32!(float_register as usize);
-
-                        self.registers_f32[float_register as usize] as u16
-                    },
-                    64 => {
-                        check_registerF64!(float_register as usize);
-
-                        self.registers_f64[float_register as usize] as u16
-                    },
-                    _ => return Err(Fault::InvalidSize),
-
-                };
-
-
-                let new_value = (Wrapping(int_value) + Wrapping(float_value)).0;
-
-                self.registers_64[int_register as usize] = new_value as u64;
-
-                if new_value > int_value {
-                    self.overflow_flag = true;
-                }
-                if self.registers_64[int_register as usize] as u16 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if self.registers_64[int_register as usize] as u16 > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
-                }
-            },
-            32 => {
-                let int_value = self.program[self.program_counter] as u32;
-                
-                let float_value = match float_size {
-                    32 => {
-                        check_registerF32!(float_register as usize);
-
-                        self.registers_f32[float_register as usize] as u32
-                    },
-                    64 => {
-                        check_registerF64!(float_register as usize);
-
-                        self.registers_f64[float_register as usize] as u32
-                    },
-                    _ => return Err(Fault::InvalidSize),
-
-                };
-
-
-                let new_value = (Wrapping(int_value) + Wrapping(float_value)).0;
-
-                self.registers_64[int_register as usize] = new_value as u64;
-
-                if new_value > int_value {
-                    self.overflow_flag = true;
-                }
-                if self.registers_64[int_register as usize] as u32 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if self.registers_64[int_register as usize] as u32 > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
-                }
-            },
-            64 => {
-                let int_value = self.program[self.program_counter] as u64;
-                
-                let float_value = match float_size {
-                    32 => {
-                        check_registerF32!(float_register as usize);
-
-                        self.registers_f32[float_register as usize] as u64
-                    },
-                    64 => {
-                        check_registerF64!(float_register as usize);
-
-                        self.registers_f64[float_register as usize] as u64
-                    },
-                    _ => return Err(Fault::InvalidSize),
-
-                };
-
-
-                let new_value = (Wrapping(int_value) + Wrapping(float_value)).0;
-
-                self.registers_64[int_register as usize] = new_value as u64;
-
-                if new_value > int_value {
-                    self.overflow_flag = true;
-                }
-                if self.registers_64[int_register as usize] == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if self.registers_64[int_register as usize] > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
-                }
-            },
-            128 => {
-                let int_value = self.program[self.program_counter] as u128;
-                
-                let float_value = match float_size {
-                    32 => {
-                        check_registerF32!(float_register as usize);
-
-                        self.registers_f32[float_register as usize] as u128
-                    },
-                    64 => {
-                        check_registerF64!(float_register as usize);
-
-                        self.registers_f64[float_register as usize] as u128
-                    },
-                    _ => return Err(Fault::InvalidSize),
-
-                };
-
-                let new_value = (Wrapping(int_value) + Wrapping(float_value)).0;
-
-                self.registers_128[int_register as usize] = new_value as u128;
-
-                if new_value > int_value {
-                    self.overflow_flag = true;
-                }
-                if self.registers_128[int_register as usize] == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if self.registers_128[int_register as usize] > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
-                }
-            },
-            _ => return Err(Fault::InvalidSize),
-            
-
-        }
-        Ok(())
-    }
-
-    fn subuf_opcode(&mut self) -> SimpleResult {
-        let int_size = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-        let float_size = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-        let int_register = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-        let float_register = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-
-        check_register64!(int_register as usize);
-
-        match int_size {
-            8 => {
-                let int_value = self.program[self.program_counter] as u8;
-                
-                let float_value = match float_size {
-                    32 => {
-                        check_registerF32!(float_register as usize);
-
-                        self.registers_f32[float_register as usize] as u8
-                    },
-                    64 => {
-                        check_registerF64!(float_register as usize);
-
-                        self.registers_f64[float_register as usize] as u8
-                    },
-                    _ => return Err(Fault::InvalidSize),
-
-                };
-
-
-                let new_value = (Wrapping(int_value) - Wrapping(float_value)).0;
-
-                self.registers_64[int_register as usize] = new_value as u64;
-
-                if new_value > int_value {
-                    self.overflow_flag = true;
-                }
-                if self.registers_64[int_register as usize] as u8 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if self.registers_64[int_register as usize] as u8 > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
-                }
-            },
-            16 => {
-                let int_value = self.program[self.program_counter] as u16;
-                
-                let float_value = match float_size {
-                    32 => {
-                        check_registerF32!(float_register as usize);
-
-                        self.registers_f32[float_register as usize] as u16
-                    },
-                    64 => {
-                        check_registerF64!(float_register as usize);
-
-                        self.registers_f64[float_register as usize] as u16
-                    },
-                    _ => return Err(Fault::InvalidSize),
-
-                };
-
-
-                let new_value = (Wrapping(int_value) - Wrapping(float_value)).0;
-
-                self.registers_64[int_register as usize] = new_value as u64;
-
-                if new_value > int_value {
-                    self.overflow_flag = true;
-                }
-                if self.registers_64[int_register as usize] as u16 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if self.registers_64[int_register as usize] as u16 > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
-                }
-            },
-            32 => {
-                let int_value = self.program[self.program_counter] as u32;
-                
-                let float_value = match float_size {
-                    32 => {
-                        check_registerF32!(float_register as usize);
-
-                        self.registers_f32[float_register as usize] as u32
-                    },
-                    64 => {
-                        check_registerF64!(float_register as usize);
-
-                        self.registers_f64[float_register as usize] as u32
-                    },
-                    _ => return Err(Fault::InvalidSize),
-
-                };
-
-
-                let new_value = (Wrapping(int_value) - Wrapping(float_value)).0;
-
-                self.registers_64[int_register as usize] = new_value as u64;
-
-                if new_value > int_value {
-                    self.overflow_flag = true;
-                }
-                if self.registers_64[int_register as usize] as u32 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if self.registers_64[int_register as usize] as u32 > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
-                }
-            },
-            64 => {
-                let int_value = self.program[self.program_counter] as u64;
-                
-                let float_value = match float_size {
-                    32 => {
-                        check_registerF32!(float_register as usize);
-
-                        self.registers_f32[float_register as usize] as u64
-                    },
-                    64 => {
-                        check_registerF64!(float_register as usize);
-
-                        self.registers_f64[float_register as usize] as u64
-                    },
-                    _ => return Err(Fault::InvalidSize),
-
-                };
-
-
-                let new_value = (Wrapping(int_value) - Wrapping(float_value)).0;
-
-                self.registers_64[int_register as usize] = new_value as u64;
-
-                if new_value > int_value {
-                    self.overflow_flag = true;
-                }
-                if self.registers_64[int_register as usize] == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if self.registers_64[int_register as usize] > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
-                }
-            },
-            128 => {
-                let int_value = self.program[self.program_counter] as u128;
-                
-                let float_value = match float_size {
-                    32 => {
-                        check_registerF32!(float_register as usize);
-
-                        self.registers_f32[float_register as usize] as u128
-                    },
-                    64 => {
-                        check_registerF64!(float_register as usize);
-
-                        self.registers_f64[float_register as usize] as u128
-                    },
-                    _ => return Err(Fault::InvalidSize),
-
-                };
-
-                let new_value = (Wrapping(int_value) - Wrapping(float_value)).0;
-
-                self.registers_128[int_register as usize] = new_value as u128;
-
-                if new_value > int_value {
-                    self.overflow_flag = true;
-                }
-                if self.registers_128[int_register as usize] == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if self.registers_128[int_register as usize] > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
-                }
-            },
-            _ => return Err(Fault::InvalidSize),
-            
-
-        }
-        Ok(())
-    }
-
-    fn muluf_opcode(&mut self) -> SimpleResult {
-        let int_size = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-        let float_size = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-        let int_register = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-        let float_register = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-
-        check_register64!(int_register as usize);
-
-        match int_size {
-            8 => {
-                let int_value = self.program[self.program_counter] as u8;
-                
-                let float_value = match float_size {
-                    32 => {
-                        check_registerF32!(float_register as usize);
-
-                        self.registers_f32[float_register as usize] as u8
-                    },
-                    64 => {
-                        check_registerF64!(float_register as usize);
-
-                        self.registers_f64[float_register as usize] as u8
-                    },
-                    _ => return Err(Fault::InvalidSize),
-
-                };
-
-
-                let new_value = (Wrapping(int_value) * Wrapping(float_value)).0;
-
-                self.registers_64[int_register as usize] = new_value as u64;
-
-                if new_value > int_value {
-                    self.overflow_flag = true;
-                }
-                if self.registers_64[int_register as usize] as u8 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if self.registers_64[int_register as usize] as u8 > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
-                }
-            },
-            16 => {
-                let int_value = self.program[self.program_counter] as u16;
-                
-                let float_value = match float_size {
-                    32 => {
-                        check_registerF32!(float_register as usize);
-
-                        self.registers_f32[float_register as usize] as u16
-                    },
-                    64 => {
-                        check_registerF64!(float_register as usize);
-
-                        self.registers_f64[float_register as usize] as u16
-                    },
-                    _ => return Err(Fault::InvalidSize),
-
-                };
-
-
-                let new_value = (Wrapping(int_value) * Wrapping(float_value)).0;
-
-                self.registers_64[int_register as usize] = new_value as u64;
-
-                if new_value > int_value {
-                    self.overflow_flag = true;
-                }
-                if self.registers_64[int_register as usize] as u16 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if self.registers_64[int_register as usize] as u16 > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
-                }
-            },
-            32 => {
-                let int_value = self.program[self.program_counter] as u32;
-                
-                let float_value = match float_size {
-                    32 => {
-                        check_registerF32!(float_register as usize);
-
-                        self.registers_f32[float_register as usize] as u32
-                    },
-                    64 => {
-                        check_registerF64!(float_register as usize);
-
-                        self.registers_f64[float_register as usize] as u32
-                    },
-                    _ => return Err(Fault::InvalidSize),
-
-                };
-
-
-                let new_value = (Wrapping(int_value) * Wrapping(float_value)).0;
-
-                self.registers_64[int_register as usize] = new_value as u64;
-
-                if new_value > int_value {
-                    self.overflow_flag = true;
-                }
-                if self.registers_64[int_register as usize] as u32 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if self.registers_64[int_register as usize] as u32 > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
-                }
-            },
-            64 => {
-                let int_value = self.program[self.program_counter] as u64;
-                
-                let float_value = match float_size {
-                    32 => {
-                        check_registerF32!(float_register as usize);
-
-                        self.registers_f32[float_register as usize] as u64
-                    },
-                    64 => {
-                        check_registerF64!(float_register as usize);
-
-                        self.registers_f64[float_register as usize] as u64
-                    },
-                    _ => return Err(Fault::InvalidSize),
-
-                };
-
-
-                let new_value = (Wrapping(int_value) * Wrapping(float_value)).0;
-
-                self.registers_64[int_register as usize] = new_value as u64;
-
-                if new_value > int_value {
-                    self.overflow_flag = true;
-                }
-                if self.registers_64[int_register as usize] == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if self.registers_64[int_register as usize] > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
-                }
-            },
-            128 => {
-                let int_value = self.program[self.program_counter] as u128;
-                
-                let float_value = match float_size {
-                    32 => {
-                        check_registerF32!(float_register as usize);
-
-                        self.registers_f32[float_register as usize] as u128
-                    },
-                    64 => {
-                        check_registerF64!(float_register as usize);
-
-                        self.registers_f64[float_register as usize] as u128
-                    },
-                    _ => return Err(Fault::InvalidSize),
-
-                };
-
-                let new_value = (Wrapping(int_value) * Wrapping(float_value)).0;
-
-                self.registers_128[int_register as usize] = new_value as u128;
-
-                if new_value > int_value {
-                    self.overflow_flag = true;
-                }
-                if self.registers_128[int_register as usize] == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if self.registers_128[int_register as usize] > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
-                }
-            },
-            _ => return Err(Fault::InvalidSize),
-            
-
-        }
-        Ok(())
-    }
-
-    fn divuf_opcode(&mut self) -> SimpleResult {
-        let int_size = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-        let float_size = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-        let int_register = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-        let float_register = self.program[self.program_counter] as u8;
-        self.advance_by_1_byte();
-
-        check_register64!(int_register as usize);
-
-        match int_size {
-            8 => {
-                let int_value = self.program[self.program_counter] as u8;
-                
-                let float_value = match float_size {
-                    32 => {
-                        check_registerF32!(float_register as usize);
-
-                        self.registers_f32[float_register as usize] as u8
-                    },
-                    64 => {
-                        check_registerF64!(float_register as usize);
-
-                        self.registers_f64[float_register as usize] as u8
-                    },
-                    _ => return Err(Fault::InvalidSize),
-
-                };
-
-                if float_value == 0 {
-                    return Err(Fault::DivideByZero);
-                }
-
-                self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
-
-                let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
-
-                self.registers_64[int_register as usize] = new_value as u64;
-
-                if new_value > int_value {
-                    self.overflow_flag = true;
-                }
-                if self.registers_64[int_register as usize] as u8 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if self.registers_64[int_register as usize] as u8 > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
-                }
-            },
-            16 => {
-                let int_value = self.program[self.program_counter] as u16;
-                
-                let float_value = match float_size {
-                    32 => {
-                        check_registerF32!(float_register as usize);
-
-                        self.registers_f32[float_register as usize] as u16
-                    },
-                    64 => {
-                        check_registerF64!(float_register as usize);
-
-                        self.registers_f64[float_register as usize] as u16
-                    },
-                    _ => return Err(Fault::InvalidSize),
-
-                };
-
-                if float_value == 0 {
-                    return Err(Fault::DivideByZero);
-                }
-
-                self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
-
-                let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
-
-                self.registers_64[int_register as usize] = new_value as u64;
-
-                if new_value > int_value {
-                    self.overflow_flag = true;
-                }
-                if self.registers_64[int_register as usize] as u16 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if self.registers_64[int_register as usize] as u16 > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
-                }
-            },
-            32 => {
-                let int_value = self.program[self.program_counter] as u32;
-                
-                let float_value = match float_size {
-                    32 => {
-                        check_registerF32!(float_register as usize);
-
-                        self.registers_f32[float_register as usize] as u32
-                    },
-                    64 => {
-                        check_registerF64!(float_register as usize);
-
-                        self.registers_f64[float_register as usize] as u32
-                    },
-                    _ => return Err(Fault::InvalidSize),
-
-                };
-
-                if float_value == 0 {
-                    return Err(Fault::DivideByZero);
-                }
-
-                self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
-
-                let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
-
-                self.registers_64[int_register as usize] = new_value as u64;
-
-                if new_value > int_value {
-                    self.overflow_flag = true;
-                }
-                if self.registers_64[int_register as usize] as u32 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if self.registers_64[int_register as usize] as u32 > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
-                }
-            },
-            64 => {
-                let int_value = self.program[self.program_counter] as u64;
-                
-                let float_value = match float_size {
-                    32 => {
-                        check_registerF32!(float_register as usize);
-
-                        self.registers_f32[float_register as usize] as u64
-                    },
-                    64 => {
-                        check_registerF64!(float_register as usize);
-
-                        self.registers_f64[float_register as usize] as u64
-                    },
-                    _ => return Err(Fault::InvalidSize),
-
-                };
-
-                if float_value == 0 {
-                    return Err(Fault::DivideByZero);
-                }
-
-                self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
-
-                let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
-
-                self.registers_64[int_register as usize] = new_value as u64;
-
-                if new_value > int_value {
-                    self.overflow_flag = true;
-                }
-                if self.registers_64[int_register as usize] == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if self.registers_64[int_register as usize] > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
-                }
-            },
-            128 => {
-                let int_value = self.program[self.program_counter] as u128;
-                
-                let float_value = match float_size {
-                    32 => {
-                        check_registerF32!(float_register as usize);
-
-                        self.registers_f32[float_register as usize] as u128
-                    },
-                    64 => {
-                        check_registerF64!(float_register as usize);
-
-                        self.registers_f64[float_register as usize] as u128
-                    },
-                    _ => return Err(Fault::InvalidSize),
-
-                };
-
-                if float_value == 0 {
-                    return Err(Fault::DivideByZero);
-                }
-                self.remainder_128 = (Wrapping(int_value) % Wrapping(float_value)).0 as u128;
-
-                let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
-
-                self.registers_64[int_register as usize] = new_value as u64;
-
-                if new_value > int_value {
-                    self.overflow_flag = true;
-                }
-                if self.registers_128[int_register as usize] == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if self.registers_128[int_register as usize] > 0 {
-                    self.sign_flag = Sign::Positive;
-                }
-                else {
-                    self.sign_flag = Sign::Negative;
-                }
-            },
-            _ => return Err(Fault::InvalidSize),
-            
-
-        }
-        Ok(())
-    }
-
 
     fn setf_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as usize;
