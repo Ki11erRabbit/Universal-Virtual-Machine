@@ -6847,15 +6847,17 @@ impl MachineCore {
     fn neqfc_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.program[self.program_counter] as usize;
-        self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as usize;
+        let register = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         match size {
             32 => {
-                check_registerF32!(register1, register2);
-                if self.registers_f32[register1] != self.registers_f32[register2] {
+                check_registerF32!(register);
+
+                let constant = f32::from_le_bytes(self.get_4_bytes().to_le_bytes().try_into().unwrap());
+                self.advance_by_4_bytes();
+
+                if self.registers_f32[register] != constant {
                     self.comparison_flag = Comparison::NotEqual
                 }
                 else {
@@ -6863,9 +6865,13 @@ impl MachineCore {
                 }
             },
             64 => {
-                check_registerF64!(register1, register2);
-                if self.registers_f64[register1] != self.registers_f64[register2] {
-                    self.comparison_flag = Comparison::NotEqual;
+                check_registerF64!(register);
+
+                let constant = f64::from_le_bytes(self.get_8_bytes().to_le_bytes().try_into().unwrap());
+                self.advance_by_8_bytes();
+
+                if self.registers_f64[register] != constant {
+                    self.comparison_flag = Comparison::NotEqual
                 }
                 else {
                     self.comparison_flag = Comparison::Equal;
@@ -6880,15 +6886,17 @@ impl MachineCore {
     fn ltfc_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.program[self.program_counter] as usize;
-        self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as usize;
+        let register = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         match size {
             32 => {
-                check_registerF32!(register1, register2);
-                if self.registers_f32[register1] < self.registers_f32[register2] {
+                check_registerF32!(register);
+
+                let constant = f32::from_le_bytes(self.get_4_bytes().to_le_bytes().try_into().unwrap());
+                self.advance_by_4_bytes();
+
+                if self.registers_f32[register] < constant {
                     self.comparison_flag = Comparison::LessThan;
                 }
                 else {
@@ -6896,8 +6904,12 @@ impl MachineCore {
                 }
             },
             64 => {
-                check_registerF64!(register1, register2);
-                if self.registers_f64[register1] < self.registers_f64[register2] {
+                check_registerF64!(register);
+
+                let constant = f64::from_le_bytes(self.get_8_bytes().to_le_bytes().try_into().unwrap());
+                self.advance_by_8_bytes();
+
+                if self.registers_f64[register] < constant {
                     self.comparison_flag = Comparison::LessThan;
                 }
                 else {
@@ -6913,15 +6925,17 @@ impl MachineCore {
     fn gtfc_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.program[self.program_counter] as usize;
-        self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as usize;
+        let register = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         match size {
             32 => {
-                check_registerF32!(register1, register2);
-                if self.registers_f32[register1] > self.registers_f32[register2] {
+                check_registerF32!(register);
+
+                let constant = f32::from_le_bytes(self.get_4_bytes().to_le_bytes().try_into().unwrap());
+                self.advance_by_4_bytes();
+
+                if self.registers_f32[register] > constant {
                     self.comparison_flag = Comparison::GreaterThan;
                 }
                 else {
@@ -6929,8 +6943,12 @@ impl MachineCore {
                 }
             },
             64 => {
-                check_registerF64!(register1, register2);
-                if self.registers_f64[register1] > self.registers_f64[register2] {
+                check_registerF64!(register);
+
+                let constant = f64::from_le_bytes(self.get_8_bytes().to_le_bytes().try_into().unwrap());
+                self.advance_by_8_bytes();
+
+                if self.registers_f64[register] > constant {
                     self.comparison_flag = Comparison::GreaterThan;
                 }
                 else {
@@ -6946,15 +6964,17 @@ impl MachineCore {
     fn leqfc_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.program[self.program_counter] as usize;
-        self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as usize;
+        let register = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         match size {
             32 => {
-                check_registerF32!(register1, register2);
-                if self.registers_f32[register1] <= self.registers_f32[register2] {
+                check_registerF32!(register);
+
+                let constant = f32::from_le_bytes(self.get_4_bytes().to_le_bytes().try_into().unwrap());
+                self.advance_by_4_bytes();
+
+                if self.registers_f32[register] <= constant {
                     self.comparison_flag = Comparison::LessThanOrEqual;
                 }
                 else {
@@ -6962,8 +6982,12 @@ impl MachineCore {
                 }
             },
             64 => {
-                check_registerF64!(register1, register2);
-                if self.registers_f64[register1] <= self.registers_f64[register2] {
+                check_registerF64!(register);
+
+                let constant = f64::from_le_bytes(self.get_8_bytes().to_le_bytes().try_into().unwrap());
+                self.advance_by_8_bytes();
+
+                if self.registers_f64[register] <= constant {
                     self.comparison_flag = Comparison::LessThanOrEqual;
                 }
                 else {
@@ -6979,15 +7003,17 @@ impl MachineCore {
     fn geqfc_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.program[self.program_counter] as usize;
-        self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as usize;
+        let register = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         match size {
             32 => {
-                check_registerF32!(register1, register2);
-                if self.registers_f32[register1] >= self.registers_f32[register2] {
+                check_registerF32!(register);
+
+                let constant = f32::from_le_bytes(self.get_4_bytes().to_le_bytes().try_into().unwrap());
+                self.advance_by_4_bytes();
+
+                if self.registers_f32[register] >= constant {
                     self.comparison_flag = Comparison::GreaterThanOrEqual;
                 }
                 else {
@@ -6995,8 +7021,12 @@ impl MachineCore {
                 }
             },
             64 => {
-                check_registerF64!(register1, register2);
-                if self.registers_f64[register1] >= self.registers_f64[register2] {
+                check_registerF64!(register);
+
+                let constant = f64::from_le_bytes(self.get_8_bytes().to_le_bytes().try_into().unwrap());
+                self.advance_by_8_bytes();
+
+                if self.registers_f64[register] >= constant {
                     self.comparison_flag = Comparison::GreaterThanOrEqual;
                 }
                 else {
