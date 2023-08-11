@@ -5879,56 +5879,12 @@ impl MachineCore {
         self.advance_by_8_bytes();
         match size {
             32 => {
-                loop {
-                    match self.memory.try_read() {
-                        Ok(memory) => {
-                            if address >= memory.len() as u64 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            let mut bytes = 0.0f32.to_ne_bytes();
-                            bytes[0] = memory[address as usize];
-                            bytes[1] = memory[address as usize + 1];
-                            bytes[2] = memory[address as usize + 2];
-                            bytes[3] = memory[address as usize + 3];
-
-                            self.registers_f32[register] = f32::from_ne_bytes(bytes);
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => {
-                            continue;
-                        },
-                        Err(_) => return Err(Fault::CorruptedMemory),
-                    }
-
-                }
+                check_registerF32!(register as usize);
+                self.registers_f32[register] = f32::from_le_bytes(self.get_from_memory(address, 4)?.try_into().unwrap());
             }
             64 => {
-                loop {
-                    match self.memory.try_read() {
-                        Ok(memory) => {
-                            if address >= memory.len() as u64 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            let mut bytes = 0.0f64.to_ne_bytes();
-                            bytes[0] = memory[address as usize];
-                            bytes[1] = memory[address as usize + 1];
-                            bytes[2] = memory[address as usize + 2];
-                            bytes[3] = memory[address as usize + 3];
-                            bytes[4] = memory[address as usize + 4];
-                            bytes[5] = memory[address as usize + 5];
-                            bytes[6] = memory[address as usize + 6];
-                            bytes[7] = memory[address as usize + 7];
-
-                            self.registers_f64[register] = f64::from_ne_bytes(bytes);
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => {
-                            continue;
-                        },
-                        Err(_) => return Err(Fault::CorruptedMemory),
-                    }
-
-                }
+                check_registerF64!(register as usize);
+                self.registers_f64[register] = f64::from_le_bytes(self.get_from_memory(address, 8)?.try_into().unwrap());
             }
             _ => return Err(Fault::InvalidSize),
         }
@@ -5945,58 +5901,20 @@ impl MachineCore {
                 check_registerF32!(register as usize);
                 let address = self.program[self.program_counter] as u64;
                 self.advance_by_8_bytes();
-                loop {
-                    match self.memory.try_write() {
-                        Ok(mut memory) => {
-                            if address >= memory.len() as u64 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            let float_bytes = self.registers_f32[register as usize].to_ne_bytes();
-                            memory[address as usize] = float_bytes[0];
-                            memory[address as usize + 1] = float_bytes[1];
-                            memory[address as usize + 2] = float_bytes[2];
-                            memory[address as usize + 3] = float_bytes[3];
-                            
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => {
-                            thread::yield_now();
-                            continue;
-                        },
-                        Err(_) => return Err(Fault::CorruptedMemory),
-                    }
-                }
+
+                let bytes = self.registers_f32[register].to_le_bytes();
+
+                self.write_to_memory(address, &bytes)?;
 
             },
             64 => {
                 check_registerF64!(register as usize);
                 let address = self.program[self.program_counter] as u64;
                 self.advance_by_8_bytes();
-                loop {
-                    match self.memory.try_write() {
-                        Ok(mut memory) => {
-                            if address >= memory.len() as u64 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            let float_bytes = self.registers_f64[register as usize].to_ne_bytes();
-                            memory[address as usize] = float_bytes[0];
-                            memory[address as usize + 1] = float_bytes[1];
-                            memory[address as usize + 2] = float_bytes[2];
-                            memory[address as usize + 3] = float_bytes[3];
-                            memory[address as usize + 4] = float_bytes[4];
-                            memory[address as usize + 5] = float_bytes[5];
-                            memory[address as usize + 6] = float_bytes[6];
-                            memory[address as usize + 7] = float_bytes[7];
-                            
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => {
-                            thread::yield_now();
-                            continue;
-                        },
-                        Err(_) => return Err(Fault::CorruptedMemory),
-                    }
-                }
+
+                let bytes = self.registers_f64[register].to_le_bytes();
+
+                self.write_to_memory(address, &bytes)?;
             },
             _ => return Err(Fault::InvalidSize),
 
@@ -6026,57 +5944,17 @@ impl MachineCore {
         match size {
             32 => {
                 check_registerF32!(register);
-                loop {
-                    match self.memory.try_read() {
-                        Ok(memory) => {
-                            if address >= memory.len() as u64 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            let mut bytes = 0.0f32.to_ne_bytes();
-                            bytes[0] = memory[address as usize];
-                            bytes[1] = memory[address as usize + 1];
-                            bytes[2] = memory[address as usize + 2];
-                            bytes[3] = memory[address as usize + 3];
 
-                            self.registers_f32[register] = f32::from_ne_bytes(bytes);
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => {
-                            continue;
-                        },
-                        Err(_) => return Err(Fault::CorruptedMemory),
-                    }
+                let bytes = self.get_from_memory(address, 4)?.try_into().unwrap();
 
-                }
+                self.registers_f32[register] = f32::from_le_bytes(bytes);
             },
             64 => {
                 check_registerF64!(register);
-                loop {
-                    match self.memory.try_read() {
-                        Ok(memory) => {
-                            if address >= memory.len() as u64 {
-                                return Err(Fault::InvalidAddress(address));
-                            }
-                            let mut bytes = 0.0f64.to_ne_bytes();
-                            bytes[0] = memory[address as usize];
-                            bytes[1] = memory[address as usize + 1];
-                            bytes[2] = memory[address as usize + 2];
-                            bytes[3] = memory[address as usize + 3];
-                            bytes[4] = memory[address as usize + 4];
-                            bytes[5] = memory[address as usize + 5];
-                            bytes[6] = memory[address as usize + 6];
-                            bytes[7] = memory[address as usize + 7];
 
-                            self.registers_f64[register] = f64::from_ne_bytes(bytes);
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => {
-                            continue;
-                        },
-                        Err(_) => return Err(Fault::CorruptedMemory),
-                    }
+                let bytes = self.get_from_memory(address, 8)?.try_into().unwrap();
 
-                }
+                self.registers_f64[register] = f64::from_le_bytes(bytes);
             },
             _ => {
                 return Err(Fault::InvalidSize);
@@ -6600,6 +6478,537 @@ impl MachineCore {
 
         Ok(())
     }
+
+    fn addfc_opcode(&mut self) -> SimpleResult {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register);
+
+                let constant = f32::from_le_bytes(self.get_4_bytes().to_le_bytes().try_into().unwrap());
+                self.advance_by_4_bytes();
+                
+                self.registers_f32[register] += constant;
+
+                if self.registers_f32[register].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f32[register].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f32[register] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                    if self.registers_f32[register] < 0.0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
+                }
+            },
+            64 => {
+                check_registerF64!(register);
+
+                let constant = f64::from_le_bytes(self.get_8_bytes().to_le_bytes().try_into().unwrap());
+                self.advance_by_8_bytes();
+                
+                self.registers_f64[register] += constant;
+
+                if self.registers_f64[register].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f64[register].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f64[register] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                    if self.registers_f64[register] < 0.0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+
+    fn subfc_opcode(&mut self) -> SimpleResult {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register);
+
+                let constant = f32::from_le_bytes(self.get_4_bytes().to_le_bytes().try_into().unwrap());
+                self.advance_by_4_bytes();
+                
+                self.registers_f32[register] -= constant;
+
+                if self.registers_f32[register].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f32[register].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f32[register] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                    if self.registers_f32[register] < 0.0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
+                }
+            },
+            64 => {
+                check_registerF64!(register);
+
+                let constant = f64::from_le_bytes(self.get_8_bytes().to_le_bytes().try_into().unwrap());
+                self.advance_by_8_bytes();
+                
+                self.registers_f64[register] -= constant;
+
+                if self.registers_f64[register].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f64[register].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f64[register] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                    if self.registers_f64[register] < 0.0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+        
+    fn mulfc_opcode(&mut self) -> SimpleResult {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register);
+
+                let constant = f32::from_le_bytes(self.get_4_bytes().to_le_bytes().try_into().unwrap());
+                self.advance_by_4_bytes();
+                
+                self.registers_f32[register] *= constant;
+
+                if self.registers_f32[register].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f32[register].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f32[register] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                    if self.registers_f32[register] < 0.0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
+                }
+            },
+            64 => {
+                check_registerF64!(register);
+
+                let constant = f64::from_le_bytes(self.get_8_bytes().to_le_bytes().try_into().unwrap());
+                self.advance_by_8_bytes();
+                
+                self.registers_f64[register] *= constant;
+
+                if self.registers_f64[register].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f64[register].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f64[register] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                    if self.registers_f64[register] < 0.0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+
+
+    fn divfc_opcode(&mut self) -> SimpleResult {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register);
+
+                let constant = f32::from_le_bytes(self.get_4_bytes().to_le_bytes().try_into().unwrap());
+                self.advance_by_4_bytes();
+
+                if constant == 0.0 {
+                    return Err(Fault::DivideByZero);
+                }
+                
+                self.registers_f32[register] /= constant;
+
+                if self.registers_f32[register].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f32[register].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f32[register] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                    if self.registers_f32[register] < 0.0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
+                }
+            },
+            64 => {
+                check_registerF64!(register);
+
+                let constant = f64::from_le_bytes(self.get_8_bytes().to_le_bytes().try_into().unwrap());
+                self.advance_by_8_bytes();
+
+                if constant == 0.0 {
+                    return Err(Fault::DivideByZero);
+                }
+                
+                self.registers_f64[register] /= constant;
+
+                if self.registers_f64[register].is_nan() {
+                    self.nan_flag = true;
+                }
+                else {
+                    self.nan_flag = false;
+                }
+                if self.registers_f64[register].is_infinite() {
+                    self.infinity_flag = true;
+                }
+                else {
+                    self.infinity_flag = false;
+                }
+                if self.registers_f64[register] == 0.0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                    if self.registers_f64[register] < 0.0 {
+                        self.sign_flag = Sign::Negative;
+                    }
+                    else {
+                        self.sign_flag = Sign::Positive;
+                    }
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+
+
+    fn eqfc_opcode(&mut self) -> SimpleResult {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register);
+
+                let constant = f32::from_le_bytes(self.get_4_bytes().to_le_bytes().try_into().unwrap());
+                self.advance_by_4_bytes();
+                
+                if self.registers_f32[register] == constant {
+                    self.comparison_flag = Comparison::Equal;
+                }
+                else {
+                    self.comparison_flag = Comparison::NotEqual;
+                }
+            },
+            64 => {
+                check_registerF64!(register);
+
+                let constant = f64::from_le_bytes(self.get_8_bytes().to_le_bytes().try_into().unwrap());
+                self.advance_by_8_bytes();
+                
+                if self.registers_f64[register] == constant {
+                    self.comparison_flag = Comparison::Equal;
+                }
+                else {
+                    self.comparison_flag = Comparison::NotEqual;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+
+    fn neqfc_opcode(&mut self) -> SimpleResult {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let register2 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register1, register2);
+                if self.registers_f32[register1] != self.registers_f32[register2] {
+                    self.comparison_flag = Comparison::NotEqual
+                }
+                else {
+                    self.comparison_flag = Comparison::Equal;
+                }
+            },
+            64 => {
+                check_registerF64!(register1, register2);
+                if self.registers_f64[register1] != self.registers_f64[register2] {
+                    self.comparison_flag = Comparison::NotEqual;
+                }
+                else {
+                    self.comparison_flag = Comparison::Equal;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+
+    fn ltfc_opcode(&mut self) -> SimpleResult {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let register2 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register1, register2);
+                if self.registers_f32[register1] < self.registers_f32[register2] {
+                    self.comparison_flag = Comparison::LessThan;
+                }
+                else {
+                    self.comparison_flag = Comparison::GreaterThanOrEqual;
+                }
+            },
+            64 => {
+                check_registerF64!(register1, register2);
+                if self.registers_f64[register1] < self.registers_f64[register2] {
+                    self.comparison_flag = Comparison::LessThan;
+                }
+                else {
+                    self.comparison_flag = Comparison::GreaterThanOrEqual;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+
+    fn gtfc_opcode(&mut self) -> SimpleResult {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let register2 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register1, register2);
+                if self.registers_f32[register1] > self.registers_f32[register2] {
+                    self.comparison_flag = Comparison::GreaterThan;
+                }
+                else {
+                    self.comparison_flag = Comparison::LessThanOrEqual;
+                }
+            },
+            64 => {
+                check_registerF64!(register1, register2);
+                if self.registers_f64[register1] > self.registers_f64[register2] {
+                    self.comparison_flag = Comparison::GreaterThan;
+                }
+                else {
+                    self.comparison_flag = Comparison::LessThanOrEqual;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+
+    fn leqfc_opcode(&mut self) -> SimpleResult {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let register2 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register1, register2);
+                if self.registers_f32[register1] <= self.registers_f32[register2] {
+                    self.comparison_flag = Comparison::LessThanOrEqual;
+                }
+                else {
+                    self.comparison_flag = Comparison::GreaterThan;
+                }
+            },
+            64 => {
+                check_registerF64!(register1, register2);
+                if self.registers_f64[register1] <= self.registers_f64[register2] {
+                    self.comparison_flag = Comparison::LessThanOrEqual;
+                }
+                else {
+                    self.comparison_flag = Comparison::GreaterThan;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+
+    fn geqfc_opcode(&mut self) -> SimpleResult {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register1 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+        let register2 = self.program[self.program_counter] as usize;
+        self.advance_by_1_byte();
+
+        match size {
+            32 => {
+                check_registerF32!(register1, register2);
+                if self.registers_f32[register1] >= self.registers_f32[register2] {
+                    self.comparison_flag = Comparison::GreaterThanOrEqual;
+                }
+                else {
+                    self.comparison_flag = Comparison::LessThan;
+                }
+            },
+            64 => {
+                check_registerF64!(register1, register2);
+                if self.registers_f64[register1] >= self.registers_f64[register2] {
+                    self.comparison_flag = Comparison::GreaterThanOrEqual;
+                }
+                else {
+                    self.comparison_flag = Comparison::LessThan;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+
+        Ok(())
+    }
+
 
     fn jump_opcode(&mut self) -> SimpleResult {
         let line = self.program[self.program_counter] as usize;
