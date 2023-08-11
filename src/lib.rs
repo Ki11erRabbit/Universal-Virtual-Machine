@@ -86,6 +86,9 @@ pub enum Message {
     ForeignFunction(ForeignFunctionArg, ForeignFunction),// Returns function and its arguments
     /// Signal to initiate garbage collection
     CollectGarbage,
+    StackPointer(Pointer),
+    StackPointers(Vec<Pointer>),
+    RetryMessage(Box<Message>),
 }
 
 impl fmt::Debug for Message {
@@ -115,6 +118,9 @@ impl fmt::Debug for Message {
             Message::GetForeignFunction(address) => write!(f, "GetForeignFunction({})", address),
             Message::ForeignFunction(_, _) => write!(f, "ForeignFunction"),
             Message::CollectGarbage => write!(f, "CollectGarbage"),
+            Message::StackPointer(pointer) => write!(f, "StackPointer({})", pointer),
+            Message::StackPointers(pointers) => write!(f, "StackPointers({:?})", pointers),
+            Message::RetryMessage(message) => write!(f, "RetryMessage({:?})", message),
         }
     }
 }
@@ -244,9 +250,11 @@ pub trait RegCore: Core {
 pub trait GarbageCollectorCore: Core + Collector {}
 
 pub trait Collector {
-    fn add_stack(&mut self, stack: Box<[Byte]>, size: usize, offset: usize);
+    fn add_stack(&mut self, stack: Box<[Byte]>, offset: usize);
 
-    fn add_memory(&mut self, memory: Arc<RwLock<Memory>>);
+    fn add_heap(&mut self, memory: Arc<RwLock<Memory>>);
+
+    fn add_data_segment(&mut self, data: Arc<Vec<Byte>>);
 }
 
 pub trait ReadWrite: Read + Write {}

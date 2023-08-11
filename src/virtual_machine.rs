@@ -352,12 +352,24 @@ impl Machine {
                 let time = time.as_mut().unwrap();
                 if time.elapsed().as_secs() >= Duration::from_secs(self.options.gc_time.unwrap() * 60).as_secs() {
                     let message = Message::CollectGarbage;
+                    let mut stack_pointers = Vec::new();
 
                     for pair in self.channels.borrow().iter() {
-                        if let Some((sender, _)) = pair {
+                        if let Some((sender, reciever)) = pair {
                             sender.send(message.clone()).unwrap();
+                            loop {
+                                match reciever.recv().unwrap() {
+                                    Message::StackPointer(stack_pointer) => {
+                                        stack_pointers.push(stack_pointer);
+                                        break;
+                                    },
+                                    msg => sender.send(Message::RetryMessage(Box::new(msg))).unwrap(),
+                                }
+                            }
                         }
                     }
+
+                    let message = Message::StackPointers(stack_pointers);
                     
                     self.gc_channels.as_ref().unwrap().0.send(message).unwrap();
 

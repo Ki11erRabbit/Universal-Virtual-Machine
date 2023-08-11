@@ -447,13 +447,23 @@ impl MachineCore {
             reg_memory.extend_from_slice(&reg.to_le_bytes());
         }
         self.push_stack(&reg_memory);
-        let message = self.recv_message()?;
 
-        match message {
-            Message::Success => {},
-            _ => return Err(Fault::MachineCrash("Could not prepare for collection")),
+        let message = Message::StackPointer(self.stack.get_stack_pointer() as Pointer);
+
+        self.send_message(message)?;
+        
+        let mut message = self.recv_message()?;
+
+        loop {
+            match message {
+                Message::Success => break,
+                Message::RetryMessage(msg) => {
+                    self.send_message(*msg)?;
+                    message = self.recv_message()?;
+                },
+                _ => return Err(Fault::MachineCrash("Could not prepare for collection")),
+            }
         }
-
         self.pop_stack(reg_memory.len() * 8);
         
         Ok(())

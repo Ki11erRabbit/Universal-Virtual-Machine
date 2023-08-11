@@ -73,12 +73,17 @@ impl Core for GarbageCollector {
 
 impl Collector for GarbageCollector {
 
-    fn add_stacks(&mut self, stacks: Arc<RwLock<Vec<Option<Arc<RwLock<Vec<Byte>>>>>>>) {
-        self.stacks = stacks;
+    fn add_stack(&mut self, stack: Box<[Byte]>, offset_size: usize) {
+        self.stack = stack;
+        self.stack_offset_size = offset_size;
     }
 
-    fn add_memory(&mut self, memory: Arc<RwLock<Memory>>) {
-        self.memory = memory;
+    fn add_heap(&mut self, memory: Arc<RwLock<Memory>>) {
+        self.heap = memory;
+    }
+
+    fn add_data_segment(&mut self, data:  Arc<Vec<Byte>>) {
+        self.data_segment = data;
     }
 }
 
@@ -88,9 +93,10 @@ impl GarbageCollectorCore for GarbageCollector {}
 pub struct GarbageCollector {
     /// This, with the Core trait, should allow us to do C style inheritance.
     core: MachineCore,
-    /// A vector of stacks, this is so that we can have access to the stacks of the core.
-    stacks: Arc<RwLock<Vec<Option<Arc<RwLock<Vec<Byte>>>>>>>,
-    memory: Arc<RwLock<Memory>>,
+    data_segment: Arc<Vec<Byte>>,
+    stack: Box<[Byte]>,
+    stack_offset_size: usize,
+    heap: Arc<RwLock<Memory>>,
     found_ptrs: HashMap<Pointer, bool>,
     found_flag: bool,
 }
@@ -99,8 +105,10 @@ impl GarbageCollector {
     pub fn new() -> Self {
         Self {
             core: MachineCore::new(),
-            stacks: Arc::new(RwLock::new(Vec::new())),
-            memory: Arc::new(RwLock::new(Memory::new())),
+            data_segment: Arc::new(Vec::new()),
+            stack: Box::new([]),
+            stack_offset_size: 0,
+            heap: Arc::new(RwLock::new(Memory::new())),
             found_ptrs: HashMap::new(),
             found_flag: true,
         }
@@ -110,8 +118,10 @@ impl GarbageCollector {
 
         let message = self.recv_message()?;
 
+        let stack_pointers;
+
         match message {
-            Message::CollectGarbage => (),
+            Message::StackPointers(pointers) => {stack_pointers = pointers;},
             _ => return Ok(true),
         }
         
@@ -121,50 +131,12 @@ impl GarbageCollector {
 
         let mut memory;
 
-        loop {
-            match self.memory.try_write() {
-                Ok(mem) => {
-                    memory = mem;
-                    break;
-                },
-                Err(TryLockError::WouldBlock) => continue,
-                Err(_) => panic!("Poisoned lock."),
-            }
-        }
 
         let memory_len;
-
-        loop {
-            match memory.memory.try_read() {
-                Ok(mem) => {
-                    memory_len = mem.len();
-                    break;
-                }
-                Err(TryLockError::WouldBlock) => continue,
-                Err(_) => panic!("Poisoned lock."),
-            }
-
-        }
 
         for (ptr, _) in memory.allocated_blocks.iter() {
             self.found_ptrs.insert(*ptr, !self.found_flag);
         }
-
-
-        let stacks = self.stacks.read().expect("Could not read from stacks.")
-            .iter()
-            .filter(|stack| stack.is_some())
-            .map(|stack| {
-                loop {
-                    match stack.as_ref().unwrap().try_read() {
-                        Ok(stack) => break stack.clone(),
-                        Err(TryLockError::WouldBlock) => continue,
-                        Err(_) => panic!("Poisoned lock."),
-                    }
-                }
-            })
-            .collect::<Vec<_>>();
-
         
         const POINTER_SIZE: usize = 8;
         const NULL_OFFSET: usize = 1;
