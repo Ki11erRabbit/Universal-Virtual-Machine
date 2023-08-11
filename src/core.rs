@@ -113,13 +113,72 @@ pub enum Comparison {
 /// The use of the enum is so that we don't have to worry about the added runtime cost of
 /// protecting the stack when we don't need to.
 #[derive(Debug)]
-pub enum Stack {
-    /// This is the non-garbage collected stack
-    Regular(Vec<Byte>),
-    /// This is the garbage collected stack
-    /// We use a RwLock so that we can continue execution while the garbage collector is running.
-    /// This way, we only block the core when it is trying to write to the stack.
-    GarbageCollected(Arc<RwLock<Vec<Byte>>>),
+pub struct Stack {
+    buffer: *mut Byte,
+    size: usize,
+    offset: usize,
+    stack_pointer: usize,
+}
+
+impl Stack {
+    pub fn new() -> Stack {
+        Stack {
+            buffer: std::ptr::null_mut(),
+            size: 0,
+            offset: 0,
+            stack_pointer: 0,
+        }
+    }
+
+    pub fn set_buffer(&mut self, buffer: *mut Byte, size: usize, offset: usize) {
+        self.buffer = buffer;
+        self.size = size;
+        self.offset = offset;
+    }
+
+    pub fn get_offset(&self) -> usize {
+        self.offset
+    }
+
+    pub fn get_size(&self) -> usize {
+        self.size
+    }
+
+    pub fn get_stack_pointer(&self) -> usize {
+        self.stack_pointer
+    }
+
+    pub fn get_bytes(&self, start: usize, size: usize) -> &[Byte] {
+        unsafe {
+            std::slice::from_raw_parts(self.buffer.offset(start as isize), size)
+        }
+    }
+
+    pub fn write_bytes(&mut self, start: usize, bytes: &[Byte]) {
+        unsafe {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), self.buffer.offset(start as isize), bytes.len());
+        }
+    }
+
+    pub fn push(&mut self, bytes: &[Byte]) -> Result<(),Fault> {
+        if self.stack_pointer + bytes.len() > self.size {
+            return Err(Fault::StackOverflow);
+        }
+
+        self.write_bytes(self.stack_pointer, bytes);
+        self.stack_pointer += bytes.len();
+        Ok(())
+    }
+
+    pub fn pop(&mut self, size: usize) -> Result<Vec<Byte>,Fault> {
+        if self.stack_pointer < size {
+            return Err(Fault::StackUnderflow);
+        }
+
+        self.stack_pointer -= size;
+        Ok(self.get_bytes(self.stack_pointer, size).to_vec())
+    }
+    
 }
 
 impl fmt::Debug for MachineCore {
@@ -129,7 +188,6 @@ impl fmt::Debug for MachineCore {
         write!(f, "    registers_128: {:?}\n", self.registers_128)?;
         write!(f, "    registers_f32: {:?}\n", self.registers_f32)?;
         write!(f, "    registers_f64: {:?}\n", self.registers_f64)?;
-        write!(f, "    registers_atomic_64: {:?}\n", self.registers_atomic_64)?;
         write!(f, "    comparison_flag: {:?}\n", self.comparison_flag)?;
         write!(f, "    odd_flag: {:?}\n", self.odd_flag)?;
         write!(f, "    zero_flag: {:?}\n", self.zero_flag)?;
@@ -157,8 +215,6 @@ pub struct MachineCore {
     pub registers_f32: [f32; REGISTER_F32_COUNT],
     /// 64-bit floating point registers
     pub registers_f64: [f64; REGISTER_F64_COUNT],
-    /// 64-bit atomic registers
-    pub registers_atomic_64: [AtomicU64; REGISTER_ATOMIC_64_COUNT],
     /* flags */
     /// The comparison flag
     /// This flag is set when a comparison instruction is executed
@@ -189,14 +245,17 @@ pub struct MachineCore {
     pub remainder_128: u128,
     /// The program counter
     pub program_counter: usize,
+    /// The program
+    pub program: Arc<Vec<Byte>>,
+    /// The data segment
+    /// This part of memory ir read-only
+    pub data_segment: Arc<Vec<Byte>>,
     /// The stack
     /// The stack is always local to the core in order to prevent slowdowns from locking memory
     pub stack: Stack,
-    /// The program
-    pub program: Arc<Vec<Byte>>,
-    /// The memory
-    /// This is a reference to the memory of the machine and is shared between all cores
-    pub memory: Arc<RwLock<Vec<Byte>>>,
+    /// The heap
+    /// This is a reference to the heap that is shared between all cores
+    pub heap: Arc<RwLock<Vec<Byte>>>,
     /// The send channel
     /// This is a channel that is used to send messages to the machine's event loop.
     pub send_channel: Option<Sender<Message>>,
@@ -342,25 +401,17 @@ impl Core for MachineCore {
 }
 
 impl RegCore for MachineCore {
-    fn add_memory(&mut self, memory: Arc<RwLock<Vec<Byte>>>) {
-        self.memory = memory;
-    }
-    
-    fn set_gc(&mut self, garbage_collection: bool) {
-        match garbage_collection {
-            true => self.stack = Stack::GarbageCollected(Arc::new(RwLock::new(vec![0]))),
-            false => self.stack = Stack::Regular(vec![0]),
-        }
+    fn add_heap(&mut self, memory: Arc<RwLock<Vec<Byte>>>) {
+        self.heap = memory;
     }
 
-    fn get_stack(&self) -> Arc<RwLock<Vec<Byte>>> {
-        match &self.stack {
-            Stack::Regular(stack) => panic!("Cannot get stack from regular stack"),
-            Stack::GarbageCollected(stack) => stack.clone(),
-        }
+    fn add_data_segment(&mut self, data: Arc<Vec<Byte>>) {
+        self.data_segment = data;
     }
 
-
+    fn add_stack(&mut self, stack: *mut Byte, offset: usize, size: usize) {
+        self.stack.set_buffer(stack, size, offset);
+    }
 }
     
 impl MachineCore {
@@ -370,7 +421,6 @@ impl MachineCore {
             registers_128: [0; 8],
             registers_f32: [0.0; 8],
             registers_f64: [0.0; 8],
-            registers_atomic_64: from_fn(|_| AtomicU64::new(0)),
             remainder_64: 0,
             remainder_128: 0,
             comparison_flag: Comparison::None,
@@ -381,9 +431,10 @@ impl MachineCore {
             infinity_flag: false,
             nan_flag: false,
             program_counter: 0,
-            stack: Stack::Regular(vec![0]),
             program: Arc::new(Vec::new()),
-            memory: Arc::new(RwLock::new(Vec::new())),
+            data_segment: Arc::new(Vec::new()),
+            stack: Stack::new(),
+            heap: Arc::new(RwLock::new(Vec::new())),
             send_channel: None,
             recv_channel: None,
             threads: HashSet::new(),
@@ -408,12 +459,14 @@ impl MachineCore {
         Ok(())
     }
 
-    /// Convenience function for getting the bytes of a string from memory
-    fn get_string(&mut self, address: Pointer, size: u64) -> CoreResult<Vec<u8>> {
+    fn get_heap(&mut self, address: Pointer, size: u64) -> CoreResult<Vec<u8>> {
         loop {
-            match self.memory.try_read() {
-                Ok(memory) => {
-                    return Ok(memory[address as usize..address as usize + size as usize].to_vec());
+            match self.heap.try_read() {
+                Ok(heap) => {
+                    if address + size > heap.len() as u64 {
+                        return Err(Fault::SegmentationFault);
+                    }
+                    return Ok(heap[address as usize..(address + size) as usize].to_vec());
                 },
                 Err(TryLockError::WouldBlock) => {
                     thread::yield_now();
@@ -425,154 +478,135 @@ impl MachineCore {
         }
     }
 
-    /// Convenience function for getting the size of the stack.
-    fn stack_len(&self) -> CoreResult<usize> {
-        match self.stack {
-            Stack::Regular(ref stack) => Ok(stack.len()),
-            Stack::GarbageCollected(ref stack) => loop {
-                match stack.try_read() {
-                    Ok(stack) => return Ok(stack.len()),
-                    Err(TryLockError::WouldBlock) => thread::yield_now(),
-                    Err(TryLockError::Poisoned(_)) => return Err(Fault::CorruptedMemory),
+    pub fn get_from_memory(&mut self, address: Pointer, size: u64) -> CoreResult<Vec<u8>> {
+        let data_segment_size = self.data_segment.len() as u64;
+        let stack_size = self.stack.get_size() as u64;
+        let heap_size;
+
+        loop {
+            match self.heap.try_read() {
+                Ok(heap) => {
+                    heap_size = heap.len() as u64;
+                    break;
+                },
+                Err(TryLockError::WouldBlock) => {
+                    thread::yield_now();
+                },
+                Err(TryLockError::Poisoned(_)) => {
+                    return Err(Fault::CorruptedMemory);
                 }
-            },
+            }
         }
         
-    }
+        let mem_size = data_segment_size + stack_size + heap_size;
 
-    /// Convenience function for writing bytes to the stack.
-    fn write_bytes_to_stack(&mut self, address: Pointer, size: u64, value: &[Byte]) -> SimpleResult {
-        match self.stack {
-            Stack::Regular(ref mut stack) => {
-                if address + size <= stack.len() as u64 {
-                    stack[address as usize..address as usize + size as usize].copy_from_slice(value);
-                    Ok(())
-                } else {
-                    Err(Fault::InvalidAddress(address))
-                }
-            },
-            Stack::GarbageCollected(ref mut stack) => {
-                loop {
-                    match stack.try_write() {
-                        Ok(mut stack) => {
-                            if address + size <= stack.len() as u64 {
-                                stack[address as usize..address as usize + size as usize].copy_from_slice(value);
-                                break;
-                            } else {
-                                return Err(Fault::StackOverflow);
-                            }
-                        },
-                        Err(TryLockError::WouldBlock) => {
-                            thread::yield_now();
-                        },
-                        Err(_) => {
-                            return Err(Fault::CorruptedMemory);
-                        }
-                    }
-                }
-                Ok(())
-            }
+        if address + size > mem_size {
+            return Err(Fault::SegmentationFault);
+        }
+
+        if address < data_segment_size {
+            return Ok(self.data_segment[address as usize..address as usize + size as usize].to_vec());
+        } else if address < data_segment_size + stack_size {
+            let real_address = address - data_segment_size;
+            return Ok(self.stack.get_bytes(real_address as usize, size as usize).to_vec());
+        } else {
+            let real_address = address - data_segment_size - stack_size;
+            return self.get_heap(real_address, size);
         }
     }
 
-    /// Convenience function for reading bytes from the stack.
-    fn read_bytes_from_stack(&mut self, address: Pointer, size: u64, bytes: &mut [Byte]) -> SimpleResult {
-        match self.stack {
-            Stack::Regular(ref stack) => {
-                if address + size <= stack.len() as u64 {
-                    bytes.copy_from_slice(&stack[address as usize..address as usize + size as usize]);
-                    Ok(())
-                } else {
-                    Err(Fault::InvalidAddress(address))
-                }
-            },
-            Stack::GarbageCollected(ref stack) => {
-                loop {
-                    match stack.try_read() {
-                        Ok(stack) => {
-                            if address + size <= stack.len() as u64 {
-                                bytes.copy_from_slice(&stack[address as usize..address as usize + size as usize]);
-                                break;
-                            } else {
-                                return Err(Fault::StackOverflow);
-                            }
-                        },
-                        Err(TryLockError::WouldBlock) => {
-                            thread::yield_now();
-                        },
-                        Err(_) => {
-                            return Err(Fault::CorruptedMemory);
-                        }
+    fn write_to_heap(&mut self, address: Pointer, bytes: &[Byte]) -> SimpleResult {
+        loop {
+            match self.heap.try_write() {
+                Ok(mut heap) => {
+                    if address + bytes.len() as u64 > heap.len() as u64 {
+                        return Err(Fault::SegmentationFault);
                     }
+                    //Verify that this works
+                    heap[address as usize..(address + bytes.len() as u64) as usize].copy_from_slice(bytes);
+                    return Ok(());
+                },
+                Err(TryLockError::WouldBlock) => {
+                    thread::yield_now();
+                },
+                Err(TryLockError::Poisoned(_)) => {
+                    return Err(Fault::CorruptedMemory);
                 }
-                Ok(())
             }
         }
+
     }
+
+    pub fn write_to_memory(&mut self, address: Pointer, bytes: &[Byte]) -> SimpleResult {
+        let data_segment_size = self.data_segment.len() as u64;
+        let stack_size = self.stack.get_size() as u64;
+        let heap_size;
+
+        loop {
+            match self.heap.try_read() {
+                Ok(heap) => {
+                    heap_size = heap.len() as u64;
+                    break;
+                },
+                Err(TryLockError::WouldBlock) => {
+                    thread::yield_now();
+                },
+                Err(TryLockError::Poisoned(_)) => {
+                    return Err(Fault::CorruptedMemory);
+                }
+            }
+        }
+        
+        let mem_size = data_segment_size + stack_size + heap_size;
+
+        if address + bytes.len() as u64 > mem_size {
+            return Err(Fault::SegmentationFault);
+        }
+
+        if address < data_segment_size {
+            return Err(Fault::SegmentationFault);
+        } else if address < data_segment_size + stack_size {
+            let real_address = address - data_segment_size;
+            self.stack.write_bytes(real_address as usize, bytes);
+        } else {
+            let real_address = address - data_segment_size - stack_size;
+            let mut heap = self.heap.write().unwrap();
+            heap[real_address as usize..real_address as usize + bytes.len()].copy_from_slice(bytes);
+        }
+        Ok(())
+    }
+
+    /// Convenience function for getting the bytes of a string from memory
+    fn get_string(&mut self, address: Pointer, size: u64) -> CoreResult<Vec<u8>> {
+        self.get_from_memory(address, size)
+    }
+
+    /// Convenience function for getting the size of the stack.
+    fn stack_len(&self) -> usize {
+        self.stack.get_size()
+    }
+
+
 
     /// Convenience function for pushing a value to the stack
-    fn push_stack(&mut self,value: &[Byte]) {
-
-        match self.stack {
-            Stack::Regular(ref mut stack) => {
-                stack.extend_from_slice(value);
-            },
-            Stack::GarbageCollected(ref mut stack) => {
-                loop {
-                    match stack.try_write() {
-                        Ok(mut stack) => {
-                            stack.extend_from_slice(value);
-                            break;
-                        },
-                        Err(TryLockError::WouldBlock) => {
-                            thread::yield_now();
-                        },
-                        Err(TryLockError::Poisoned(_)) => {
-                            panic!("Garbage collection lock poisoned");
-                        }
-                    }
-                }
-            }
+    fn push_stack(&mut self,value: &[Byte]) -> SimpleResult {
+        if value.len() + self.stack.get_size() > self.stack.get_size() {
+            return Err(Fault::StackOverflow);
         }
+
+        self.stack.push(value)
     }
 
     /// Convenience function for popping a value from the stack
+    /// size is in bits
     fn pop_stack(&mut self, size: usize) -> CoreResult<Vec<Byte>> {
         let size = size / 8;
-        match self.stack {
-            Stack::Regular(ref mut stack) => {
-                if stack.len() < size as usize {
-                    return Err(Fault::StackUnderflow);
-                }
-                let mut value = Vec::with_capacity(size as usize);
-                for _ in 0..size {
-                    value.insert(0,stack.pop().unwrap());
-                }
-                Ok(value)
-            },
-            Stack::GarbageCollected(ref mut stack) => {
-                loop {
-                    match stack.try_write() {
-                        Ok(mut stack) => {
-                            if stack.len() < size as usize {
-                                return Err(Fault::StackUnderflow);
-                            }
-                            let mut value = Vec::with_capacity(size as usize);
-                            for _ in 0..size {
-                                value.insert(0,stack.pop().unwrap());
-                            }
-                            return Ok(value);
-                        },
-                        Err(TryLockError::WouldBlock) => {
-                            thread::yield_now();
-                        },
-                        Err(TryLockError::Poisoned(_)) => {
-                            panic!("Garbage collection lock poisoned");
-                        }
-                    }
-                }
-            }
+
+        if size > self.stack_len() {
+            return Err(Fault::StackUnderflow);
         }
+
+        self.stack.pop(size)
     }
 
     #[inline]
@@ -650,26 +684,26 @@ impl MachineCore {
             DeRef => self.deref_opcode()?,
             Move => self.move_opcode()?,
             DeRefReg => self.derefreg_opcode()?,
-            AddI => self.addi_opcode()?,
-            SubI => self.subi_opcode()?,
-            MulI => self.muli_opcode()?,
-            DivI => self.divi_opcode()?,
-            EqI => self.eqi_opcode()?,
-            NeqI => self.neqi_opcode()?,
-            LtI => self.lti_opcode()?,
-            GtI => self.gti_opcode()?,
-            LeqI => self.leqi_opcode()?,
-            GeqI => self.geqi_opcode()?,
-            AddU => self.addu_opcode()?,
-            SubU => self.subu_opcode()?,
-            MulU => self.mulu_opcode()?,
-            DivU => self.divu_opcode()?,
-            EqU => self.equ_opcode()?,
-            NeqU => self.nequ_opcode()?,
-            LtU => self.ltu_opcode()?,
-            GtU => self.gtu_opcode()?,
-            LeqU => self.lequ_opcode()?,
-            GeqU => self.gequ_opcode()?,
+            Add => self.add_opcode()?,
+            Sub => self.sub_opcode()?,
+            Mul => self.mul_opcode()?,
+            Div => self.div_opcode()?,
+            Eq => self.eq_opcode()?,
+            Neq => self.neq_opcode()?,
+            Lt => self.lt_opcode()?,
+            Gt => self.gt_opcode()?,
+            Leq => self.leq_opcode()?,
+            Geq => self.geq_opcode()?,
+            AddC => self.addc_opcode()?,
+            SubC => self.subc_opcode()?,
+            MulC => self.mulc_opcode()?,
+            DivC => self.divc_opcode()?,
+            EqC => self.eqc_opcode()?,
+            NeqC => self.neqc_opcode()?,
+            LtC => self.ltc_opcode()?,
+            GtC => self.gtc_opcode()?,
+            LeqC => self.leqc_opcode()?,
+            GeqC => self.geqc_opcode()?,
             WriteByte => self.writebyte_opcode()?,
             Write => self.write_opcode()?,
             Flush => self.flush_opcode()?,
@@ -689,10 +723,6 @@ impl MachineCore {
             SubIF => self.subif_opcode()?,
             MulIF => self.mulif_opcode()?,
             DivIF => self.divif_opcode()?,
-            AddUF => self.adduf_opcode()?,
-            SubUF => self.subuf_opcode()?,
-            MulUF => self.muluf_opcode()?,
-            DivUF => self.divuf_opcode()?,
             DeRefRegF => self.derefregf_opcode()?,
             DeRefF => self.dereff_opcode()?,
             MoveF => self.movef_opcode()?,
@@ -707,6 +737,16 @@ impl MachineCore {
             GtF => self.gtf_opcode()?,
             LeqF => self.leqf_opcode()?,
             GeqF => self.geqf_opcode()?,
+            AddFC => self.addfc_opcode()?,
+            SubFC => self.subfc_opcode()?,
+            MulFC => self.mulfc_opcode()?,
+            DivFC => self.divfc_opcode()?,
+            EqFC => self.eqfc_opcode()?,
+            NeqFC => self.neqfc_opcode()?,
+            LtFC => self.ltfc_opcode()?,
+            GtFC => self.gtfc_opcode()?,
+            LeqFC => self.leqfc_opcode()?,
+            GeqFC => self.geqfc_opcode()?,
             Jump => self.jump_opcode()?,
             JumpEq => self.jumpeq_opcode()?,
             JumpNeq => self.jumpneq_opcode()?,
@@ -738,12 +778,6 @@ impl MachineCore {
             Push => self.push_opcode()?,
             PopF => self.popf_opcode()?,
             PushF => self.pushf_opcode()?,
-            DeRefRegStack => self.derefregstack_opcode()?,
-            DeRefStack => self.derefstack_opcode()?,
-            MoveStack => self.movestack_opcode()?,
-            DeRefRegStackF => self.derefregstackf_opcode()?,
-            DeRefStackF => self.derefstackf_opcode()?,
-            MoveStackF => self.movestackf_opcode()?,
             RegMove => self.regmove_opcode()?,
             RegMoveF => self.regmovef_opcode()?,
             Open => self.open_opcode()?,

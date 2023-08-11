@@ -28,6 +28,8 @@ pub struct MachineOptions {
     pub gc_time: Option<u64>,
     /// The program for the garbage collector to run
     pub gc_program: Option<Arc<Vec<Byte>>>,
+    /// The size of the stack in megabytes
+    pub stack_size: usize,
 }
 
 #[derive(Debug)]
@@ -217,8 +219,11 @@ impl Memory {
 pub struct Machine {
     /// The options for the virtual machine
     options: MachineOptions,
+    data_segment: Arc<Vec<Byte>>,
+    stack: Box<[Byte]>,
     /// The memory of the virtual machine in little endian
-    memory: Arc<RwLock<Memory>>,
+    heap: Arc<RwLock<Memory>>,
+    next_stack_offset: usize,
     /// The cores of the virtual machine that are not running
     cores: Vec<Box<dyn RegCore + Send>>,
     /// The thread handles for the running cores
@@ -242,7 +247,6 @@ pub struct Machine {
     foriegn_functions: Vec<(ForeignFunctionArg, ForeignFunction)>,
     gc: Option<Result<Box<dyn GarbageCollectorCore + Send>, JoinHandle<SimpleResult>>>,
     gc_channels: Option<(Sender<Message>, Receiver<Message>)>,
-    stacks: Arc<RwLock<Vec<Option<Arc<RwLock<Vec<Byte>>>>>>>,
 }
 
 impl Machine {
@@ -255,8 +259,12 @@ impl Machine {
                 defrag_cycle: 0,
                 gc_time: None,
                 gc_program: None,
+                stack_size: 1,
             },
-            memory: Arc::new(RwLock::new(Memory::new())),
+            data_segment: Arc::new(Vec::new()),
+            stack: Box::new([]),
+            heap: Arc::new(RwLock::new(Memory::new())),
+            next_stack_offset: 0,
             cores: Vec::new(),
             core_threads: Vec::new(),
             program: None,
@@ -269,7 +277,6 @@ impl Machine {
             foriegn_functions: Vec::new(),
             gc: None,
             gc_channels: None,
-            stacks: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
@@ -312,6 +319,10 @@ impl Machine {
     /// After the loop ends, we then clear the thread handles and the channels for the threads
     pub fn run(&mut self) {
         //TODO: change print to log
+
+        let stack: Box<[Byte]> = vec![0; 1024 * 1024 * self.options.stack_size * self.cores.len()].into_boxed_slice();
+        self.stack = stack;
+
         let program_counter = self.entry_point.expect("Entry point not set");
         self.run_core(0, program_counter);
         if self.options.gc_time.is_some() {
@@ -330,7 +341,7 @@ impl Machine {
                 self.join_joinable_threads();
             }
             if self.options.defrag_cycle == cycle_count {
-                self.memory.write().unwrap().defrag_memory();
+                self.heap.write().unwrap().defrag_memory();
             }
 
             if main_thread_done {
@@ -470,7 +481,7 @@ impl Machine {
                         },
                         Message::Malloc(size) => {
                             loop {
-                                match self.memory.try_write() {
+                                match self.heap.try_write() {
                                     Ok(mut memory) => {
                                         let message = memory.malloc(size);
                                         send.send(message).unwrap();
@@ -484,7 +495,7 @@ impl Machine {
                         },
                         Message::Free(ptr) => {
                             loop {
-                                match self.memory.try_write() {
+                                match self.heap.try_write() {
                                     Ok(mut memory) => {
                                         let message = memory.free(ptr);
                                         send.send(message).unwrap();
@@ -498,7 +509,7 @@ impl Machine {
                         },
                         Message::Realloc(ptr, size) => {
                             loop {
-                                match self.memory.try_write() {
+                                match self.heap.try_write() {
                                     Ok(mut memory) => {
                                         let message = memory.realloc(ptr, size);
                                         send.send(message).unwrap();
@@ -686,7 +697,8 @@ impl Machine {
         let (machine_sender, machine_receiver) = channel();
         self.channels.borrow_mut().push(Some((core_sender, machine_receiver)));
         let mut core = Box::new(MachineCore::new());
-        core.add_memory(self.memory.read().unwrap().memory.clone());
+        core.add_data_segment(self.data_segment.clone());
+        core.add_heap(self.heap.read().unwrap().memory.clone());
         core.add_channels(machine_sender, core_receiver);
         self.cores.push(core);
     }
@@ -697,9 +709,8 @@ impl Machine {
         let (machine_sender, machine_receiver) = channel();
         self.gc_channels = Some((core_sender, machine_receiver));
         let mut core = Box::new(GarbageCollector::new());
-        core.add_memory(self.memory.clone());
+        core.add_memory(self.heap.clone());
         core.add_channels(machine_sender, core_receiver);
-        core.add_stacks(self.stacks.clone());
         self.gc = Some(Ok(core));
     }
 
@@ -715,12 +726,14 @@ impl Machine {
         program.push(0);
         let program = Arc::new(program);
         core.add_program(program);
-        if self.options.gc_time.is_some() {
-            core.set_gc(true);
-            let stack = core.get_stack();
+        
+        let stack_ptr: *mut Byte = self.stack.as_mut_ptr();
+        let stack_size = self.options.stack_size * 1024 * 1024;
 
-            self.stacks.write().unwrap().push(Some(stack));
-        }
+        self.next_stack_offset += stack_size;
+
+        core.add_stack(stack_ptr, self.next_stack_offset, stack_size);
+        
         let core_thread = {
             thread::spawn(move || {
                 core.run(new_pc)
@@ -733,12 +746,14 @@ impl Machine {
     pub fn run_core(&mut self, core: usize, program_counter: usize) {
         let mut core = self.cores.remove(core);
         core.add_program(self.program.as_ref().expect("Program Not set").clone());
-        if self.options.gc_time.is_some() {
-            core.set_gc(true);
-            let stack = core.get_stack();
 
-            self.stacks.write().unwrap().push(Some(stack));
-        }
+        let stack_ptr: *mut Byte = self.stack.as_mut_ptr();
+        let stack_size = self.options.stack_size * 1024 * 1024;
+
+        self.next_stack_offset += stack_size;
+
+        core.add_stack(stack_ptr, self.next_stack_offset, stack_size);
+        
         let core_thread = {
             thread::spawn(move || {
                 core.run(program_counter)

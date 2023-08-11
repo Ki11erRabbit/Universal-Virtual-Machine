@@ -168,6 +168,7 @@ pub enum Fault {
     FileReadError,
     InvalidFree,
     InvalidRealloc,
+    SegmentationFault,
 }
 
 impl fmt::Display for Fault {
@@ -193,6 +194,7 @@ impl fmt::Display for Fault {
             Fault::FileReadError => write!(f, "File Read Error"),
             Fault::InvalidFree => write!(f, "Invalid Free"),
             Fault::InvalidRealloc => write!(f, "Invalid Realloc"),
+            Fault::SegmentationFault => write!(f, "Segmentation Fault"),
         }
     }
 }
@@ -232,17 +234,17 @@ pub trait Core {
 }
 
 pub trait RegCore: Core {
-    fn add_memory(&mut self, memory: Arc<RwLock<Vec<Byte>>>);
+    fn add_data_segment(&mut self, data: Arc<Vec<Byte>>);
 
-    fn set_gc(&mut self, gc: bool);
+    fn add_heap(&mut self, memory: Arc<RwLock<Vec<Byte>>>);
 
-    fn get_stack(&self) -> Arc<RwLock<Vec<Byte>>>;
+    fn add_stack(&mut self, stack: *mut Byte, offset: usize, size: usize);
 }
 
 pub trait GarbageCollectorCore: Core + Collector {}
 
 pub trait Collector {
-    fn add_stacks(&mut self, stacks: Arc<RwLock<Vec<Option<Arc<RwLock<Vec<Byte>>>>>>>);
+    fn add_stack(&mut self, stack: Box<[Byte]>, size: usize, offset: usize);
 
     fn add_memory(&mut self, memory: Arc<RwLock<Memory>>);
 }
