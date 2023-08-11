@@ -335,18 +335,18 @@ impl Binary {
 
                     assembly.push_str(&format!("${}, ${}, {}\n", reg1, reg2, size));
                 },
-                AddI | SubI | MulI | DivI | EqI | NeqI | LtI | GtI | LeqI | GeqI => {
+                Add | Sub | Mul | Div | Eq | Neq | Lt | Gt | Leq | Geq => {
                     match opcode {
-                        AddI => assembly.push_str("addi "),
-                        SubI => assembly.push_str("subi "),
-                        MulI => assembly.push_str("muli "),
-                        DivI => assembly.push_str("divi "),
-                        EqI => assembly.push_str("eqi "),
-                        NeqI => assembly.push_str("neqi "),
-                        LtI => assembly.push_str("lti "),
-                        GtI => assembly.push_str("gti "),
-                        LeqI => assembly.push_str("leqi "),
-                        GeqI => assembly.push_str("geqi "),
+                        Add => assembly.push_str("add "),
+                        Sub => assembly.push_str("sub "),
+                        Mul => assembly.push_str("mul "),
+                        Div => assembly.push_str("div "),
+                        Eq => assembly.push_str("eq "),
+                        Neq => assembly.push_str("neq "),
+                        Lt => assembly.push_str("lt "),
+                        Gt => assembly.push_str("gt "),
+                        Leq => assembly.push_str("leq "),
+                        Geq => assembly.push_str("geq "),
                         _ => panic!("Invalid opcode"),
                     }
 
@@ -359,18 +359,18 @@ impl Binary {
 
                     assembly.push_str(&format!("{}, ${}, ${}\n", size, reg1, reg2));
                 },
-                AddU | SubU | MulU | DivU | EqU | NeqU | LtU | GtU | LeqU | GeqU => {
+                AddC | SubC | MulC | DivC | EqC | NeqC | LtC | GtC | LeqC | GeqC => {
                     match opcode {
-                        AddU => assembly.push_str("addu "),
-                        SubU => assembly.push_str("subu "),
-                        MulU => assembly.push_str("mulu "),
-                        DivU => assembly.push_str("divu "),
-                        EqU => assembly.push_str("equ "),
-                        NeqU => assembly.push_str("nequ "),
-                        LtU => assembly.push_str("ltu "),
-                        GtU => assembly.push_str("gtu "),
-                        LeqU => assembly.push_str("lequ "),
-                        GeqU => assembly.push_str("gequ "),
+                        AddC => assembly.push_str("addc "),
+                        SubC => assembly.push_str("subc "),
+                        MulC => assembly.push_str("mulc "),
+                        DivC => assembly.push_str("divc "),
+                        EqC => assembly.push_str("eqc "),
+                        NeqC => assembly.push_str("neqc "),
+                        LtC => assembly.push_str("ltc "),
+                        GtC => assembly.push_str("gtc "),
+                        LeqC => assembly.push_str("leqc "),
+                        GeqC => assembly.push_str("geqc "),
                         _ => panic!("Unvalid opcode"),
                     }
 
@@ -378,10 +378,34 @@ impl Binary {
                     read_head += 1;
                     let reg1 = self.program[read_head];
                     read_head += 1;
-                    let reg2 = self.program[read_head];
-                    read_head += 1;
 
-                    assembly.push_str(&format!("{}, ${}, ${}\n", size, reg1, reg2));
+                    match size {
+                        8 => {
+                            let const_ = u8::from_le_bytes(self.program[read_head..read_head + 1].try_into().unwrap());
+                            read_head += 1;
+                            assembly.push_str(&format!("{}, ${}, {}u8\n", size, reg1, const_));
+                        },
+                        16 => {
+                            let const_ = u16::from_le_bytes(self.program[read_head..read_head + 2].try_into().unwrap());
+                            read_head += 2;
+                            assembly.push_str(&format!("{}, ${}, {}u16\n", size, reg1, const_));
+                        },
+                        32 => {
+                            let const_ = u32::from_le_bytes(self.program[read_head..read_head + 4].try_into().unwrap());
+                            read_head += 4;
+                            assembly.push_str(&format!("{}, ${}, {}u32\n", size, reg1, const_));
+                        },
+                        64 => {
+                            let const_ = u64::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
+                            read_head += 8;
+                            assembly.push_str(&format!("{}, ${}, {}u64\n", size, reg1, const_));
+                        },
+                        128 => {
+                            let const_ = u128::from_le_bytes(self.program[read_head..read_head + 16].try_into().unwrap());
+                            read_head += 16;
+                            assembly.push_str(&format!("{}, ${}, {}u128\n", size, reg1, const_));
+                        },
+                    }
                 },
                 DeRefRegF => {
                     assembly.push_str("movef ");
@@ -458,120 +482,6 @@ impl Binary {
                         GtF => assembly.push_str("gtf "),
                         LeqF => assembly.push_str("leqf "),
                         GeqF => assembly.push_str("geqf "),
-                        _ => panic!("Unvalid opcode"),
-                    }
-
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let reg1 = self.program[read_head];
-                    read_head += 1;
-                    let reg2 = self.program[read_head];
-                    read_head += 1;
-
-                    assembly.push_str(&format!("{}, ${}, ${}\n", size, reg1, reg2));
-                },
-                DeRefRegA => {
-                    assembly.push_str("movea ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let reg1 = self.program[read_head];
-                    read_head += 1;
-                    let reg2 = self.program[read_head];
-                    read_head += 1;
-                    let offset = i64::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
-                    read_head += 8;
-
-                    assembly.push_str(&format!("{}, ${}, ${}, {}i64\n", size, reg1, reg2, offset));
-                },
-                DeRefA => {
-                    assembly.push_str("movea ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let reg = self.program[read_head];
-                    read_head += 1;
-                    let address = usize::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
-                    read_head += 8;
-
-                    assembly.push_str(&format!("{}, ${}, #{}\n", size, reg, address));
-                },
-                MoveA => {
-                    assembly.push_str("movea ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let address_reg = self.program[read_head];
-                    read_head += 1;
-                    let reg = self.program[read_head];
-                    read_head += 1;
-
-                    assembly.push_str(&format!("{}, ${}, ${}\n", size, address_reg, reg));
-                },
-                SetA => {
-                    assembly.push_str("movea ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let reg = self.program[read_head];
-                    read_head += 1;
-                    let num_bytes = match &size {
-                        8 => 1,
-                        16 => 2,
-                        32 => 4,
-                        64 => 8,
-                        128 => 16,
-                        _ => panic!("Invalid size"),
-                    };
-
-                    let number = u128::from_le_bytes(self.program[read_head..read_head + num_bytes].try_into().unwrap());
-                    read_head += num_bytes;
-
-                    assembly.push_str(&format!("{}, ${}, {}u{}\n", size, reg, number, size));
-                },
-                RegMoveA => {
-                    assembly.push_str("movea ");
-                    let reg1 = self.program[read_head];
-                    read_head += 1;
-                    let reg2 = self.program[read_head];
-                    read_head += 1;
-                    let size = self.program[read_head];
-                    read_head += 1;
-
-                    assembly.push_str(&format!("${}, ${}, {}\n", reg1, reg2, size));
-                },
-                AddAI | SubAI | MulAI | DivAI | EqAI | NeqAI | LtAI | GtAI | LeqAI | GeqAI => {
-                    match opcode {
-                        AddAI => assembly.push_str("addai "),
-                        SubAI => assembly.push_str("subai "),
-                        MulAI => assembly.push_str("mulai "),
-                        DivAI => assembly.push_str("divai "),
-                        EqAI => assembly.push_str("eqai "),
-                        NeqAI => assembly.push_str("neqai "),
-                        LtAI => assembly.push_str("ltai "),
-                        GtAI => assembly.push_str("gtai "),
-                        LeqAI => assembly.push_str("leqai "),
-                        GeqAI => assembly.push_str("geqai "),
-                        _ => panic!("Unvalid opcode"),
-                    }
-
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let reg1 = self.program[read_head];
-                    read_head += 1;
-                    let reg2 = self.program[read_head];
-                    read_head += 1;
-
-                    assembly.push_str(&format!("{}, ${}, ${}\n", size, reg1, reg2));
-                },
-                AddAU | SubAU | MulAU | DivAU | EqAU | NeqAU | LtAU | GtAU | LeqAU | GeqAU => {
-                    match opcode {
-                        AddAU => assembly.push_str("addau "),
-                        SubAU => assembly.push_str("subau "),
-                        MulAU => assembly.push_str("mulau "),
-                        DivAU => assembly.push_str("divau "),
-                        EqAU => assembly.push_str("eqau "),
-                        NeqAU => assembly.push_str("neqau "),
-                        LtAU => assembly.push_str("ltau "),
-                        GtAU => assembly.push_str("gtau "),
-                        LeqAU => assembly.push_str("leqau "),
-                        GeqAU => assembly.push_str("geqau "),
                         _ => panic!("Unvalid opcode"),
                     }
 
@@ -727,24 +637,6 @@ impl Binary {
 
                     assembly.push_str(&format!("{}, ${}\n", size, reg));
                 },
-                PopA => {
-                    assembly.push_str("popa ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let reg = self.program[read_head];
-                    read_head += 1;
-
-                    assembly.push_str(&format!("{}, ${}\n", size, reg));
-                },
-                PushA => {
-                    assembly.push_str("pusha ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let reg = self.program[read_head];
-                    read_head += 1;
-
-                    assembly.push_str(&format!("{}, ${}\n", size, reg));
-                },
                 DeRefRegStack => {
                     assembly.push_str("movestack ");
                     let size = self.program[read_head];
@@ -806,41 +698,6 @@ impl Binary {
                 },
                 MoveStackF => {
                     assembly.push_str("movestackf ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let address_reg = self.program[read_head];
-                    read_head += 1;
-                    let reg = self.program[read_head];
-                    read_head += 1;
-
-                    assembly.push_str(&format!("{}, ${}, ${}\n", size, address_reg, reg));
-                },
-                DeRefRegStackA => {
-                    assembly.push_str("movestacka ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let reg1 = self.program[read_head];
-                    read_head += 1;
-                    let reg2 = self.program[read_head];
-                    read_head += 1;
-                    let offset = i64::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
-                    read_head += 8;
-
-                    assembly.push_str(&format!("{}, ${}, ${}, {}i64\n", size, reg1, reg2, offset));
-                },
-                DeRefStackA => {
-                    assembly.push_str("movestacka ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let reg = self.program[read_head];
-                    read_head += 1;
-                    let address = usize::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
-                    read_head += 8;
-
-                    assembly.push_str(&format!("{}, ${}, #{}\n", size, reg, address));
-                },
-                MoveStackA => {
-                    assembly.push_str("movestacka ");
                     let size = self.program[read_head];
                     read_head += 1;
                     let address_reg = self.program[read_head];
@@ -921,47 +778,6 @@ impl Binary {
                 },
                 MoveStackCF => {
                     assembly.push_str("movecstackf ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let core_reg = self.program[read_head];
-                    read_head += 1;
-                    let address_reg = self.program[read_head];
-                    read_head += 1;
-                    let reg = self.program[read_head];
-                    read_head += 1;
-
-                    assembly.push_str(&format!("{}, ${}, ${}, ${}\n", size, core_reg, address_reg, reg));
-                },
-                DeRefRegStackCA => {
-                    assembly.push_str("movecstacka ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let core_reg = self.program[read_head];
-                    read_head += 1;
-                    let reg1 = self.program[read_head];
-                    read_head += 1;
-                    let reg2 = self.program[read_head];
-                    read_head += 1;
-                    let offset = i64::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
-                    read_head += 8;
-
-                    assembly.push_str(&format!("{}, ${}, ${}, ${}, {}i64\n", size, core_reg, reg1, reg2, offset));
-                },
-                DeRefStackCA => {
-                    assembly.push_str("movecstacka ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let core_reg = self.program[read_head];
-                    read_head += 1;
-                    let reg = self.program[read_head];
-                    read_head += 1;
-                    let address = usize::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
-                    read_head += 8;
-
-                    assembly.push_str(&format!("{}, ${}, ${}, #{}\n", size, core_reg,reg, address));
-                },
-                MoveStackCA => {
-                    assembly.push_str("movecstacka ");
                     let size = self.program[read_head];
                     read_head += 1;
                     let core_reg = self.program[read_head];
@@ -1087,8 +903,7 @@ impl Binary {
                 Clear => {
                     assembly.push_str("clear\n");
                 },
-                AddFI | SubFI | MulFI | DivFI | AddIF | SubIF | MulIF | DivIF | AddUF | SubUF |
-                MulUF | DivUF => {
+                AddFI | SubFI | MulFI | DivFI | AddIF | SubIF | MulIF | DivIF  => {
                     match opcode {
                         AddFI => assembly.push_str("addfi "),
                         SubFI => assembly.push_str("subfi "),
@@ -1098,10 +913,6 @@ impl Binary {
                         SubIF => assembly.push_str("subif "),
                         MulIF => assembly.push_str("mulif "),
                         DivIF => assembly.push_str("divif "),
-                        AddUF => assembly.push_str("adduf "),
-                        SubUF => assembly.push_str("subuf "),
-                        MulUF => assembly.push_str("muluf "),
-                        DivUF => assembly.push_str("divuf "),
                         _ => {}
                     }
                     

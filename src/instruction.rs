@@ -20,47 +20,30 @@ pub enum Opcode {
     /// This instruction loads a constant into a register
     Set,
     /* Instructions for signed integers */
-    /// This instruction does signed integer addition on two registers and stores it in the first
-    AddI,
-    /// This instruction does signed integer subtraction on two registers and stores it in the first
-    SubI,
-    /// This instruction does signed integer multiplication on two registers and stores it in the first
-    MulI,
-    /// This instruction does signed integer division on two registers and stores it in the first
-    DivI,
-    /// This instruction does signed integer equality on two registers and flips the right flags
-    EqI,
-    /// This instruction does signed integer inequality on two registers and flips the right flags
-    NeqI,
-    /// This instruction does signed integer less than on two registers and flips the right flags
-    LtI,
-    /// This instruction does signed integer greater than on two registers and flips the right flags
-    GtI,
-    /// This instruction does signed integer less than or equal on two registers and flips the right flags
-    LeqI,
-    /// This instruction does signed integer greater than or equal on two registers and flips the right flags
-    GeqI,
+    /// This instruction does integer addition on two registers and stores it in the first
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Eq,
+    Neq,
+    Lt,
+    Gt,
+    Leq,
+    Geq,
     /* Instructions for unsigned integers */
-    /// This instruction does unsigned integer addition on two registers and stores it in the first
-    AddU,
-    /// This instruction does unsigned integer subtraction on two registers and stores it in the first
-    SubU,
-    /// This instruction does unsigned integer multiplication on two registers and stores it in the first
-    MulU,
-    /// This instruction does unsigned integer division on two registers and stores it in the first
-    DivU,
-    /// This instruction does unsigned integer equality on two registers and flips the right flags
-    EqU,
-    /// This instruction does unsigned integer inequality on two registers and flips the right flags
-    NeqU,
-    /// This instruction does unsigned integer less than on two registers and flips the right flags
-    LtU,
-    /// This instruction does unsigned integer greater than on two registers and flips the right flags
-    GtU,
-    /// This instruction does unsigned integer less than or equal on two registers and flips the right flags
-    LeqU,
-    /// This instruction does unsigned integer greater than or equal on two registers and flips the right flags
-    GeqU,
+    /// This instruction does integer addition with a register and a constant and stores it in the register
+    AddC,
+    /// This instruction does integer subtraction with a register and a constant and stores it in the register
+    SubC,
+    MulC,
+    DivC,
+    EqC,
+    NeqC,
+    LtC,
+    GtC,
+    LeqC,
+    GeqC,
     /* Instructions for floating point numbers */
     /// This instruction is the same as DeRefReg but for floats
     DeRefRegF,
@@ -90,57 +73,27 @@ pub enum Opcode {
     LeqF,
     /// This instruction does floating point greater than or equal on two registers and flips the right flags
     GeqF,
-    /* Instructions for Atomic Integers */
-    /// This instruction is the same as DeRefReg but for Atomic Integers
-    DeRefRegA,
-    /// This instruction is the same as DeRef but for Atomic Integers
-    DeRefA,
-    /// This instruction is the same as Move but for Atomic Integers
-    MoveA,
-    /// This instruction is the same as Set but for Atomic Integers
-    SetA,
-    /* Instructions for signed Atomic Integers */
-    /// This instruction does signed integer addition on two registers and stores it in the first
-    AddAI,
-    /// This instruction does signed integer subtraction on two registers and stores it in the first
-    SubAI,
-    /// This instruction does signed integer multiplication on two registers and stores it in the first
-    MulAI,
-    /// This instruction does signed integer division on two registers and stores it in the first
-    DivAI,
-    /// This instruction does signed integer equality on two registers and flips the right flags
-    EqAI,
-    /// This instruction does signed integer inequality on two registers and flips the right flags
-    NeqAI,
-    /// This instruction does signed integer less than on two registers and flips the right flags
-    LtAI,
-    /// This instruction does signed integer greater than on two registers and flips the right flags
-    GtAI,
-    /// This instruction does signed integer less than or equal on two registers and flips the right flags
-    LeqAI,
-    /// This instruction does signed integer greater than or equal on two registers and flips the right flags
-    GeqAI,
-    /* Instructions for unsigned Atomic Integers */
-    /// This instruction does unsigned integer addition on two registers and stores it in the first
-    AddAU,
-    /// This instruction does unsigned integer subtraction on two registers and stores it in the first
-    SubAU,
-    /// This instruction does unsigned integer multiplication on two registers and stores it in the first
-    MulAU,
-    /// This instruction does unsigned integer division on two registers and stores it in the first
-    DivAU,
-    /// This instruction does unsigned integer equality on two registers and flips the right flags
-    EqAU,
-    /// This instruction does unsigned integer inequality on two registers and flips the right flags
-    NeqAU,
-    /// This instruction does unsigned integer less than on two registers and flips the right flags
-    LtAU,
-    /// This instruction does unsigned integer greater than on two registers and flips the right flags
-    GtAU,
-    /// This instruction does unsigned integer less than or equal on two registers and flips the right flags
-    LeqAU,
-    /// This instruction does unsigned integer greater than or equal on two registers and flips the right flags
-    GeqAU,
+    /* Instructions for floating point numbers with constants */
+    /// This instruction does floating point addition on a register and a constant and stores it in the register
+    AddFC,
+    /// This instruction does floating point subtraction on a register and a constant and stores it in the register
+    SubFC,
+    /// This instruction does floating point multiplication on a register and a constant and stores it in the register
+    MulFC,
+    /// This instruction does floating point division on a register and a constant and stores it in the register
+    DivFC,
+    /// This instruction does floating point equality on a register and a constant and flips the right flags
+    EqFC,
+    /// This instruction does floating point inequality on a register and a constant and flips the right flags
+    NeqFC,
+    /// This instruction does floating point less than on a register and a constant and flips the right flags
+    LtFC,
+    /// This instruction does floating point greater than on a register and a constant and flips the right flags
+    GtFC,
+    /// This instruction does floating point less than or equal on a register and a constant and flips the right flags
+    LeqFC,
+    /// This instruction does floating point greater than or equal on a register and a constant and flips the right flags
+    GeqFC,
     /* Instructions for bitwise operations */
     /// This instruction does bitwise AND on two registers and stores it in the first
     And,
@@ -223,10 +176,6 @@ pub enum Opcode {
     PopF,
     /// This instruction will push a float onto the stack
     PushF,
-    /// This instruction will pop an atomic integer off the stack
-    PopA,
-    /// This instruction will push an atomic integer onto the stack
-    PushA,
     /* Instructions for accessing the stack */
     /// This is the DeRefReg instruction for the stack
     DeRefRegStack,
@@ -240,12 +189,6 @@ pub enum Opcode {
     DeRefStackF,
     /// This is the Move instruction for the stack but with floats
     MoveStackF,
-    /// This is the DeRefReg instruction for the stack but with atomic integers
-    DeRefRegStackA,
-    /// This is the DeRef instruction for the stack but with atomic integers
-    DeRefStackA,
-    /// This is the Move instruction for the stack but with atomic integers
-    MoveStackA,
     /* Instructions for accessing the stack accross cores */
     /// This is the DeRefReg instruction for the stack but for integers accross cores
     DeRefRegStackC,
@@ -259,12 +202,6 @@ pub enum Opcode {
     DeRefStackCF,
     /// This is the Move instruction for the stack but for floats accross cores
     MoveStackCF,
-    /// This is the DeRefReg instruction for the stack but for atomic integers accross cores
-    DeRefRegStackCA,
-    /// This is the DeRef instruction for the stack but for atomic integers accross cores
-    DeRefStackCA,
-    /// This is the Move instruction for the stack but for atomic integers accross cores
-    MoveStackCA,
     /* Instructions for memory management */
     /// This instruction will allocate a block of memory and return a pointer to it
     Malloc,
@@ -317,19 +254,9 @@ pub enum Opcode {
     /// This instruction will divide a signed integer by a float
     DivIF,
     /// This instruction will add a float to an unsigned integer
-    AddUF,
-    /// This instruction will subtract a float from an unsigned integer
-    SubUF,
-    /// This instruction will multiply a float with an unsigned integer
-    MulUF,
-    /// This instruction will divide an unsigned integer by a float
-    DivUF,
-    /// This instruction will move the value of a register to another register
     RegMove,
     /// This instruction will move the value of a register to another register but for floats
     RegMoveF,
-    /// This instruction will move the value of a register to another register but for atomic integers
-    RegMoveA,
     /* Special Return for threads */
     /// This instruction will notify the machine that a thread has finished
     ThreadReturn,
@@ -374,28 +301,28 @@ impl From<u16> for Opcode {
             3 => DeRef,
             4 => Move,
             5 => Set,
-            /* Instructions for signed integers */
-            6 => AddI,
-            7 => SubI,
-            8 => MulI,
-            9 => DivI,
-            10 => EqI,
-            11 => NeqI,
-            12 => LtI,
-            13 => GtI,
-            14 => LeqI,
-            15 => GeqI,
-            /* Instructions for unsigned integers */
-            16 => AddU,
-            17 => SubU,
-            18 => MulU,
-            19 => DivU,
-            20 => EqU,
-            21 => NeqU,
-            22 => LtU,
-            23 => GtU,
-            24 => LeqU,
-            25 => GeqU,
+            /* Instructions for integers */
+            6 => Add,
+            7 => Sub,
+            8 => Mul,
+            9 => Div,
+            10 => Eq,
+            11 => Neq,
+            12 => Lt,
+            13 => Gt,
+            14 => Leq,
+            15 => Geq,
+            /* Instructions for integers with constants */
+            16 => AddC,
+            17 => SubC,
+            18 => MulC,
+            19 => DivC,
+            20 => EqC,
+            21 => NeqC,
+            22 => LtC,
+            23 => GtC,
+            24 => LeqC,
+            25 => GeqC,
             /* Instructions for floating point numbers */
             26 => DeRefRegF,
             27 => DeRefF,
@@ -411,33 +338,19 @@ impl From<u16> for Opcode {
             37 => GtF,
             38 => LeqF,
             39 => GeqF,
-            /* Instructions for Atomic Integers */
-            40 => DeRefRegA,
-            41 => DeRefA,
-            42 => MoveA,
-            43 => SetA,
-            /* Instructions for signed Atomic Integers */
-            44 => AddAI,
-            45 => SubAI,
-            46 => MulAI,
-            47 => DivAI,
-            48 => EqAI,
-            49 => NeqAI,
-            50 => LtAI,
-            51 => GtAI,
-            52 => LeqAI,
-            53 => GeqAI,
-            /* Instructions for unsigned Atomic Integers */
-            54 => AddAU,
-            55 => SubAU,
-            56 => MulAU,
-            57 => DivAU,
-            58 => EqAU,
-            59 => NeqAU,
-            60 => LtAU,
-            61 => GtAU,
-            62 => LeqAU,
-            63 => GeqAU,
+            /* Instruction for floating point numbers with constants */
+            40 => AddFC,
+            41 => SubFC,
+            42 => MulFC,
+            43 => DivFC,
+            44 => EqFC,
+            45 => NeqFC,
+            46 => LtFC,
+            47 => GtFC,
+            48 => LeqFC,
+            49 => GeqFC,
+            /* gap start at 50 */
+            /* Gap ends ad 63 */
             /* Instructions for bitwise operations */
             64 => And,
             65 => Or,
@@ -481,8 +394,7 @@ impl From<u16> for Opcode {
             112 => Push,
             113 => PopF,
             114 => PushF,
-            115 => PopA,
-            116 => PushA,
+            /* 115, 116 are reserved for future use */
             /* Instructions for accessing the stack */
             117 => DeRefRegStack,
             118 => DeRefStack,
@@ -490,9 +402,7 @@ impl From<u16> for Opcode {
             120 => DeRefRegStackF,
             121 => DeRefStackF,
             122 => MoveStackF,
-            123 => DeRefRegStackA,
-            124 => DeRefStackA,
-            125 => MoveStackA,
+            /* 123, 124, 125 are reserved for future use */
             /* Instructions for accessing the stack accross cores */
             126 => DeRefRegStackC,
             127 => DeRefStackC,
@@ -500,9 +410,7 @@ impl From<u16> for Opcode {
             129 => DeRefRegStackCF,
             130 => DeRefStackCF,
             131 => MoveStackCF,
-            132 => DeRefRegStackCA,
-            133 => DeRefStackCA,
-            134 => MoveStackCA,
+            /* 132, 133, 134 are reserved for future use */
             /* Instructions for memory management */
             135 => Malloc,
             136 => Free,
@@ -528,13 +436,10 @@ impl From<u16> for Opcode {
             152 => SubIF,
             153 => MulIF,
             154 => DivIF,
-            155 => AddUF,
-            156 => SubUF,
-            157 => MulUF,
-            158 => DivUF,
+            /* Instructions 155, 156, 157, 158 are reserved for future use */
             159 => RegMove,
             160 => RegMoveF,
-            161 => RegMoveA,
+            /* Instruction 161 is reserved for future use */
             /* Special Return for Threads */
             162 => ThreadReturn,
             163 => ThreadJoin,

@@ -400,6 +400,23 @@ fn parse_arithmetic(opcode: Vec<u8>, args: &Vec<Ast>) -> Result<Vec<u8>, String>
     Ok(bytes)
 }
 
+fn parse_arithmetic_const(opcode: Vec<u8>, args: &Vec<Ast>) -> Result<Vec<u8>, String> {
+    let mut bytes = opcode;
+    
+    for arg in args {
+        match arg {
+            Ast::Number(n) => {
+                bytes.append(&mut n.to_bytes());
+            },
+            Ast::Register(r) => {
+                bytes.push(*r);
+            },
+            _ => return Err("Only registers are allowed in this op".to_owned()),
+        }
+    }
+
+    Ok(bytes)
+}
 fn parse_jump<F>(opcode: Vec<u8>, args: &Vec<Ast>, mut pos_setter: F) -> Result<Vec<u8>, String>
 where
     F: FnMut(String,&Vec<u8>) -> u64,{
@@ -492,26 +509,26 @@ where
                         _ => return Err(format!("Invalid arguments for move: {:?}",ops)),
                     }
                 },
-                "addi" => return parse_arithmetic(vec![6,0], args),
-                "subi" => return parse_arithmetic(vec![7,0], args),
-                "muli" => return parse_arithmetic(vec![8,0], args),
-                "divi" => return parse_arithmetic(vec![9,0], args),
+                "add" => return parse_arithmetic(vec![6,0], args),
+                "sub" => return parse_arithmetic(vec![7,0], args),
+                "mul" => return parse_arithmetic(vec![8,0], args),
+                "div" => return parse_arithmetic(vec![9,0], args),
                 "eqi" => return parse_arithmetic(vec![10,0], args),
-                "neqi" => return parse_arithmetic(vec![11,0], args),
-                "lti" => return parse_arithmetic(vec![12,0], args),
-                "gti" => return parse_arithmetic(vec![13,0], args),
-                "leqi" => return parse_arithmetic(vec![14,0], args),
-                "geqi" => return parse_arithmetic(vec![15,0], args),
-                "addu" => return parse_arithmetic(vec![16,0], args),
-                "subu" => return parse_arithmetic(vec![17,0], args),
-                "mulu" => return parse_arithmetic(vec![18,0], args),
-                "divu" => return parse_arithmetic(vec![19,0], args),
-                "equ" => return parse_arithmetic(vec![20,0], args),
-                "nequ" => return parse_arithmetic(vec![21,0], args),
-                "ltu" => return parse_arithmetic(vec![22,0], args),
-                "gtu" => return parse_arithmetic(vec![23,0], args),
-                "lequ" => return parse_arithmetic(vec![24,0], args),
-                "gequ" => return parse_arithmetic(vec![25,0], args),
+                "neq" => return parse_arithmetic(vec![11,0], args),
+                "lt" => return parse_arithmetic(vec![12,0], args),
+                "gt" => return parse_arithmetic(vec![13,0], args),
+                "leq" => return parse_arithmetic(vec![14,0], args),
+                "geq" => return parse_arithmetic(vec![15,0], args),
+                "addc" => return parse_arithmetic_const(vec![16,0], args),
+                "subc" => return parse_arithmetic_const(vec![17,0], args),
+                "mulc" => return parse_arithmetic_const(vec![18,0], args),
+                "divc" => return parse_arithmetic_const(vec![19,0], args),
+                "eqc" => return parse_arithmetic_const(vec![20,0], args),
+                "neqc" => return parse_arithmetic_const(vec![21,0], args),
+                "ltc" => return parse_arithmetic_const(vec![22,0], args),
+                "gtc" => return parse_arithmetic_const(vec![23,0], args),
+                "leqc" => return parse_arithmetic_const(vec![24,0], args),
+                "geqc" => return parse_arithmetic_const(vec![25,0], args),
                 "movef" => {
                     let mut bytes: Vec<u8> = Vec::new();
                     let mut ops: Vec<MoveOps> = Vec::new();
@@ -582,86 +599,16 @@ where
                 "gtf" => return parse_arithmetic(vec![37,0], args),
                 "leqf" => return parse_arithmetic(vec![38,0], args),
                 "geqf" => return parse_arithmetic(vec![39,0], args),
-                "movea" => {
-                    let mut bytes: Vec<u8> = Vec::new();
-                    let mut ops: Vec<MoveOps> = Vec::new();
-                    for arg in args {
-                        match arg {
-                            Ast::Number(n) => {
-                                bytes.append(&mut n.to_bytes());
-                                ops.push(MoveOps::Number);
-                            },
-                            Ast::Register(r) => {
-                                bytes.push(*r);
-                                ops.push(MoveOps::Register);
-                            },
-                            Ast::Label(l) => {
-                                let pos = pos_setter(l.to_owned(), &bytes);
-                                bytes.append(&mut pos.to_le_bytes().to_vec());
-                                ops.push(MoveOps::Number);
-                            },
-                            Ast::Address(a) => {
-                                bytes.append(&mut a.to_le_bytes().to_vec());
-                                ops.push(MoveOps::Address);
-                            },
-                            _ => return Err("Expected number, register or label".to_owned()),
-                        }
-                    }
-
-                    match ops.as_slice() {
-                        //move opcode
-                        [MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
-                            let mut temp = vec![42,0];
-                            temp.append(&mut bytes);
-                            return Ok(temp);
-                        },
-                        //set opcode
-                        [MoveOps::Number, MoveOps::Register, MoveOps::Number] => {
-                            let mut temp = vec![43,0];
-                            temp.append(&mut bytes);
-                            return Ok(temp);
-                        },
-                        //regmove opcode
-                        [MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
-                            let mut temp = vec![161,0];
-                            temp.append(&mut bytes);
-                            return Ok(temp);
-                        },
-                        //deref opcode
-                        [MoveOps::Number, MoveOps::Register, MoveOps::Address] => {
-                            let mut temp = vec![41,0];
-                            temp.append(&mut bytes);
-                            return Ok(temp);
-                        },
-                        //derefreg
-                        [MoveOps::Number, MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
-                            let mut temp = vec![40,0];
-                            temp.append(&mut bytes);
-                            return Ok(temp);
-                        },
-                        _ => return Err("Invalid arguments for move".to_owned()),
-                    }
-                },
-                "addai" => return parse_arithmetic(vec![44,0], args),
-                "subai" => return parse_arithmetic(vec![45,0], args),
-                "mulai" => return parse_arithmetic(vec![46,0], args),
-                "divai" => return parse_arithmetic(vec![47,0], args),
-                "eqai" => return parse_arithmetic(vec![48,0], args),
-                "neqai" => return parse_arithmetic(vec![49,0], args),
-                "ltai" => return parse_arithmetic(vec![50,0], args),
-                "gtai" => return parse_arithmetic(vec![51,0], args),
-                "leqai" => return parse_arithmetic(vec![52,0], args),
-                "geqai" => return parse_arithmetic(vec![53,0], args),
-                "addau" => return parse_arithmetic(vec![54,0], args),
-                "subau" => return parse_arithmetic(vec![55,0], args),
-                "mulau" => return parse_arithmetic(vec![56,0], args),
-                "divau" => return parse_arithmetic(vec![57,0], args),
-                "eqau" => return parse_arithmetic(vec![58,0], args),
-                "neqau" => return parse_arithmetic(vec![59,0], args),
-                "ltau" => return parse_arithmetic(vec![60,0], args),
-                "gtau" => return parse_arithmetic(vec![61,0], args),
-                "leqau" => return parse_arithmetic(vec![62,0], args),
-                "geqau" => return parse_arithmetic(vec![63,0], args),
+                "addfc" => return parse_arithmetic_const(vec![40,0], args),
+                "subfc" => return parse_arithmetic_const(vec![41,0], args),
+                "mulfc" => return parse_arithmetic_const(vec![42,0], args),
+                "divfc" => return parse_arithmetic_const(vec![43,0], args),
+                "eqfc" => return parse_arithmetic_const(vec![44,0], args),
+                "neqfc" => return parse_arithmetic_const(vec![45,0], args),
+                "ltfc" => return parse_arithmetic_const(vec![46,0], args),
+                "gtfc" => return parse_arithmetic_const(vec![47,0], args),
+                "leqfc" => return parse_arithmetic_const(vec![48,0], args),
+                "geqfc" => return parse_arithmetic_const(vec![49,0], args),
                 "and" => return parse_arithmetic(vec![64,0], args),
                 "or" => return parse_arithmetic(vec![65,0], args),
                 "xor" => return parse_arithmetic(vec![66,0], args),
@@ -799,58 +746,6 @@ where
                         _ => return Err("Invalid arguments for pushf".to_owned()),
                     }
                 },
-                "popa" => {
-                    let mut bytes: Vec<u8> = Vec::new();
-                    let mut ops: Vec<MoveOps> = Vec::new();
-                    for arg in args {
-                        match arg {
-                            Ast::Number(n) => {
-                                bytes.append(&mut n.to_bytes());
-                                ops.push(MoveOps::Number);
-                            },
-                            Ast::Register(r) => {
-                                bytes.push(*r);
-                                ops.push(MoveOps::Register);
-                            },
-                            _ => return Err("Expected number or register".to_owned()),
-                        }
-                    }
-
-                    match ops.as_slice() {
-                        [MoveOps::Number, MoveOps::Register] => {
-                            let mut temp = vec![115,0];
-                            temp.append(&mut bytes);
-                            return Ok(temp);
-                        },
-                        _ => return Err("Invalid arguments for popa".to_owned()),
-                    }
-                },
-                "pusha" => {
-                    let mut bytes: Vec<u8> = Vec::new();
-                    let mut ops: Vec<MoveOps> = Vec::new();
-                    for arg in args {
-                        match arg {
-                            Ast::Number(n) => {
-                                bytes.append(&mut n.to_bytes());
-                                ops.push(MoveOps::Number);
-                            },
-                            Ast::Register(r) => {
-                                bytes.push(*r);
-                                ops.push(MoveOps::Register);
-                            },
-                            _ => return Err("Expected number or register".to_owned()),
-                        }
-                    }
-
-                    match ops.as_slice() {
-                        [MoveOps::Number, MoveOps::Register] => {
-                            let mut temp = vec![116,0];
-                            temp.append(&mut bytes);
-                            return Ok(temp);
-                        },
-                        _ => return Err("Invalid arguments for pushf".to_owned()),
-                    }
-                },
                 "movestack" => {
                     let mut bytes: Vec<u8> = Vec::new();
                     let mut ops: Vec<MoveOps> = Vec::new();
@@ -947,54 +842,6 @@ where
                         _ => return Err("Invalid arguments for movestackf".to_owned()),
                     }
                 },
-                "movestacka" => {
-                    let mut bytes: Vec<u8> = Vec::new();
-                    let mut ops: Vec<MoveOps> = Vec::new();
-                    for arg in args {
-                        match arg {
-                            Ast::Number(n) => {
-                                bytes.append(&mut n.to_bytes());
-                                ops.push(MoveOps::Number);
-                            },
-                            Ast::Register(r) => {
-                                bytes.push(*r);
-                                ops.push(MoveOps::Register);
-                            },
-                            Ast::Label(l) => {
-                                let pos = pos_setter(l.to_owned(), &bytes);
-                                bytes.append(&mut pos.to_le_bytes().to_vec());
-                                ops.push(MoveOps::Number);
-                            },
-                            Ast::Address(a) => {
-                                bytes.append(&mut a.to_le_bytes().to_vec());
-                                ops.push(MoveOps::Address);
-                            },
-                            _ => return Err("Expected number, register or label".to_owned()),
-                        }
-                    }
-
-                    match ops.as_slice() {
-                        //move opcode
-                        [MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
-                            let mut temp = vec![125,0];
-                            temp.append(&mut bytes);
-                            return Ok(temp);
-                        },
-                        //deref opcode
-                        [MoveOps::Number, MoveOps::Register, MoveOps::Address] => {
-                            let mut temp = vec![124,0];
-                            temp.append(&mut bytes);
-                            return Ok(temp);
-                        },
-                        //derefreg
-                        [MoveOps::Number, MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
-                            let mut temp = vec![123,0];
-                            temp.append(&mut bytes);
-                            return Ok(temp);
-                        },
-                        _ => return Err("Invalid arguments for movestacka".to_owned()),
-                    }
-                },
                 "movecstack" => {
                     let mut bytes: Vec<u8> = Vec::new();
                     let mut ops: Vec<MoveOps> = Vec::new();
@@ -1089,54 +936,6 @@ where
                             return Ok(temp);
                         },
                         _ => return Err("Invalid arguments for movecstackf".to_owned()),
-                    }
-                },
-                "movecorestacka" => {
-                    let mut bytes: Vec<u8> = Vec::new();
-                    let mut ops: Vec<MoveOps> = Vec::new();
-                    for arg in args {
-                        match arg {
-                            Ast::Number(n) => {
-                                bytes.append(&mut n.to_bytes());
-                                ops.push(MoveOps::Number);
-                            },
-                            Ast::Register(r) => {
-                                bytes.push(*r);
-                                ops.push(MoveOps::Register);
-                            },
-                            Ast::Label(l) => {
-                                let pos = pos_setter(l.to_owned(), &bytes);
-                                bytes.append(&mut pos.to_le_bytes().to_vec());
-                                ops.push(MoveOps::Number);
-                            },
-                            Ast::Address(a) => {
-                                bytes.append(&mut a.to_le_bytes().to_vec());
-                                ops.push(MoveOps::Address);
-                            },
-                            _ => return Err("Expected number, register or label".to_owned()),
-                        }
-                    }
-
-                    match ops.as_slice() {
-                        //move opcode
-                        [MoveOps::Number, MoveOps::Number, MoveOps::Register, MoveOps::Register] => {
-                            let mut temp = vec![134,0];
-                            temp.append(&mut bytes);
-                            return Ok(temp);
-                        },
-                        //deref opcode
-                        [MoveOps::Number, MoveOps::Number, MoveOps::Register, MoveOps::Address] => {
-                            let mut temp = vec![133,0];
-                            temp.append(&mut bytes);
-                            return Ok(temp);
-                        },
-                        //derefreg
-                        [MoveOps::Number, MoveOps::Number, MoveOps::Register, MoveOps::Register, MoveOps::Number] => {
-                            let mut temp = vec![132,0];
-                            temp.append(&mut bytes);
-                            return Ok(temp);
-                        },
-                        _ => return Err("Invalid arguments for movecstacka".to_owned()),
                     }
                 },
                 "malloc" => {
