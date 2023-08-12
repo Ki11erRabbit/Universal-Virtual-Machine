@@ -173,12 +173,16 @@ impl GarbageCollector {
 
                 let mut address = u64::from_le_bytes(stack[i..(i + POINTER_SIZE)].try_into().unwrap());
 
-                while address != 0 && address < memory_len as u64 && address <= *stack_pointer{
+                while address != 0 && address < memory_len as u64 {
                     if heap.allocated_blocks.contains_key(&address) {
                         self.found_ptrs.insert(address, self.found_flag);
                     }
 
                     access_heap!(heap.memory.try_read(), memory, {
+                        if address as usize + POINTER_SIZE > memory.len() {
+                            address = 0;
+                            break;
+                        }
                         address = u64::from_le_bytes(memory[address as usize..(address as usize + POINTER_SIZE)].try_into().unwrap());
                     }, {
                         panic!("Poisoned lock.");

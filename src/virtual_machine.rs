@@ -211,7 +211,7 @@ impl Memory {
     fn defrag_memory(&mut self) {
         let mut blocks_to_update = Vec::new();
         for (ptr, size) in self.available_blocks.iter() {
-            match self.allocated_blocks.get(&(*ptr + *size as u64)) {
+            match self.available_blocks.get(&(*ptr + *size as u64)) {
                 None => {},
                 Some(_) => {
                     blocks_to_update.push((*ptr, *ptr + *size as u64));
@@ -1236,7 +1236,7 @@ ret}
 
     }
 
-    /*#[test]
+    #[test]
     fn test_garbage_collection() {
         let input = "
 main{
@@ -1244,7 +1244,7 @@ move 64, $0, 8u64
 malloc $1, $0
 sleep 30u64, 1u64
 malloc $1, $0
-sleep 5u64, 1u64
+sleep 35u64, 1u64
 malloc $1, $0
 ret}
 ";
@@ -1260,15 +1260,18 @@ ret}
             defrag_cycle: 0,
             gc_time: Some(1),
             gc_program: None,
+            stack_size: 1,
+            stack_scale: 512,
+            
         };
 
         machine.set_options(options);
 
         machine.run();
 
-        println!("{:?}", machine.memory.read().unwrap().memory.read().unwrap());
+        println!("{:?}", machine.heap.read().unwrap().memory.read().unwrap());
 
-        assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(machine.heap.read().unwrap().memory.read().unwrap()[..], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     }
 
     #[test]
@@ -1295,6 +1298,8 @@ ret}
             defrag_cycle: 0,
             gc_time: Some(1),
             gc_program: None,
+            stack_size: 1,
+            stack_scale: 512,
         };
 
         machine.set_options(options);
@@ -1305,9 +1310,9 @@ ret}
 
         machine.run();
 
-        println!("{:?}", machine.memory.read().unwrap().memory.read().unwrap());
+        println!("{:?}", machine.heap.read().unwrap().memory.read().unwrap());
 
-        assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-    }*/
+        assert_eq!(machine.heap.read().unwrap().memory.read().unwrap()[..], [0, 0, 0, 0, 0, 0, 0, 0]);
+    }
 
 }
