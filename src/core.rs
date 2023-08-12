@@ -65,6 +65,262 @@ macro_rules! check_registerF64 {
 
 
 
+macro_rules! int_op_branch {
+
+    ($core:expr, $type:ty, $end_type:ty, $op:tt, $mask:expr, $reg_check:tt, $registers:tt,$reg1:expr, $reg2:expr, $slice:expr, $overflow:tt) => {
+        $reg_check!($reg1, $reg2);
+        let reg1_value = <$type>::from_le_bytes($core.$registers[$reg1].to_le_bytes()[$slice].try_into().unwrap());
+        let reg2_value = <$type>::from_le_bytes($core.$registers[$reg2].to_le_bytes()[$slice].try_into().unwrap());
+
+        let new_value = (Wrapping(reg1_value) $op Wrapping(reg2_value)).0;
+
+        if new_value $overflow reg1_value {
+            $core.overflow_flag = true;
+        }
+        if new_value == 0 {
+            $core.zero_flag = true;
+        }
+        else {
+            $core.zero_flag = false;
+            // Checking to see if the most significant bit is set
+            if new_value ^ $mask == (Wrapping(new_value) + Wrapping($mask)).0 {
+                $core.sign_flag = Sign::Positive;
+            }
+            else {
+                $core.sign_flag = Sign::Negative;
+            }
+        }
+        // Fast way to check if the number is odd
+        if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+            $core.odd_flag = false;
+        }
+        else {
+            $core.odd_flag = true;
+        }
+
+        $core.$registers[$reg1] = new_value as $end_type;
+    };
+
+    ($core:expr, $type:ty, $end_type:ty, $op:tt, $mask:expr, $reg_check:tt, $registers:tt,$reg1:expr, $reg2:expr, $slice:expr, $overflow:tt, $remainder:tt) => {
+        $reg_check!($reg1, $reg2);
+        let reg1_value = <$type>::from_le_bytes($core.$registers[$reg1].to_le_bytes()[$slice].try_into().unwrap());
+        let reg2_value = <$type>::from_le_bytes($core.$registers[$reg2].to_le_bytes()[$slice].try_into().unwrap());
+
+        if reg2_value == 0 {
+            return Err(Fault::DivideByZero);
+        }
+
+        let remainder = (Wrapping(reg1_value) % Wrapping(reg2_value)).0;
+
+        $core.$remainder = remainder as $end_type;
+
+        let new_value = (Wrapping(reg1_value) $op Wrapping(reg2_value)).0;
+
+        if new_value $overflow reg1_value {
+            $core.overflow_flag = true;
+        }
+        if new_value == 0 {
+            $core.zero_flag = true;
+        }
+        else {
+            $core.zero_flag = false;
+            // Checking to see if the most significant bit is set
+            if new_value ^ $mask == (Wrapping(new_value) + Wrapping($mask)).0 {
+                $core.sign_flag = Sign::Positive;
+            }
+            else {
+                $core.sign_flag = Sign::Negative;
+            }
+        }
+        // Fast way to check if the number is odd
+        if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+            $core.odd_flag = false;
+        }
+        else {
+            $core.odd_flag = true;
+        }
+
+        $core.$registers[$reg1] = new_value as $end_type;
+    };
+
+
+}
+
+macro_rules! int_opcode {
+    ($core:expr, $op:tt, $size:expr, $reg1:expr, $reg2:expr, $overflow:tt) => {
+        match $size {
+            8 => {
+                int_op_branch!($core, u8, u64, $op, 0x80, check_register64, registers_64, $reg1, $reg2, 0..1, $overflow);
+            },
+            16 => {
+                int_op_branch!($core, u16, u64, $op, 0x8000, check_register64, registers_64, $reg1, $reg2, 0..2, $overflow);
+            },
+            32 => {
+                int_op_branch!($core, u32, u64, $op, 0x80000000, check_register64, registers_64, $reg1, $reg2, 0..4, $overflow);
+            },
+            64 => {
+                int_op_branch!($core, u64, u64, $op, 0x8000000000000000, check_register64, registers_64, $reg1, $reg2, 0..8, $overflow);
+            },
+            128 => {
+                int_op_branch!($core, u128, u128, $op, 0x80000000000000000000000000000000, check_register128, registers_128, $reg1, $reg2, 0..16, $overflow);
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+    };
+
+    ($core:expr, $op:tt, $size:expr, $reg1:expr, $reg2:expr, $overflow:tt, $remainder:tt) => {
+        match $size {
+            8 => {
+                int_op_branch!($core, u8, u64, $op, 0x80, check_register64, registers_64, $reg1, $reg2, 0..1, $overflow, remainder_64);
+            },
+            16 => {
+                int_op_branch!($core, u16, u64, $op, 0x8000, check_register64, registers_64, $reg1, $reg2, 0..2, $overflow, remainder_64);
+            },
+            32 => {
+                int_op_branch!($core, u32, u64, $op, 0x80000000, check_register64, registers_64, $reg1, $reg2, 0..4, $overflow, remainder_64);
+            },
+            64 => {
+                int_op_branch!($core, u64, u64, $op, 0x8000000000000000, check_register64, registers_64, $reg1, $reg2, 0..8, $overflow, remainder_64);
+            },
+            128 => {
+                int_op_branch!($core, u128, u128, $op, 0x80000000000000000000000000000000, check_register128, registers_128, $reg1, $reg2, 0..16, $overflow, remainder_128);
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+    };
+
+
+}
+
+
+macro_rules! int_op_c_branch {
+    ($core:expr, $type:ty, $end_type:ty, $op:tt, $mask:expr, $reg_check:tt, $registers:tt,$reg:expr, $method:tt, $advance:tt, $slice:expr, $overflow:tt) => {
+        $reg_check!($reg);
+        let reg_value = <$type>::from_le_bytes($core.$registers[$reg].to_le_bytes()[$slice].try_into().unwrap());
+        let constant = $core.$method() as $type;
+        $core.$advance();
+
+        let new_value = (Wrapping(reg_value) $op Wrapping(constant)).0;
+
+        if new_value $overflow reg_value {
+            $core.overflow_flag = true;
+        }
+        if new_value == 0 {
+            $core.zero_flag = true;
+        }
+        else {
+            $core.zero_flag = false;
+            // Checking to see if the most significant bit is set
+            if new_value ^ $mask == (Wrapping(new_value) + Wrapping($mask)).0 {
+                $core.sign_flag = Sign::Positive;
+            }
+            else {
+                $core.sign_flag = Sign::Negative;
+            }
+        }
+        // Fast way to check if the number is odd
+        if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+            $core.odd_flag = false;
+        }
+        else {
+            $core.odd_flag = true;
+        }
+
+        $core.$registers[$reg] = new_value as $end_type;
+    };
+
+    ($core:expr, $type:ty, $end_type:ty, $op:tt, $mask:expr, $reg_check:tt, $registers:tt,$reg:expr, $method:tt, $advance:tt, $slice:expr, $overflow:tt, $remainder:tt) => {
+        $reg_check!($reg);
+        let reg_value = <$type>::from_le_bytes($core.$registers[$reg].to_le_bytes()[$slice].try_into().unwrap());
+        let constant = $core.$method() as $type;
+        $core.$advance();
+
+        if constant == 0 {
+            return Err(Fault::DivideByZero);
+        }
+
+        let remainder = (Wrapping(reg_value) % Wrapping(constant)).0;
+
+        $core.$remainder = remainder as $end_type;
+
+
+        let new_value = (Wrapping(reg_value) $op Wrapping(constant)).0;
+
+        if new_value $overflow reg_value {
+            $core.overflow_flag = true;
+        }
+        if new_value == 0 {
+            $core.zero_flag = true;
+        }
+        else {
+            $core.zero_flag = false;
+            // Checking to see if the most significant bit is set
+            if new_value ^ $mask == (Wrapping(new_value) + Wrapping($mask)).0 {
+                $core.sign_flag = Sign::Positive;
+            }
+            else {
+                $core.sign_flag = Sign::Negative;
+            }
+        }
+        // Fast way to check if the number is odd
+        if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+            $core.odd_flag = false;
+        }
+        else {
+            $core.odd_flag = true;
+        }
+
+        $core.$registers[$reg] = new_value as $end_type;
+    };
+    
+}
+
+macro_rules! int_c_opcode {
+    ($core:expr, $op:tt, $size:expr, $reg:expr, $overflow:tt) => {
+        match $size {
+            8 => {
+                int_op_c_branch!($core, u8, u64, $op, 0x80, check_register64, registers_64, $reg, get_1_byte, advance_by_1_byte, 0..1, $overflow);
+            },
+            16 => {
+                int_op_c_branch!($core, u16, u64, $op, 0x8000, check_register64, registers_64, $reg, get_2_bytes, advance_by_2_bytes, 0..2, $overflow);
+            },
+            32 => {
+                int_op_c_branch!($core, u32, u64, $op, 0x80000000, check_register64, registers_64, $reg, get_4_bytes, advance_by_4_bytes, 0..4, $overflow);
+            },
+            64 => {
+                int_op_c_branch!($core, u64, u64, $op, 0x8000000000000000, check_register64, registers_64, $reg, get_8_bytes, advance_by_8_bytes, 0..8, $overflow);
+            },
+            128 => {
+                int_op_c_branch!($core, u128, u128, $op, 0x80000000000000000000000000000000, check_register128, registers_128, $reg, get_16_bytes, advance_by_16_bytes, 0..16, $overflow);
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+    };
+
+    ($core:expr, $op:tt, $size:expr, $reg:expr, $overflow:tt, $remainder:tt) => {
+        match $size {
+            8 => {
+                int_op_c_branch!($core, u8, u64, $op, 0x80, check_register64, registers_64, $reg, get_1_byte, advance_by_1_byte, 0..1, $overflow, remainder_64);
+            },
+            16 => {
+                int_op_c_branch!($core, u16, u64, $op, 0x8000, check_register64, registers_64, $reg, get_2_bytes, advance_by_2_bytes, 0..2, $overflow, remainder_64);
+            },
+            32 => {
+                int_op_c_branch!($core, u32, u64, $op, 0x80000000, check_register64, registers_64, $reg, get_4_bytes, advance_by_4_bytes, 0..4, $overflow, remainder_64);
+            },
+            64 => {
+                int_op_c_branch!($core, u64, u64, $op, 0x8000000000000000, check_register64, registers_64, $reg, get_8_bytes, advance_by_8_bytes, 0..8, $overflow, remainder_64);
+            },
+            128 => {
+                int_op_c_branch!($core, u128, u128, $op, 0x80000000000000000000000000000000, check_register128, registers_128, $reg, get_16_bytes, advance_by_16_bytes, 0..16, $overflow, remainder_128);
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+    };
+
+}
+
+
 
 const REGISTER_64_COUNT: usize = 16;
 const REGISTER_128_COUNT: usize = 8;
@@ -282,7 +538,7 @@ pub struct MachineCore {
     pub nan_flag: bool,
     /* other */
     /// The remainder of a division operation
-    pub remainder_64: usize,
+    pub remainder_64: u64,
     /// The remainder of a division operation
     pub remainder_128: u128,
     /// The program counter
@@ -1069,184 +1325,8 @@ impl MachineCore {
         let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
-        match size {
-            8 => {
-                check_register64!(register1, register2);
-                let reg1_value = u8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
-                let reg2_value = u8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
 
-                let new_value = (Wrapping(reg1_value) + Wrapping(reg2_value)).0;
-
-                if new_value < reg1_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80 == (Wrapping(new_value) + Wrapping(0x80)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register1] = new_value as u64;
-            },
-            16 => {
-                check_register64!(register1, register2);
-                let reg1_value = u16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
-                let reg2_value = u16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
-
-                let new_value = (Wrapping(reg1_value) + Wrapping(reg2_value)).0;
-
-                if new_value < reg1_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x8000 == (Wrapping(new_value) + Wrapping(0x8000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register1] = new_value as u64;
-            },
-
-            32 => {
-                check_register64!(register1, register2);
-                let reg1_value = u32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
-                let reg2_value = u32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
-
-                let new_value = (Wrapping(reg1_value) + Wrapping(reg2_value)).0;
-
-                if new_value < reg1_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80000000 == (Wrapping(new_value) + Wrapping(0x80000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register1] = new_value as u64;
-            },
-            64 => {
-                check_register64!(register1, register2);
-                let reg1_value = u64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
-                let reg2_value = u64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
-
-                let new_value = (Wrapping(reg1_value) + Wrapping(reg2_value)).0;
-
-                if new_value < reg1_value {
-                    self.overflow_flag = true;
-                }
-
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x8000000000000000 == (Wrapping(new_value) + Wrapping(0x8000000000000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register1] = new_value as u64;
-            },
-            128 => {
-                check_register128!(register1, register2);
-                let reg1_value = u128::from_le_bytes(self.registers_128[register1].to_le_bytes().try_into().unwrap());
-                let reg2_value = u128::from_le_bytes(self.registers_128[register2].to_le_bytes().try_into().unwrap());
-
-                let new_value = (Wrapping(reg1_value) + Wrapping(reg2_value)).0;
-
-                if new_value < reg1_value {
-                    self.overflow_flag = true;
-                }
-
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80000000000000000000000000000000 == (Wrapping(new_value) + Wrapping(0x80000000000000000000000000000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_128[register1] = new_value as u128;
-            },
-            _ => return Err(Fault::InvalidSize),
-
-        }
+        int_opcode!(self, +, size, register1, register2, <);
         Ok(())
     }
 
@@ -1259,184 +1339,8 @@ impl MachineCore {
         let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
-        match size {
-            8 => {
-                check_register64!(register1, register2);
-                let reg1_value = u8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
-                let reg2_value = u8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
-
-                let new_value = (Wrapping(reg1_value) - Wrapping(reg2_value)).0;
-
-                if new_value < reg1_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80 == (Wrapping(new_value) + Wrapping(0x80)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register1] = new_value as u64;
-            },
-            16 => {
-                check_register64!(register1, register2);
-                let reg1_value = u16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
-                let reg2_value = u16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
-
-                let new_value = (Wrapping(reg1_value) - Wrapping(reg2_value)).0;
-
-                if new_value < reg1_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x8000 == (Wrapping(new_value) + Wrapping(0x8000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register1] = new_value as u64;
-            },
-
-            32 => {
-                check_register64!(register1, register2);
-                let reg1_value = u32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
-                let reg2_value = u32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
-
-                let new_value = (Wrapping(reg1_value) - Wrapping(reg2_value)).0;
-
-                if new_value < reg1_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80000000 == (Wrapping(new_value) + Wrapping(0x80000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register1] = new_value as u64;
-            },
-            64 => {
-                check_register64!(register1, register2);
-                let reg1_value = u64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
-                let reg2_value = u64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
-
-                let new_value = (Wrapping(reg1_value) - Wrapping(reg2_value)).0;
-
-                if new_value < reg1_value {
-                    self.overflow_flag = true;
-                }
-
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x8000000000000000 == (Wrapping(new_value) + Wrapping(0x8000000000000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register1] = new_value as u64;
-            },
-            128 => {
-                check_register128!(register1, register2);
-                let reg1_value = u128::from_le_bytes(self.registers_128[register1].to_le_bytes().try_into().unwrap());
-                let reg2_value = u128::from_le_bytes(self.registers_128[register2].to_le_bytes().try_into().unwrap());
-
-                let new_value = (Wrapping(reg1_value) - Wrapping(reg2_value)).0;
-
-                if new_value < reg1_value {
-                    self.overflow_flag = true;
-                }
-
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80000000000000000000000000000000 == (Wrapping(new_value) + Wrapping(0x80000000000000000000000000000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_128[register1] = new_value as u128;
-            },
-            _ => return Err(Fault::InvalidSize),
-
-        }
+        int_opcode!(self, -, size, register1, register2, >);
+        
         Ok(())
     }
 
@@ -1449,184 +1353,8 @@ impl MachineCore {
         let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
-        match size {
-            8 => {
-                check_register64!(register1, register2);
-                let reg1_value = u8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
-                let reg2_value = u8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
+        int_opcode!(self, *, size, register1, register2, <);
 
-                let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
-
-                if new_value < reg1_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80 == (Wrapping(new_value) + Wrapping(0x80)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register1] = new_value as u64;
-            },
-            16 => {
-                check_register64!(register1, register2);
-                let reg1_value = u16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
-                let reg2_value = u16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
-
-                let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
-
-                if new_value < reg1_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x8000 == (Wrapping(new_value) + Wrapping(0x8000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register1] = new_value as u64;
-            },
-
-            32 => {
-                check_register64!(register1, register2);
-                let reg1_value = u32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
-                let reg2_value = u32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
-
-                let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
-
-                if new_value < reg1_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80000000 == (Wrapping(new_value) + Wrapping(0x80000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register1] = new_value as u64;
-            },
-            64 => {
-                check_register64!(register1, register2);
-                let reg1_value = u64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
-                let reg2_value = u64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
-
-                let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
-
-                if new_value < reg1_value {
-                    self.overflow_flag = true;
-                }
-
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x8000000000000000 == (Wrapping(new_value) + Wrapping(0x8000000000000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register1] = new_value as u64;
-            },
-            128 => {
-                check_register128!(register1, register2);
-                let reg1_value = u128::from_le_bytes(self.registers_128[register1].to_le_bytes().try_into().unwrap());
-                let reg2_value = u128::from_le_bytes(self.registers_128[register2].to_le_bytes().try_into().unwrap());
-
-                let new_value = (Wrapping(reg1_value) * Wrapping(reg2_value)).0;
-
-                if new_value < reg1_value {
-                    self.overflow_flag = true;
-                }
-
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80000000000000000000000000000000 == (Wrapping(new_value) + Wrapping(0x80000000000000000000000000000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_128[register1] = new_value as u128;
-            },
-            _ => return Err(Fault::InvalidSize),
-
-        }
         Ok(())
     }
 
@@ -1639,222 +1367,8 @@ impl MachineCore {
         let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
-        match size {
-            8 => {
-                check_register64!(register1, register2);
-                let reg1_value = u8::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..1].try_into().unwrap());
-                let reg2_value = u8::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..1].try_into().unwrap());
-                if reg2_value == 0 {
-                    return Err(Fault::DivideByZero);
-                }
+        int_opcode!(self, /, size, register1, register2, >, remainder);
 
-                let remainder = reg1_value % reg2_value;
-
-                self.remainder_64 = remainder as usize;
-
-                let new_value = (Wrapping(reg1_value) / Wrapping(reg2_value)).0;
-
-                if new_value < reg1_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80 == (Wrapping(new_value) + Wrapping(0x80)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register1] = new_value as u64;
-            },
-            16 => {
-                check_register64!(register1, register2);
-                let reg1_value = u16::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..2].try_into().unwrap());
-                let reg2_value = u16::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..2].try_into().unwrap());
-                if reg2_value == 0 {
-                    return Err(Fault::DivideByZero);
-                }
-
-                let remainder = reg1_value % reg2_value;
-
-                self.remainder_64 = remainder as usize;
-
-                let new_value = (Wrapping(reg1_value) / Wrapping(reg2_value)).0;
-
-                if new_value < reg1_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x8000 == (Wrapping(new_value) + Wrapping(0x8000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register1] = new_value as u64;
-            },
-
-            32 => {
-                check_register64!(register1, register2);
-                let reg1_value = u32::from_le_bytes(self.registers_64[register1].to_le_bytes()[0..4].try_into().unwrap());
-                let reg2_value = u32::from_le_bytes(self.registers_64[register2].to_le_bytes()[0..4].try_into().unwrap());
-
-                if reg2_value == 0 {
-                    return Err(Fault::DivideByZero);
-                }
-
-                let remainder = reg1_value % reg2_value;
-
-                self.remainder_64 = remainder as usize;
-
-                let new_value = (Wrapping(reg1_value) / Wrapping(reg2_value)).0;
-
-                if new_value < reg1_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80000000 == (Wrapping(new_value) + Wrapping(0x80000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register1] = new_value as u64;
-            },
-            64 => {
-                check_register64!(register1, register2);
-                let reg1_value = u64::from_le_bytes(self.registers_64[register1].to_le_bytes().try_into().unwrap());
-                let reg2_value = u64::from_le_bytes(self.registers_64[register2].to_le_bytes().try_into().unwrap());
-
-                if reg2_value == 0 {
-                    return Err(Fault::DivideByZero);
-                }
-
-                let remainder = reg1_value % reg2_value;
-
-                self.remainder_64 = remainder as usize;
-
-                let new_value = (Wrapping(reg1_value) / Wrapping(reg2_value)).0;
-
-                if new_value < reg1_value {
-                    self.overflow_flag = true;
-                }
-
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x8000000000000000 == (Wrapping(new_value) + Wrapping(0x8000000000000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register1] = new_value as u64;
-            },
-            128 => {
-                check_register128!(register1, register2);
-                let reg1_value = u128::from_le_bytes(self.registers_128[register1].to_le_bytes().try_into().unwrap());
-                let reg2_value = u128::from_le_bytes(self.registers_128[register2].to_le_bytes().try_into().unwrap());
-
-                if reg2_value == 0 {
-                    return Err(Fault::DivideByZero);
-                }
-
-                let remainder = reg1_value % reg2_value;
-
-                self.remainder_128 = remainder;
-
-                let new_value = (Wrapping(reg1_value) / Wrapping(reg2_value)).0;
-
-                if new_value < reg1_value {
-                    self.overflow_flag = true;
-                }
-
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80000000000000000000000000000000 == (Wrapping(new_value) + Wrapping(0x80000000000000000000000000000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_128[register1] = new_value as u128;
-            },
-            _ => return Err(Fault::InvalidSize),
-
-        }
         Ok(())
     }
 
@@ -2354,185 +1868,8 @@ impl MachineCore {
         let register = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
-        match size {
-            8 => {
-                check_register64!(register);
-                let reg_value = self.registers_64[register] as u8;
+        int_c_opcode!(self, +, size, register, <);
 
-                let constant = self.get_1_byte() as u8;
-                self.advance_by_1_byte();
-
-                let new_value = (Wrapping(reg_value) + Wrapping(constant)).0;
-
-                if new_value < reg_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80 == (Wrapping(new_value) + Wrapping(0x80)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register] = new_value as u64;
-            },
-            16 => {
-                check_register64!(register);
-                let reg_value = self.registers_64[register] as u16;
-
-                let constant = self.get_2_bytes() as u16;
-                self.advance_by_2_bytes();
-
-                let new_value = (Wrapping(reg_value) + Wrapping(constant)).0;
-
-                if new_value < reg_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x8000 == (Wrapping(new_value) + Wrapping(0x8000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register] = new_value as u64;
-            },
-            32 => {
-                check_register64!(register);
-                let reg_value = self.registers_64[register] as u32;
-
-                let constant = self.get_4_bytes() as u32;
-                self.advance_by_4_bytes();
-
-                let new_value = (Wrapping(reg_value) + Wrapping(constant)).0;
-
-                if new_value < reg_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80000000 == (Wrapping(new_value) + Wrapping(0x80000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register] = new_value as u64;
-            },
-            64 => {
-                check_register64!(register);
-                let reg_value = self.registers_64[register];
-
-                let constant = self.get_8_bytes();
-                self.advance_by_8_bytes();
-
-                let new_value = (Wrapping(reg_value) + Wrapping(constant)).0;
-
-                if new_value < reg_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x8000000000000000 == (Wrapping(new_value) + Wrapping(0x8000000000000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register] = new_value;
-            },
-            128 => {
-                check_register128!(register);
-                let reg_value = self.registers_128[register];
-
-                let constant = self.get_16_bytes();
-                self.advance_by_16_bytes();
-
-                let new_value = (Wrapping(reg_value) + Wrapping(constant)).0;
-
-                if new_value < reg_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80000000000000000000000000000000 == (Wrapping(new_value) + Wrapping(0x80000000000000000000000000000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_128[register] = new_value;
-            },
-            _ => return Err(Fault::InvalidSize),
-
-        }
         Ok(())
     }
 
@@ -2543,185 +1880,8 @@ impl MachineCore {
         let register = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
-        match size {
-            8 => {
-                check_register64!(register);
-                let reg_value = self.registers_64[register] as u8;
+        int_c_opcode!(self, -, size, register, >);
 
-                let constant = self.get_1_byte() as u8;
-                self.advance_by_1_byte();
-
-                let new_value = (Wrapping(reg_value) - Wrapping(constant)).0;
-
-                if new_value < reg_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80 == (Wrapping(new_value) + Wrapping(0x80)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register] = new_value as u64;
-            },
-            16 => {
-                check_register64!(register);
-                let reg_value = self.registers_64[register] as u16;
-
-                let constant = self.get_2_bytes() as u16;
-                self.advance_by_2_bytes();
-
-                let new_value = (Wrapping(reg_value) - Wrapping(constant)).0;
-
-                if new_value < reg_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x8000 == (Wrapping(new_value) + Wrapping(0x8000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register] = new_value as u64;
-            },
-            32 => {
-                check_register64!(register);
-                let reg_value = self.registers_64[register] as u32;
-
-                let constant = self.get_4_bytes() as u32;
-                self.advance_by_4_bytes();
-
-                let new_value = (Wrapping(reg_value) - Wrapping(constant)).0;
-
-                if new_value < reg_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80000000 == (Wrapping(new_value) + Wrapping(0x80000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register] = new_value as u64;
-            },
-            64 => {
-                check_register64!(register);
-                let reg_value = self.registers_64[register];
-
-                let constant = self.get_8_bytes();
-                self.advance_by_8_bytes();
-
-                let new_value = (Wrapping(reg_value) - Wrapping(constant)).0;
-
-                if new_value < reg_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x8000000000000000 == (Wrapping(new_value) + Wrapping(0x8000000000000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register] = new_value;
-            },
-            128 => {
-                check_register128!(register);
-                let reg_value = self.registers_128[register];
-
-                let constant = self.get_16_bytes();
-                self.advance_by_16_bytes();
-
-                let new_value = (Wrapping(reg_value) - Wrapping(constant)).0;
-
-                if new_value < reg_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80000000000000000000000000000000 == (Wrapping(new_value) + Wrapping(0x80000000000000000000000000000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_128[register] = new_value;
-            },
-            _ => return Err(Fault::InvalidSize),
-
-        }
         Ok(())
     }
 
@@ -2732,185 +1892,8 @@ impl MachineCore {
         let register = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
-        match size {
-            8 => {
-                check_register64!(register);
-                let reg_value = self.registers_64[register] as u8;
+        int_c_opcode!(self, *, size, register, <);
 
-                let constant = self.get_1_byte() as u8;
-                self.advance_by_1_byte();
-
-                let new_value = (Wrapping(reg_value) * Wrapping(constant)).0;
-
-                if new_value < reg_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80 == (Wrapping(new_value) + Wrapping(0x80)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register] = new_value as u64;
-            },
-            16 => {
-                check_register64!(register);
-                let reg_value = self.registers_64[register] as u16;
-
-                let constant = self.get_2_bytes() as u16;
-                self.advance_by_2_bytes();
-
-                let new_value = (Wrapping(reg_value) * Wrapping(constant)).0;
-
-                if new_value < reg_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x8000 == (Wrapping(new_value) + Wrapping(0x8000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register] = new_value as u64;
-            },
-            32 => {
-                check_register64!(register);
-                let reg_value = self.registers_64[register] as u32;
-
-                let constant = self.get_4_bytes() as u32;
-                self.advance_by_4_bytes();
-
-                let new_value = (Wrapping(reg_value) * Wrapping(constant)).0;
-
-                if new_value < reg_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80000000 == (Wrapping(new_value) + Wrapping(0x80000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register] = new_value as u64;
-            },
-            64 => {
-                check_register64!(register);
-                let reg_value = self.registers_64[register];
-
-                let constant = self.get_8_bytes();
-                self.advance_by_8_bytes();
-
-                let new_value = (Wrapping(reg_value) * Wrapping(constant)).0;
-
-                if new_value < reg_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x8000000000000000 == (Wrapping(new_value) + Wrapping(0x8000000000000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register] = new_value;
-            },
-            128 => {
-                check_register128!(register);
-                let reg_value = self.registers_128[register];
-
-                let constant = self.get_16_bytes();
-                self.advance_by_16_bytes();
-
-                let new_value = (Wrapping(reg_value) * Wrapping(constant)).0;
-
-                if new_value < reg_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80000000000000000000000000000000 == (Wrapping(new_value) + Wrapping(0x80000000000000000000000000000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_128[register] = new_value;
-            },
-            _ => return Err(Fault::InvalidSize),
-
-        }
         Ok(())
     }
 
@@ -2921,215 +1904,8 @@ impl MachineCore {
         let register = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
-        match size {
-            8 => {
-                check_register64!(register);
-                let reg_value = self.registers_64[register] as u8;
+        int_c_opcode!(self, /, size, register, >, remainder);
 
-                let constant = self.get_1_byte() as u8;
-                self.advance_by_1_byte();
-
-                if constant == 0 {
-                    return Err(Fault::DivideByZero);
-                }
-
-                self.remainder_64 = (reg_value % constant) as usize;
-
-                let new_value = (Wrapping(reg_value) / Wrapping(constant)).0;
-
-                if new_value < reg_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80 == (Wrapping(new_value) + Wrapping(0x80)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register] = new_value as u64;
-            },
-            16 => {
-                check_register64!(register);
-                let reg_value = self.registers_64[register] as u16;
-
-                let constant = self.get_2_bytes() as u16;
-                self.advance_by_2_bytes();
-
-                if constant == 0 {
-                    return Err(Fault::DivideByZero);
-                }
-
-                self.remainder_64 = (reg_value % constant) as usize;
-
-                let new_value = (Wrapping(reg_value) / Wrapping(constant)).0;
-
-                if new_value < reg_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x8000 == (Wrapping(new_value) + Wrapping(0x8000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register] = new_value as u64;
-            },
-            32 => {
-                check_register64!(register);
-                let reg_value = self.registers_64[register] as u32;
-
-                let constant = self.get_4_bytes() as u32;
-                self.advance_by_4_bytes();
-
-                if constant == 0 {
-                    return Err(Fault::DivideByZero);
-                }
-
-                self.remainder_64 = (reg_value % constant) as usize;
-
-                let new_value = (Wrapping(reg_value) / Wrapping(constant)).0;
-
-                if new_value < reg_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80000000 == (Wrapping(new_value) + Wrapping(0x80000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register] = new_value as u64;
-            },
-            64 => {
-                check_register64!(register);
-                let reg_value = self.registers_64[register];
-
-                let constant = self.get_8_bytes();
-                self.advance_by_8_bytes();
-
-                if constant == 0 {
-                    return Err(Fault::DivideByZero);
-                }
-
-                self.remainder_64 = (reg_value % constant) as usize;
-
-                let new_value = (Wrapping(reg_value) / Wrapping(constant)).0;
-
-                if new_value < reg_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x8000000000000000 == (Wrapping(new_value) + Wrapping(0x8000000000000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_64[register] = new_value;
-            },
-            128 => {
-                check_register128!(register);
-                let reg_value = self.registers_128[register];
-
-                let constant = self.get_16_bytes();
-                self.advance_by_16_bytes();
-
-                if constant == 0 {
-                    return Err(Fault::DivideByZero);
-                }
-
-                self.remainder_128 = reg_value % constant;
-
-                let new_value = (Wrapping(reg_value) / Wrapping(constant)).0;
-
-                if new_value < reg_value {
-                    self.overflow_flag = true;
-                }
-                if new_value == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80000000000000000000000000000000 == (Wrapping(new_value) + Wrapping(0x80000000000000000000000000000000)).0 {
-                        self.sign_flag = Sign::Positive;
-                    }
-                    else {
-                        self.sign_flag = Sign::Negative;
-                    }
-                }
-                // Fast way to check if the number is odd
-                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-
-                self.registers_128[register] = new_value;
-            },
-            _ => return Err(Fault::InvalidSize),
-
-        }
         Ok(())
     }
 
@@ -5696,7 +4472,7 @@ impl MachineCore {
                     return Err(Fault::DivideByZero);
                 }
 
-                self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
+                self.remainder_64 = u8::from_le_bytes((Wrapping(int_value) % Wrapping(float_value)).0.to_le_bytes().try_into().unwrap()) as u64;
 
                 let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
 
@@ -5740,7 +4516,7 @@ impl MachineCore {
                     return Err(Fault::DivideByZero);
                 }
 
-                self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
+                self.remainder_64 = u16::from_le_bytes((Wrapping(int_value) % Wrapping(float_value)).0.to_le_bytes().try_into().unwrap()) as u64;
 
                 let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
 
@@ -5784,7 +4560,7 @@ impl MachineCore {
                     return Err(Fault::DivideByZero);
                 }
 
-                self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
+                self.remainder_64 = u32::from_le_bytes((Wrapping(int_value) % Wrapping(float_value)).0.to_le_bytes().try_into().unwrap()) as u64;
 
                 let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
 
@@ -5828,7 +4604,7 @@ impl MachineCore {
                     return Err(Fault::DivideByZero);
                 }
 
-                self.remainder_64 = (Wrapping(int_value) % Wrapping(float_value)).0 as usize;
+                self.remainder_64 = u64::from_le_bytes((Wrapping(int_value) % Wrapping(float_value)).0.to_le_bytes().try_into().unwrap()) as u64;
 
                 let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
 
@@ -5872,7 +4648,7 @@ impl MachineCore {
                     return Err(Fault::DivideByZero);
                 }
                 
-                self.remainder_128 = (Wrapping(int_value) % Wrapping(float_value)).0 as u128;
+                self.remainder_128 = u128::from_le_bytes((Wrapping(int_value) % Wrapping(float_value)).0.to_le_bytes().try_into().unwrap());
 
                 let new_value = (Wrapping(int_value) / Wrapping(float_value)).0;
 
