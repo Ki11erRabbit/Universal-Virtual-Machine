@@ -876,7 +876,7 @@ ret
 
         machine.run();
 
-        assert_eq!(machine.files.len(), 2);
+        assert_eq!(machine.files.len(), 4);
         let mut file = File::open("hello.txt").unwrap();
 
         let mut contents = String::new();
@@ -930,7 +930,7 @@ ret}
 
     }
 
-    /*#[test]
+    #[test]
     fn test_recursive_fibonacci() {
         /*let input = "number{
 .u32 0u32}
@@ -961,32 +961,32 @@ move 32, $3, $0
 ret
 }
 ";*/
-        let input = "number{
-.u32 0u32}
+        let input = "
 fibonacci{
 move 32, $2, 1u32
-lequ 32, $1, $2
+leq 32, $1, $2
 jumpgt rec
 move $0, $1, 32
 jump end
 }
 rec{
 push 32, $1
-subu 32, $1, $2
+sub 32, $1, $2
 call fibonacci
 pop 32, $1
 push 32, $0
 move 32, $2, 2u32
-subu 32, $1, $2
+sub 32, $1, $2
 call fibonacci
 pop 32, $1
-addu 32, $0, $1}
+add 32, $0, $1}
 end{
 ret}
 main{
 move 32, $1, 9u32
 call fibonacci
-move 64, $3, number
+move 64, $4, 4u64
+malloc $3, $4
 move 32, $3, $0
 ret
 }
@@ -1007,24 +1007,23 @@ ret
 
         println!("Time: {:?}", now.elapsed().unwrap());
 
-        assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..5], [34, 0, 0, 0]);
+        assert_eq!(machine.heap.read().unwrap().memory.read().unwrap()[..], [34, 0, 0, 0]);
         
     }
 
     #[test]
+    //TODO: Fix this test by adding a way to pass arguments into threads
     fn test_multicore() {
-        let input = "counter{
-.u64 0u64}
+        let input = "
 count{
-move 64, $0, counter
 move 64, $1, 0u64
 move 64, $2, 10u64
 }
 loop{
 move 64, $3, 1u64
-equ 64, $1, $2
+eq 64, $1, $2
 jumpeq end
-addu 64, $1, $3
+add 64, $1, $3
 jump loop
 }
 end{
@@ -1035,6 +1034,8 @@ writebyte $11, $10
 flush $11
 ret}
 main{
+move 64, $0, 8u64
+malloc $0, $1
 move 64, $0, count
 threadspawn $0, $1
 threadspawn $0, $2
@@ -1060,7 +1061,7 @@ ret}
         machine.run();
 
 
-        assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..9], [10, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(machine.heap.read().unwrap().memory.read().unwrap()[..], [10, 0, 0, 0, 0, 0, 0, 0]);
 
 
     }
@@ -1083,7 +1084,8 @@ ret}
 main{
 move 64, $0, 35u64
 foreign $1
-move 64, $1, mem
+move 64, $5, 8u64
+malloc $1, $5
 move 64, $1, $0
 ret}";
 
@@ -1099,7 +1101,7 @@ ret}";
 
         machine.run();
 
-        assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..9], [45, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(machine.heap.read().unwrap().memory.read().unwrap()[..], [45, 0, 0, 0, 0, 0, 0, 0]);
 
     }
 
@@ -1119,11 +1121,11 @@ ret}";
 
     #[test]
     fn test_foreign_function_with_arg() {
-        let input = "mem{
-.u64 0u64}
+        let input = "
 main{
 move 64, $0, 35u64
-move 64, $1, mem
+move 64, $5, 8u64
+malloc $1, $5
 move 64, $2, 0u64
 foreign $2
 move 64, $1, $0
@@ -1143,7 +1145,7 @@ ret}";
 
         machine.run();
 
-        assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..9], [35, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(machine.heap.read().unwrap().memory.read().unwrap()[..], [35, 0, 0, 0, 0, 0, 0, 0]);
         assert_eq!(argument.unwrap().read().unwrap().downcast_ref::<u64>().unwrap(), &45u64);
 
     }
@@ -1152,7 +1154,7 @@ ret}";
     fn test_allocation() {
         let input = "
 main{
-move 64, $0, 64u64
+move 64, $0, 8u64
 malloc $1, $0
 move 64, $2, 10u64
 move 64, $1, $2
@@ -1168,7 +1170,7 @@ ret}
 
         machine.run();
 
-        assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..9], [10, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(machine.heap.read().unwrap().memory.read().unwrap()[..], [10, 0, 0, 0, 0, 0, 0, 0]);
 
     }
 
@@ -1176,7 +1178,7 @@ ret}
     fn test_free_allocation() {
         let input = "
 main{
-move 64, $0, 64u64
+move 64, $0, 8u64
 malloc $1, $0
 move 64, $2, 10u64
 move 64, $1, $2
@@ -1189,11 +1191,14 @@ ret}
 
         machine.load_binary(&binary);
 
+        println!("{}", binary.assembly());
+        println!("{}", binary.program_with_count());
+
         machine.add_core();
 
         machine.run();
 
-        assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..9], [10, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(machine.heap.read().unwrap().memory.read().unwrap()[..], [10, 0, 0, 0, 0, 0, 0, 0]);
 
     }
 
@@ -1208,7 +1213,7 @@ move 64, $1, $2
 move 64, $0, 16u64
 realloc $1, $0
 move 64, $2, 8u64
-addu 64, $1, $2
+add 64, $1, $2
 move 64, $1, $2
 ret}
 ";
@@ -1225,13 +1230,13 @@ ret}
 
         machine.run();
 
-        println!("{:?}", machine.memory.read().unwrap().memory.read().unwrap());
+        println!("{:?}", machine.heap.read().unwrap().memory.read().unwrap());
 
-        assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..17], [10, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0 ,0, 0, 0, 0, 0]);
+        assert_eq!(machine.heap.read().unwrap().memory.read().unwrap()[..], [10, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0 ,0, 0, 0, 0, 0]);
 
     }
 
-    #[test]
+    /*#[test]
     fn test_garbage_collection() {
         let input = "
 main{

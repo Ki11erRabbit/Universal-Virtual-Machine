@@ -1337,8 +1337,6 @@ impl MachineCore {
 
         let opcode = self.decode_opcode();
 
-        //println!("Opcode: {:?}", opcode);
-
         match opcode {
             Halt | NoOp => return Ok(true),
             Set => self.set_opcode()?,
@@ -6449,6 +6447,7 @@ impl MachineCore {
 
     fn free_opcode(&mut self) -> SimpleResult {
         let ptr_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
 
         check_register64!(ptr_reg as usize);
 
@@ -6456,11 +6455,9 @@ impl MachineCore {
 
         let data_segment_size = self.data_segment.len() as u64;
         let stack_size = self.stack.size() as u64;
-        let heap_size;
-        get_heap_len_err!(self.heap, heap_size);
 
         // Here we reset the offset the pointer so that it points to the start of the heap
-        let ptr = ptr - data_segment_size - stack_size - heap_size as u64;
+        let ptr = ptr - data_segment_size - stack_size;
         
 
         let message = Message::Free(ptr);
