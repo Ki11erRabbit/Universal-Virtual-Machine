@@ -405,6 +405,7 @@ impl Binary {
                             read_head += 16;
                             assembly.push_str(&format!("{}, ${}, {}u128\n", size, reg1, const_));
                         },
+                        _ => panic!("Invalid size"),
                     }
                 },
                 DeRefRegF => {
@@ -493,6 +494,44 @@ impl Binary {
                     read_head += 1;
 
                     assembly.push_str(&format!("{}, ${}, ${}\n", size, reg1, reg2));
+                },
+                AddFC | SubFC | MulFC | DivFC | EqFC | NeqFC | LtFC | GtFC | LeqFC | GeqFC => {
+                    match opcode {
+                        AddFC => assembly.push_str("addfc "),
+                        SubFC => assembly.push_str("subfc "),
+                        MulFC => assembly.push_str("mulfc "),
+                        DivFC => assembly.push_str("divfc "),
+                        EqFC => assembly.push_str("eqfc "),
+                        NeqFC => assembly.push_str("neqfc "),
+                        LtFC => assembly.push_str("ltfc "),
+                        GtFC => assembly.push_str("gtfc "),
+                        LeqFC => assembly.push_str("leqfc "),
+                        GeqFC => assembly.push_str("geqfc "),
+                        _ => panic!("Unvalid opcode"),
+                    }
+
+                    let size = self.program[read_head];
+                    read_head += 1;
+                    let reg1 = self.program[read_head];
+                    read_head += 1;
+
+                    match size {
+                        32 => {
+                            let num_bytes = 4;
+                            let number = f32::from_le_bytes(self.program[read_head..read_head + num_bytes].try_into().unwrap());
+                            read_head += num_bytes;
+
+                            assembly.push_str(&format!("{}, ${}, {}f{}\n", size, reg1, number, size));
+                        },
+                        64 => {
+                            let num_bytes = 8;
+                            let number = f64::from_le_bytes(self.program[read_head..read_head + num_bytes].try_into().unwrap());
+                            read_head += num_bytes;
+
+                            assembly.push_str(&format!("{}, ${}, {}f{}\n", size, reg1, number, size));
+                        },
+                        _ => panic!("Invalid size"),
+                    }
                 },
                 And | Or | Xor => {
                     match opcode {

@@ -8,7 +8,7 @@ use std::sync::mpsc::{Sender,Receiver, TryRecvError};
 use std::time::Duration;
 
 use crate::instruction::Opcode;
-use crate::{RegisterType,Message,Fault,CoreId,Byte,Pointer,FileDescriptor, Core, SimpleResult, CoreResult, RegCore, WholeStack, access_heap, get_heap_len_err};
+use crate::{RegisterType,Message,Fault,CoreId,Byte,Pointer,FileDescriptor, Core, SimpleResult, CoreResult, RegCore, WholeStack, access_heap, get_heap_len_err, unsigned_t_signed};
 
 
 macro_rules! check_register64 {
@@ -70,7 +70,6 @@ const REGISTER_64_COUNT: usize = 16;
 const REGISTER_128_COUNT: usize = 8;
 const REGISTER_F32_COUNT: usize = 8;
 const REGISTER_F64_COUNT: usize = 8;
-const REGISTER_ATOMIC_64_COUNT: usize = 8;
 
 #[derive(Debug,PartialEq)]
 /// An Enum that represents the sign flag
@@ -358,7 +357,7 @@ impl Core for MachineCore {
             Ok(message) => {
                 match message {
                     Message::CollectGarbage => {
-                        self.prepare_for_collection();
+                        self.prepare_for_collection()?;
                         return self.recv_message();
                     },
                     _ => Ok(message),
@@ -377,7 +376,7 @@ impl Core for MachineCore {
                     Message::ThreadDone(core_id) => {
                     },
                     Message::CollectGarbage => {
-                        self.prepare_for_collection();
+                        self.prepare_for_collection()?;
                     },
 
                     _ => unimplemented!(),
@@ -489,7 +488,7 @@ impl MachineCore {
         for reg in self.registers_64.iter() {
             reg_memory.extend_from_slice(&reg.to_le_bytes());
         }
-        self.push_stack(&reg_memory);
+        self.push_stack(&reg_memory)?;
 
         let message = Message::StackPointer(self.stack.get_stack_pointer() as Pointer);
 
@@ -507,7 +506,7 @@ impl MachineCore {
                 _ => return Err(Fault::MachineCrash("Could not prepare for collection")),
             }
         }
-        self.pop_stack(reg_memory.len() * 8);
+        self.pop_stack(reg_memory.len() * 8)?;
         
         Ok(())
     }
@@ -5025,7 +5024,7 @@ impl MachineCore {
                 else {
                     self.zero_flag = false;
                     // Checking to see if the most significant bit is set
-                    if new_value ^ 0x8000 == (Wrapping(new_value) + Wrapping(0x8000)).0 {
+                    if new_value ^ unsigned_t_signed!(0x80, u8, i8) == (Wrapping(new_value) + Wrapping(unsigned_t_signed!(0x80, u8, i8))).0 {
                         self.sign_flag = Sign::Positive;
                     }
                     else {
@@ -5072,7 +5071,7 @@ impl MachineCore {
                 else {
                     self.zero_flag = false;
                     // Checking to see if the most significant bit is set
-                    if new_value ^ 0x8000 == (Wrapping(new_value) + Wrapping(0x8000)).0 {
+                    if new_value ^ unsigned_t_signed!(0x8000,u16,i16) == (Wrapping(new_value) + Wrapping(unsigned_t_signed!(0x8000,u16,i16))).0 {
                         self.sign_flag = Sign::Positive;
                     }
                     else {
@@ -5119,7 +5118,7 @@ impl MachineCore {
                 else {
                     self.zero_flag = false;
                     // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80000000 == (Wrapping(new_value) + Wrapping(0x80000000)).0 {
+                    if new_value ^ unsigned_t_signed!(0x80000000,u32,i32) == (Wrapping(new_value) + Wrapping(unsigned_t_signed!(0x80000000,u32,i32))).0 {
                         self.sign_flag = Sign::Positive;
                     }
                     else {
@@ -5166,7 +5165,7 @@ impl MachineCore {
                 else {
                     self.zero_flag = false;
                     // Checking to see if the most significant bit is set
-                    if new_value ^ 0x80000000 == (Wrapping(new_value) + Wrapping(0x80000000)).0 {
+                    if new_value ^ unsigned_t_signed!(0x80000000,u64,i64) == (Wrapping(new_value) + Wrapping(unsigned_t_signed!(0x80000000,u64,i64))).0 {
                         self.sign_flag = Sign::Positive;
                     }
                     else {
@@ -5211,12 +5210,20 @@ impl MachineCore {
                 }
                 else {
                     self.zero_flag = false;
+                    // Checking to see if the most significant bit is set
+                    if new_value ^ unsigned_t_signed!(0x80000000,u128,i128) == (Wrapping(new_value) + Wrapping(unsigned_t_signed!(0x80000000,u128,i128))).0 {
+                        self.sign_flag = Sign::Positive;
+                    }
+                    else {
+                        self.sign_flag = Sign::Negative;
+                    }
                 }
-                if self.registers_128[int_register as usize] > 0 {
-                    self.sign_flag = Sign::Positive;
+                // Fast way to check if the number is odd
+                if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+                    self.odd_flag = false;
                 }
                 else {
-                    self.sign_flag = Sign::Negative;
+                    self.odd_flag = true;
                 }
             },
             _ => return Err(Fault::InvalidSize),
@@ -7700,7 +7707,7 @@ impl MachineCore {
         if line >= self.program.len() {
             return Err(Fault::InvalidJump);
         }
-        self.push_stack(&self.program_counter.to_le_bytes());
+        self.push_stack(&self.program_counter.to_le_bytes())?;
         self.program_counter = line;
 
         Ok(())
@@ -7797,27 +7804,27 @@ impl MachineCore {
             8 => {
                 check_register64!(register as usize);
                 let value = (self.registers_64[register as usize] as u8).to_le_bytes();
-                self.push_stack(&value);
+                self.push_stack(&value)?;
             },
             16 => {
                 check_register64!(register as usize);
                 let value = (self.registers_64[register as usize] as u16).to_le_bytes();
-                self.push_stack(&value);
+                self.push_stack(&value)?;
             },
             32 => {
                 check_register64!(register as usize);
                 let value = (self.registers_64[register as usize] as u32).to_le_bytes();
-                self.push_stack(&value);
+                self.push_stack(&value)?;
             },
             64 => {
                 check_register64!(register as usize);
                 let value = (self.registers_64[register as usize] as u64).to_le_bytes();
-                self.push_stack(&value);
+                self.push_stack(&value)?;
             },
             128 => {
                 check_register128!(register as usize);
                 let value = self.registers_128[register as usize].to_le_bytes();
-                self.push_stack(&value);
+                self.push_stack(&value)?;
             },
             _ => return Err(Fault::InvalidSize),
         }
@@ -7874,12 +7881,12 @@ impl MachineCore {
             32 => {
                 check_registerF32!(register as usize);
                 let value = self.registers_f32[register as usize].to_le_bytes();
-                self.push_stack(&value);
+                self.push_stack(&value)?;
             },
             64 => {
                 check_registerF64!(register as usize);
                 let value = self.registers_f64[register as usize].to_le_bytes();
-                self.push_stack(&value);
+                self.push_stack(&value)?;
             },
             _ => return Err(Fault::InvalidSize),
         }

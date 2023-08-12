@@ -301,3 +301,10 @@ macro_rules! get_heap_len_panic {
         })
     };
 }
+
+#[macro_export]
+macro_rules! unsigned_t_signed {
+    ($int:expr, $start:ty, $end:ty) => {
+        <$end>::from_le_bytes(($int as $start).to_le_bytes())
+    };
+}
