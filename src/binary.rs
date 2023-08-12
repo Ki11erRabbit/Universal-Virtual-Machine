@@ -361,16 +361,16 @@ impl Binary {
                 },
                 AddC | SubC | MulC | DivC | EqC | NeqC | LtC | GtC | LeqC | GeqC => {
                     match opcode {
-                        AddC => assembly.push_str("addc "),
-                        SubC => assembly.push_str("subc "),
-                        MulC => assembly.push_str("mulc "),
-                        DivC => assembly.push_str("divc "),
-                        EqC => assembly.push_str("eqc "),
-                        NeqC => assembly.push_str("neqc "),
-                        LtC => assembly.push_str("ltc "),
-                        GtC => assembly.push_str("gtc "),
-                        LeqC => assembly.push_str("leqc "),
-                        GeqC => assembly.push_str("geqc "),
+                        AddC => assembly.push_str("add "),
+                        SubC => assembly.push_str("sub "),
+                        MulC => assembly.push_str("mul "),
+                        DivC => assembly.push_str("div "),
+                        EqC => assembly.push_str("eq "),
+                        NeqC => assembly.push_str("neq "),
+                        LtC => assembly.push_str("lt "),
+                        GtC => assembly.push_str("gt "),
+                        LeqC => assembly.push_str("leq "),
+                        GeqC => assembly.push_str("geq "),
                         _ => panic!("Unvalid opcode"),
                     }
 
@@ -497,16 +497,16 @@ impl Binary {
                 },
                 AddFC | SubFC | MulFC | DivFC | EqFC | NeqFC | LtFC | GtFC | LeqFC | GeqFC => {
                     match opcode {
-                        AddFC => assembly.push_str("addfc "),
-                        SubFC => assembly.push_str("subfc "),
-                        MulFC => assembly.push_str("mulfc "),
-                        DivFC => assembly.push_str("divfc "),
-                        EqFC => assembly.push_str("eqfc "),
-                        NeqFC => assembly.push_str("neqfc "),
-                        LtFC => assembly.push_str("ltfc "),
-                        GtFC => assembly.push_str("gtfc "),
-                        LeqFC => assembly.push_str("leqfc "),
-                        GeqFC => assembly.push_str("geqfc "),
+                        AddFC => assembly.push_str("addf "),
+                        SubFC => assembly.push_str("subf "),
+                        MulFC => assembly.push_str("mulf "),
+                        DivFC => assembly.push_str("divf "),
+                        EqFC => assembly.push_str("eqf "),
+                        NeqFC => assembly.push_str("neqf "),
+                        LtFC => assembly.push_str("ltf "),
+                        GtFC => assembly.push_str("gtf "),
+                        LeqFC => assembly.push_str("leqf "),
+                        GeqFC => assembly.push_str("geqf "),
                         _ => panic!("Unvalid opcode"),
                     }
 
@@ -550,6 +550,57 @@ impl Binary {
 
                     assembly.push_str(&format!("{}, ${}, ${}\n", size, reg1, reg2));
                 },
+                AndC | OrC | XorC => {
+                    match opcode {
+                        AndC => assembly.push_str("and "),
+                        OrC => assembly.push_str("or "),
+                        XorC => assembly.push_str("xor "),
+                        _ => panic!("Unvalid opcode"),
+                    }
+
+                    let size = self.program[read_head];
+                    read_head += 1;
+                    let reg = self.program[read_head];
+                    read_head += 1;
+                    match size {
+                        8 => {
+                            let num_bytes = 1;
+                            let number = u8::from_le_bytes(self.program[read_head..read_head + num_bytes].try_into().unwrap());
+                            read_head += num_bytes;
+
+                            assembly.push_str(&format!("{}, ${}, {}u8\n", size, reg, number));
+                        },
+                        16 => {
+                            let num_bytes = 2;
+                            let number = u16::from_le_bytes(self.program[read_head..read_head + num_bytes].try_into().unwrap());
+                            read_head += num_bytes;
+
+                            assembly.push_str(&format!("{}, ${}, {}u16\n", size, reg, number));
+                        },
+                        32 => {
+                            let num_bytes = 4;
+                            let number = u32::from_le_bytes(self.program[read_head..read_head + num_bytes].try_into().unwrap());
+                            read_head += num_bytes;
+
+                            assembly.push_str(&format!("{}, ${}, {}u32\n", size, reg, number));
+                        },
+                        64 => {
+                            let num_bytes = 8;
+                            let number = u64::from_le_bytes(self.program[read_head..read_head + num_bytes].try_into().unwrap());
+                            read_head += num_bytes;
+
+                            assembly.push_str(&format!("{}, ${}, {}u64\n", size, reg, number));
+                        },
+                        128 => {
+                            let num_bytes = 16;
+                            let number = u128::from_le_bytes(self.program[read_head..read_head + num_bytes].try_into().unwrap());
+                            read_head += num_bytes;
+
+                            assembly.push_str(&format!("{}, ${}, {}u128\n", size, reg, number));
+                        },
+                        _ => panic!("Invalid size"),
+                    }
+                },
                 Not => {
                     assembly.push_str("not ");
                     let size = self.program[read_head];
@@ -580,6 +631,28 @@ impl Binary {
                     read_head += 1;
 
                     assembly.push_str(&format!("{}, ${}, ${}\n", size, reg1, reg2));
+                },
+                ShiftLeftC => {
+                    assembly.push_str("shl ");
+                    let size = self.program[read_head];
+                    read_head += 1;
+                    let reg = self.program[read_head];
+                    read_head += 1;
+                    let amount = self.program[read_head];
+                    read_head += 1;
+
+                    assembly.push_str(&format!("{}, ${}, {}u8\n", size, reg, amount));
+                },
+                ShiftRightC => {
+                    assembly.push_str("shr ");
+                    let size = self.program[read_head];
+                    read_head += 1;
+                    let reg = self.program[read_head];
+                    read_head += 1;
+                    let amount = self.program[read_head];
+                    read_head += 1;
+
+                    assembly.push_str(&format!("{}, ${}, {}u8\n", size, reg, amount));
                 },
                 Jump | JumpEq | JumpNeq | JumpLt | JumpGt | JumpLeq | JumpGeq | JumpZero | JumpNotZero | JumpNeg |
                 JumpPos | JumpEven | JumpOdd |  JumpInfinity | JumpNotInfinity |
@@ -964,6 +1037,61 @@ impl Binary {
 
                     assembly.push_str(&format!("{}, ${}, ${}\n", size, reg1, reg2));
                 },
+                AddFIC | SubFIC | MulFIC | DivFIC => {
+                    match opcode {
+                        AddFIC => assembly.push_str("addfi "),
+                        SubFIC => assembly.push_str("subfi "),
+                        MulFIC => assembly.push_str("mulfi "),
+                        DivFIC => assembly.push_str("divfi "),
+                        _ => {}
+                    }
+                    
+                    let size = self.program[read_head];
+                    read_head += 1;
+                    let reg = self.program[read_head];
+                    read_head += 1;
+                    match size {
+                        32 => {
+                            let constant = u32::from_le_bytes(self.program[read_head..read_head + 4].try_into().unwrap());
+                            read_head += 4;
+                            assembly.push_str(&format!("{}, ${}, {}u32\n", size, reg, constant));
+                        },
+                        64 => {
+                            let constant = u64::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
+                            read_head += 8;
+                            assembly.push_str(&format!("{}, ${}, {}u64\n", size, reg, constant));
+                        },
+                        _ => panic!("Invalid size for instruction"),
+                    }
+                },
+                AddIFC | SubIFC | MulIFC | DivIFC  => {
+                    match opcode {
+                        AddIFC => assembly.push_str("addif "),
+                        SubIFC => assembly.push_str("subif "),
+                        MulIFC => assembly.push_str("mulif "),
+                        DivIFC => assembly.push_str("divif "),
+                        _ => {}
+                    }
+                    let size = self.program[read_head];
+                    read_head += 1;
+                    let reg = self.program[read_head];
+                    read_head += 1;
+
+                    match size {
+                        32 => {
+                            let constant = f32::from_le_bytes(self.program[read_head..read_head + 4].try_into().unwrap());
+                            read_head += 4;
+                            assembly.push_str(&format!("{}, ${}, {}f32\n", size, reg, constant));
+                        },
+                        64 => {
+                            let constant = f64::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
+                            read_head += 8;
+                            assembly.push_str(&format!("{}, ${}, {}f64\n", size, reg, constant));
+                        },
+                        _ => panic!("Invalid size for instruction"),
+                    }
+
+                }
                 ThreadReturn => assembly.push_str("threadret"),
                 ThreadJoin => {
                     assembly.push_str("threadjoin ");

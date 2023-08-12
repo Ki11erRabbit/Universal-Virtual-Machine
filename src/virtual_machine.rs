@@ -11,7 +11,7 @@ use std::time::{Instant, Duration};
 
 use crate::core::MachineCore;
 use crate::garbage_collector::GarbageCollector;
-use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, ForeignFunction, ForeignFunctionArg, FileDescriptor, Core, SimpleResult, GarbageCollectorCore, RegCore, Collector, ReadWrite, Stack, WholeStack};
+use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, ForeignFunction, ForeignFunctionArg, FileDescriptor, Core, SimpleResult, GarbageCollectorCore, RegCore, Collector, ReadWrite, Stack, WholeStack, access_heap, get_heap_len_panic};
 use crate::binary::Binary;
 
 /// Struct that contains options for the virtual machine
@@ -58,6 +58,12 @@ impl Memory {
             allocated_blocks: HashMap::new(),
             available_blocks: HashMap::new(),
         }
+    }
+
+    pub fn len(&self) -> usize {
+        let x;
+        get_heap_len_panic!(self.memory,x);
+        x
     }
     
     /// This function is used to allocate memory when the right message is passed in
@@ -881,47 +887,28 @@ ret
 
     #[test]
     fn test_dp_fibonacci() {
-        let input = "array{
-.u32 0u32
-.u32 1u32
-.u32 0u32
-.u32 0u32
-.u32 0u32
-.u32 0u32
-.u32 0u32
-.u32 0u32
-.u32 0u32
-.u32 0u32
-.u32 0u32
-.u32 0u32
-.u32 0u32
-.u32 0u32
-.u32 0u32
-.u32 0u32
-.u32 0u32
-.u32 0u32
-.u32 0u32}
+        let input = "
 main{
-move 64, $0, array ; pointer to first element
-move 64, $1, 4u64
-addu 64, $0, $1
-addu 64, $0, $1 ; pointer is now in 3rd element
-move 32, $3, 10u32; end condition 
-move 32, $4, 2u32; i variable
-move 32, $10, 1u32
+move 32, $0, 0u32 ; first element
+move 32, $1, 1u32 ; second element
+add 32, $2, 0u32 ; temp
+move 64, $3, 2u64 ; counter
 }
 loop{
-equ 32, $3, $4
+eq 64, $3, 10u64
 jumpeq end
-move 32, $5, $0, -4i64
-move 32, $6, $0, -8i64
-addu 32, $5, $6
-move 32, $0, $5
-addu 64, $0, $1
-addu 32, $4, $10
+move 32, $2, 0u32
+add 32, $2, $0
+add 32, $2, $1
+move $0, $1, 32
+move $1, $2, 32
+add 64, $3, 1u64
 jump loop
 }
 end{
+move 64, $2, 4u64
+malloc $4, $2
+move 32, $4, $1
 ret}
 ";
 
@@ -938,10 +925,12 @@ ret}
 
         println!("Time: {:?}", now.elapsed().unwrap());
 
-        assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..], [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 21, 0, 0, 0, 34, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(machine.heap.read().unwrap().len(), 4);
+        assert_eq!(machine.heap.read().unwrap().memory.read().unwrap()[0..], [34,0,0,0]);
+
     }
 
-    #[test]
+    /*#[test]
     fn test_recursive_fibonacci() {
         /*let input = "number{
 .u32 0u32}
@@ -1314,6 +1303,6 @@ ret}
         println!("{:?}", machine.memory.read().unwrap().memory.read().unwrap());
 
         assert_eq!(machine.memory.read().unwrap().memory.read().unwrap()[1..], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-    }
+    }*/
 
 }

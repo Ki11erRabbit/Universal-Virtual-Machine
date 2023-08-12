@@ -66,7 +66,6 @@ macro_rules! check_registerF64 {
 
 
 macro_rules! int_op_branch {
-
     ($core:expr, $type:ty, $end_type:ty, $op:tt, $mask:expr, $reg_check:tt, $registers:tt,$reg1:expr, $reg2:expr, $slice:expr, $overflow:tt) => {
         $reg_check!($reg1, $reg2);
         let reg1_value = <$type>::from_le_bytes($core.$registers[$reg1].to_le_bytes()[$slice].try_into().unwrap());
@@ -143,10 +142,61 @@ macro_rules! int_op_branch {
         $core.$registers[$reg1] = new_value as $end_type;
     };
 
+    ($core:expr, $type:ty, $end_type:ty, $op:tt, $mask:expr, $reg_check:tt, $registers:tt,$reg1:expr, $reg2:expr, $slice:expr) => {
+        $reg_check!($reg1, $reg2);
+        let reg1_value = <$type>::from_le_bytes($core.$registers[$reg1].to_le_bytes()[$slice].try_into().unwrap());
+        let reg2_value = <$type>::from_le_bytes($core.$registers[$reg2].to_le_bytes()[$slice].try_into().unwrap());
+
+        let new_value = (Wrapping(reg1_value) $op Wrapping(reg2_value)).0;
+
+        if new_value == 0 {
+            $core.zero_flag = true;
+        }
+        else {
+            $core.zero_flag = false;
+            // Checking to see if the most significant bit is set
+            if new_value ^ $mask == (Wrapping(new_value) + Wrapping($mask)).0 {
+                $core.sign_flag = Sign::Positive;
+            }
+            else {
+                $core.sign_flag = Sign::Negative;
+            }
+        }
+        // Fast way to check if the number is odd
+        if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+            $core.odd_flag = false;
+        }
+        else {
+            $core.odd_flag = true;
+        }
+
+        $core.$registers[$reg1] = new_value as $end_type;
+    };
+
 
 }
 
 macro_rules! int_opcode {
+    ($core:expr, $op:tt, $size:expr, $reg1:expr, $reg2:expr) => {
+        match $size {
+            8 => {
+                int_op_branch!($core, u8, u64, $op, 0x80, check_register64, registers_64, $reg1, $reg2, 0..1);
+            },
+            16 => {
+                int_op_branch!($core, u16, u64, $op, 0x8000, check_register64, registers_64, $reg1, $reg2, 0..2);
+            },
+            32 => {
+                int_op_branch!($core, u32, u64, $op, 0x80000000, check_register64, registers_64, $reg1, $reg2, 0..4);
+            },
+            64 => {
+                int_op_branch!($core, u64, u64, $op, 0x8000000000000000, check_register64, registers_64, $reg1, $reg2, 0..8);
+            },
+            128 => {
+                int_op_branch!($core, u128, u128, $op, 0x80000000000000000000000000000000, check_register128, registers_128, $reg1, $reg2, 0..16);
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+    };
     ($core:expr, $op:tt, $size:expr, $reg1:expr, $reg2:expr, $overflow:tt) => {
         match $size {
             8 => {
@@ -194,6 +244,38 @@ macro_rules! int_opcode {
 
 
 macro_rules! int_op_c_branch {
+    ($core:expr, $type:ty, $end_type:ty, $op:tt, $mask:expr, $reg_check:tt, $registers:tt,$reg:expr, $method:tt, $advance:tt, $slice:expr) => {
+        $reg_check!($reg);
+        let reg_value = <$type>::from_le_bytes($core.$registers[$reg].to_le_bytes()[$slice].try_into().unwrap());
+        let constant = $core.$method() as $type;
+        $core.$advance();
+
+        let new_value = (Wrapping(reg_value) $op Wrapping(constant)).0;
+
+        if new_value == 0 {
+            $core.zero_flag = true;
+        }
+        else {
+            $core.zero_flag = false;
+            // Checking to see if the most significant bit is set
+            if new_value ^ $mask == (Wrapping(new_value) + Wrapping($mask)).0 {
+                $core.sign_flag = Sign::Positive;
+            }
+            else {
+                $core.sign_flag = Sign::Negative;
+            }
+        }
+        // Fast way to check if the number is odd
+        if new_value ^ 1 == (Wrapping(new_value) + Wrapping(1)).0 {
+            $core.odd_flag = false;
+        }
+        else {
+            $core.odd_flag = true;
+        }
+
+        $core.$registers[$reg] = new_value as $end_type;
+    };
+
     ($core:expr, $type:ty, $end_type:ty, $op:tt, $mask:expr, $reg_check:tt, $registers:tt,$reg:expr, $method:tt, $advance:tt, $slice:expr, $overflow:tt) => {
         $reg_check!($reg);
         let reg_value = <$type>::from_le_bytes($core.$registers[$reg].to_le_bytes()[$slice].try_into().unwrap());
@@ -272,10 +354,30 @@ macro_rules! int_op_c_branch {
 
         $core.$registers[$reg] = new_value as $end_type;
     };
-    
 }
 
 macro_rules! int_c_opcode {
+    ($core:expr, $op:tt, $size:expr, $reg:expr) => {
+        match $size {
+            8 => {
+                int_op_c_branch!($core, u8, u64, $op, 0x80, check_register64, registers_64, $reg, get_1_byte, advance_by_1_byte, 0..1);
+            },
+            16 => {
+                int_op_c_branch!($core, u16, u64, $op, 0x8000, check_register64, registers_64, $reg, get_2_bytes, advance_by_2_bytes, 0..2);
+            },
+            32 => {
+                int_op_c_branch!($core, u32, u64, $op, 0x80000000, check_register64, registers_64, $reg, get_4_bytes, advance_by_4_bytes, 0..4);
+            },
+            64 => {
+                int_op_c_branch!($core, u64, u64, $op, 0x8000000000000000, check_register64, registers_64, $reg, get_8_bytes, advance_by_8_bytes, 0..8);
+            },
+            128 => {
+                int_op_c_branch!($core, u128, u128, $op, 0x80000000000000000000000000000000, check_register128, registers_128, $reg, get_16_bytes, advance_by_16_bytes, 0..16);
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+    };
+    
     ($core:expr, $op:tt, $size:expr, $reg:expr, $overflow:tt) => {
         match $size {
             8 => {
@@ -317,7 +419,254 @@ macro_rules! int_c_opcode {
             _ => return Err(Fault::InvalidSize),
         }
     };
+}
 
+macro_rules! float_op_branch {
+    
+    ($core:expr, $op:tt, $reg_check:tt, $registers:tt,$reg1:expr, $reg2:expr) => {
+        $reg_check!($reg1, $reg2);
+
+        let new_value = $core.$registers[$reg1] $op $core.$registers[$reg2];
+
+        $core.$registers[$reg1] = new_value;
+        
+        if $core.$registers[$reg1] == 0.0 {
+            $core.zero_flag = true;
+        }
+        else {
+            $core.zero_flag = false;
+            // Checking to see if the most significant bit is set
+            if $core.$registers[$reg1] > 0.0 {
+                $core.sign_flag = Sign::Positive;
+            }
+            else {
+                $core.sign_flag = Sign::Negative;
+            }
+
+            if $core.$registers[$reg1].is_nan() {
+                $core.nan_flag = true;
+            }
+            else {
+                $core.nan_flag = false;
+            }
+            if $core.$registers[$reg1].is_infinite() {
+                $core.infinity_flag = true;
+            }
+            else {
+                $core.infinity_flag = false;
+            }
+            // Our check for if the number is odd or even
+            if $core.$registers[$reg1] % 2.0 == 0.0 {
+                $core.odd_flag = false;
+            }
+            else if $core.$registers[$reg1] % 2.0 > 0.0 {
+                $core.odd_flag = true;
+            }
+            
+        }
+    };
+
+    ($core:expr, $op:tt, $reg_check:tt, $registers:tt,$reg1:expr, $reg2:expr, $div:tt) => {
+        $reg_check!($reg1, $reg2);
+
+        if $core.$registers[$reg2] == 0.0 {
+            return Err(Fault::DivideByZero);
+        }
+
+        let new_value = $core.$registers[$reg1] $op $core.$registers[$reg2];
+
+        $core.$registers[$reg1] = new_value;
+        
+        if $core.$registers[$reg1] == 0.0 {
+            $core.zero_flag = true;
+        }
+        else {
+            $core.zero_flag = false;
+            // Checking to see if the most significant bit is set
+            if $core.$registers[$reg1] > 0.0 {
+                $core.sign_flag = Sign::Positive;
+            }
+            else {
+                $core.sign_flag = Sign::Negative;
+            }
+
+            if $core.$registers[$reg1].is_nan() {
+                $core.nan_flag = true;
+            }
+            else {
+                $core.nan_flag = false;
+            }
+            if $core.$registers[$reg1].is_infinite() {
+                $core.infinity_flag = true;
+            }
+            else {
+                $core.infinity_flag = false;
+            }
+            // Our check for if the number is odd or even
+            if $core.$registers[$reg1] % 2.0 == 0.0 {
+                $core.odd_flag = false;
+            }
+            else if $core.$registers[$reg1] % 2.0 > 0.0 {
+                $core.odd_flag = true;
+            }
+            
+        }
+    };
+}
+
+macro_rules! float_opcode {
+    ($core:expr, $op:tt, $size:expr, $reg1:expr, $reg2:expr) => {
+        match $size {
+            32 => {
+                float_op_branch!($core, $op, check_registerF32, registers_f32, $reg1, $reg2);
+            },
+            64 => {
+                float_op_branch!($core, $op, check_registerF64, registers_f64, $reg1, $reg2);
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+    };
+
+
+    ($core:expr, $op:tt, $size:expr, $reg1:expr, $reg2:expr, $div:tt) => {
+        match $size {
+            32 => {
+                float_op_branch!($core, $op, check_registerF32, registers_f32, $reg1, $reg2, $div);
+            },
+            64 => {
+                float_op_branch!($core, $op, check_registerF64, registers_f64, $reg1, $reg2, $div);
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+    };
+    
+}
+
+macro_rules! float_c_op_branch {
+    
+    ($core:expr, $op:tt, $reg_check:tt, $registers:tt,$reg:expr, $type:ty, $method:tt, $advance:tt) => {
+        $reg_check!($reg);
+
+        let constant = <$type>::from_le_bytes($core.$method().to_le_bytes().try_into().unwrap());
+        $core.$advance();
+
+        let new_value = $core.$registers[$reg] $op constant;
+
+        $core.$registers[$reg] = new_value;
+        
+        if $core.$registers[$reg] == 0.0 {
+            $core.zero_flag = true;
+        }
+        else {
+            $core.zero_flag = false;
+            // Checking to see if the most significant bit is set
+            if $core.$registers[$reg] > 0.0 {
+                $core.sign_flag = Sign::Positive;
+            }
+            else {
+                $core.sign_flag = Sign::Negative;
+            }
+
+            if $core.$registers[$reg].is_nan() {
+                $core.nan_flag = true;
+            }
+            else {
+                $core.nan_flag = false;
+            }
+            if $core.$registers[$reg].is_infinite() {
+                $core.infinity_flag = true;
+            }
+            else {
+                $core.infinity_flag = false;
+            }
+            // Our check for if the number is odd or even
+            if $core.$registers[$reg] % 2.0 == 0.0 {
+                $core.odd_flag = false;
+            }
+            else if $core.$registers[$reg] % 2.0 > 0.0 {
+                $core.odd_flag = true;
+            }
+        }
+    };
+
+    ($core:expr, $op:tt, $reg_check:tt, $registers:tt,$reg:expr, $type:ty, $method:tt, $advance:tt, $div:tt) => {
+        $reg_check!($reg);
+
+        let constant = <$type>::from_le_bytes($core.$method().to_le_bytes().try_into().unwrap());
+        $core.$advance();
+
+        if constant == 0.0 {
+            return Err(Fault::DivideByZero);
+        }
+
+        let new_value = $core.$registers[$reg] $op constant;
+
+        $core.$registers[$reg] = new_value;
+        
+        if $core.$registers[$reg] == 0.0 {
+            $core.zero_flag = true;
+        }
+        else {
+            $core.zero_flag = false;
+            // Checking to see if the most significant bit is set
+            if $core.$registers[$reg] > 0.0 {
+                $core.sign_flag = Sign::Positive;
+            }
+            else {
+                $core.sign_flag = Sign::Negative;
+            }
+
+            if $core.$registers[$reg].is_nan() {
+                $core.nan_flag = true;
+            }
+            else {
+                $core.nan_flag = false;
+            }
+            if $core.$registers[$reg].is_infinite() {
+                $core.infinity_flag = true;
+            }
+            else {
+                $core.infinity_flag = false;
+            }
+            // Our check for if the number is odd or even
+            if $core.$registers[$reg] % 2.0 == 0.0 {
+                $core.odd_flag = false;
+            }
+            else if $core.$registers[$reg] % 2.0 > 0.0 {
+                $core.odd_flag = true;
+            }
+            
+        }
+    };
+
+}
+
+macro_rules! float_c_opcode {
+    ($core:expr, $op:tt, $size:expr, $reg:expr) => {
+        match $size {
+            32 => {
+                float_c_op_branch!($core, $op, check_registerF32, registers_f32, $reg, f32,get_4_bytes, advance_by_4_bytes);
+            },
+            64 => {
+                float_c_op_branch!($core, $op, check_registerF64, registers_f64, $reg, f64,get_8_bytes, advance_by_8_bytes);
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+    };
+
+
+    ($core:expr, $op:tt, $size:expr, $reg:expr, $div:tt) => {
+        match $size {
+            32 => {
+                float_c_op_branch!($core, $op, check_registerF32, registers_f32, $reg, f32,get_4_bytes, advance_by_4_bytes, div);
+            },
+            64 => {
+                float_c_op_branch!($core, $op, check_registerF64, registers_f64, $reg, f64,get_8_bytes, advance_by_8_bytes, div);
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+    };
+    
 }
 
 
@@ -814,6 +1163,7 @@ impl MachineCore {
             return Err(Fault::SegmentationFault);
         }
 
+
         if address < data_segment_size {
             return Ok(self.data_segment[address as usize..address as usize + size as usize].to_vec());
         } else if address < data_segment_size + stack_size {
@@ -880,8 +1230,7 @@ impl MachineCore {
             self.stack.write_bytes(real_address as usize, bytes);
         } else {
             let real_address = address - data_segment_size - stack_size;
-            let mut heap = self.heap.write().unwrap();
-            heap[real_address as usize..real_address as usize + bytes.len()].copy_from_slice(bytes);
+            self.write_to_heap(real_address, bytes)?;
         }
         Ok(())
     }
@@ -900,7 +1249,7 @@ impl MachineCore {
 
     /// Convenience function for pushing a value to the stack
     fn push_stack(&mut self,value: &[Byte]) -> SimpleResult {
-        if value.len() + self.stack.local_len() > self.stack.local_len() {
+        if value.len() + self.stack.get_stack_pointer() > self.stack.local_len() {
             return Err(Fault::StackOverflow);
         }
 
@@ -987,6 +1336,8 @@ impl MachineCore {
         use Opcode::*;
 
         let opcode = self.decode_opcode();
+
+        //println!("Opcode: {:?}", opcode);
 
         match opcode {
             Halt | NoOp => return Ok(true),
@@ -1106,6 +1457,12 @@ impl MachineCore {
             RandomF => self.randomf_opcode()?,
             Read => self.read_opcode()?,
             ReadByte => self.readbyte_opcode()?,
+            StackPointer => self.stackpointer_opcode()?,
+            AndC => self.andc_opcode()?,
+            OrC => self.orc_opcode()?,
+            XorC => self.xorc_opcode()?,
+            ShiftLeftC => self.shiftleftc_opcode()?,
+            ShiftRightC => self.shiftrightc_opcode()?,
             
 
             x => {
@@ -2423,158 +2780,8 @@ impl MachineCore {
         let register2 = (self.program[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
-        match size {
-            8 => {
-                check_register64!(register1, register2);
+        int_opcode!(self, &, size, register1, register2);
 
-                let reg1_value = self.registers_64[register1] as u8;
-                let reg2_value = self.registers_64[register2] as u8;
-
-                self.registers_64[register1] = (reg1_value & reg2_value) as u64;
-
-                if self.registers_64[register1] as u8 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-
-                if self.registers_64[register1] as u8 & 0x80 == 0x80 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
-                }
-
-                if self.registers_64[register1] as u8 % 2 == 0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-                
-            },
-            16 => {
-                check_register64!(register1, register2);
-
-                let reg1_value = self.registers_64[register1] as u16;
-                let reg2_value = self.registers_64[register2] as u16;
-
-                self.registers_64[register1] = (reg1_value & reg2_value) as u64;
-
-                if self.registers_64[register1] as u16 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-
-                if self.registers_64[register1] as u16 & 0x80 == 0x80 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
-                }
-
-                if self.registers_64[register1] as u16 % 2 == 0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-                
-            },
-            32 => {
-                check_register64!(register1, register2);
-
-                let reg1_value = self.registers_64[register1] as u32;
-                let reg2_value = self.registers_64[register2] as u32;
-
-                self.registers_64[register1] = (reg1_value & reg2_value) as u64;
-
-                if self.registers_64[register1] as u32 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-
-                if self.registers_64[register1] as u32 & 0x80 == 0x80 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
-                }
-
-                if self.registers_64[register1] as u32 % 2 == 0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-                
-            },
-            64 => {
-                check_register64!(register1, register2);
-
-                let reg1_value = self.registers_64[register1] as u64;
-                let reg2_value = self.registers_64[register2] as u64;
-
-                self.registers_64[register1] = (reg1_value & reg2_value) as u64;
-
-                if self.registers_64[register1] as u64 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-
-                if self.registers_64[register1] as u64 & 0x80 == 0x80 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
-                }
-
-                if self.registers_64[register1] as u64 % 2 == 0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-                
-            },
-            128 => {
-                check_register128!(register1, register2);
-
-                let reg1_value = self.registers_128[register1] as u128;
-                let reg2_value = self.registers_128[register2] as u128;
-
-                self.registers_128[register1] = (reg1_value & reg2_value) as u128;
-
-                if self.registers_64[register1] as u128 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-
-                if self.registers_64[register1] as u128 & 0x80 == 0x80 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
-                }
-
-                if self.registers_64[register1] as u128 % 2 == 0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-            },
-            _ => return Err(Fault::InvalidSize),
-        }
         
         Ok(())
     }
@@ -2582,328 +2789,26 @@ impl MachineCore {
     fn or_opcode(&mut self) -> Result<(),Fault> {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.program[self.program_counter] as u8;
+        let register1 = self.program[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as u8;
+        let register2 = self.program[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
 
-        match size {
-            8 => {
-                check_register64!(register1 as usize, register2 as usize);
+        int_opcode!(self, |, size, register1, register2);
 
-                let reg1_value = self.registers_64[register1 as usize] as u8;
-                let reg2_value = self.registers_64[register2 as usize] as u8;
-
-                self.registers_64[register1 as usize] = (reg1_value | reg2_value) as u64;
-
-                if self.registers_64[register1 as usize] as u8 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-
-                if self.registers_64[register1 as usize] as u8 & 0x80 == 0x80 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
-                }
-
-                if self.registers_64[register1 as usize] as u8 % 2 == 0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-                
-            },
-            16 => {
-                check_register64!(register1 as usize, register2 as usize);
-
-                let reg1_value = self.registers_64[register1 as usize] as u16;
-                let reg2_value = self.registers_64[register2 as usize] as u16;
-
-                self.registers_64[register1 as usize] = (reg1_value | reg2_value) as u64;
-
-                if self.registers_64[register1 as usize] as u16 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-
-                if self.registers_64[register1 as usize] as u16 & 0x80 == 0x80 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
-                }
-
-                if self.registers_64[register1 as usize] as u16 % 2 == 0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-                
-            },
-            32 => {
-                check_register64!(register1 as usize, register2 as usize);
-
-                let reg1_value = self.registers_64[register1 as usize] as u32;
-                let reg2_value = self.registers_64[register2 as usize] as u32;
-
-                self.registers_64[register1 as usize] = (reg1_value | reg2_value) as u64;
-
-                if self.registers_64[register1 as usize] as u32 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-
-                if self.registers_64[register1 as usize] as u32 & 0x80 == 0x80 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
-                }
-
-                if self.registers_64[register1 as usize] as u32 % 2 == 0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-                
-            },
-            64 => {
-                check_register64!(register1 as usize, register2 as usize);
-
-                let reg1_value = self.registers_64[register1 as usize] as u64;
-                let reg2_value = self.registers_64[register2 as usize] as u64;
-
-                self.registers_64[register1 as usize] = (reg1_value | reg2_value) as u64;
-
-                if self.registers_64[register1 as usize] as u64 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-
-                if self.registers_64[register1 as usize] as u64 & 0x80 == 0x80 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
-                }
-
-                if self.registers_64[register1 as usize] as u64 % 2 == 0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-                
-            },
-            128 => {
-                check_register128!(register1 as usize, register2 as usize);
-
-                let reg1_value = self.registers_128[register1 as usize];
-                let reg2_value = self.registers_128[register2 as usize];
-
-                self.registers_128[register1 as usize] = reg1_value | reg2_value;
-
-                if self.registers_128[register1 as usize] == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-
-                if self.registers_128[register1 as usize] & 0x80 == 0x80 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
-                }
-
-                if self.registers_128[register1 as usize] % 2 == 0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-                
-            },
-            _ => return Err(Fault::InvalidSize),
-        }
         Ok(())
     }
 
     fn xor_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.program[self.program_counter] as u8;
+        let register1 = self.program[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as u8;
+        let register2 = self.program[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
 
-        match size {
-            8 => {
-                check_register64!(register1 as usize, register2 as usize);
+        int_opcode!(self, ^, size, register1, register2);
 
-                let reg1_value = self.registers_64[register1 as usize] as u8;
-                let reg2_value = self.registers_64[register2 as usize] as u8;
-
-                self.registers_64[register1 as usize] = (reg1_value ^ reg2_value) as u64;
-
-                if self.registers_64[register1 as usize] as u8 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-
-                if self.registers_64[register1 as usize] as u8 & 0x80 == 0x80 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
-                }
-
-                if self.registers_64[register1 as usize] as u8 % 2 == 0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-                
-            },
-            16 => {
-                check_register64!(register1 as usize, register2 as usize);
-
-                let reg1_value = self.registers_64[register1 as usize] as u16;
-                let reg2_value = self.registers_64[register2 as usize] as u16;
-
-                self.registers_64[register1 as usize] = (reg1_value ^ reg2_value) as u64;
-
-                if self.registers_64[register1 as usize] as u16 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-
-                if self.registers_64[register1 as usize] as u16 & 0x80 == 0x80 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
-                }
-
-                if self.registers_64[register1 as usize] as u16 % 2 == 0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-                
-            },
-            32 => {
-                check_register64!(register1 as usize, register2 as usize);
-
-                let reg1_value = self.registers_64[register1 as usize] as u32;
-                let reg2_value = self.registers_64[register2 as usize] as u32;
-
-                self.registers_64[register1 as usize] = (reg1_value ^ reg2_value) as u64;
-
-                if self.registers_64[register1 as usize] as u32 == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-
-                if self.registers_64[register1 as usize] as u32 & 0x80 == 0x80 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
-                }
-
-                if self.registers_64[register1 as usize] as u32 % 2 == 0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-                
-            },
-            64 => {
-                check_register64!(register1 as usize, register2 as usize);
-
-                let reg1_value = self.registers_64[register1 as usize];
-                let reg2_value = self.registers_64[register2 as usize];
-
-                self.registers_64[register1 as usize] = reg1_value ^ reg2_value;
-
-                if self.registers_64[register1 as usize] == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-
-                if self.registers_64[register1 as usize] & 0x80 == 0x80 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
-                }
-
-                if self.registers_64[register1 as usize] % 2 == 0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-                
-            },
-            128 => {
-                check_register128!(register1 as usize, register2 as usize);
-
-                let reg1_value = self.registers_128[register1 as usize];
-                let reg2_value = self.registers_128[register2 as usize];
-
-                self.registers_128[register1 as usize] = reg1_value ^ reg2_value;
-
-                if self.registers_128[register1 as usize] == 0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                }
-
-                if self.registers_128[register1 as usize] & 0x80 == 0x80 {
-                    self.sign_flag = Sign::Negative;
-                }
-                else {
-                    self.sign_flag = Sign::Positive;
-                }
-
-                if self.registers_128[register1 as usize] % 2 == 0 {
-                    self.odd_flag = false;
-                }
-                else {
-                    self.odd_flag = true;
-                }
-                
-            },
-            _ => return Err(Fault::InvalidSize),
-        }
         Ok(())
     }
 
@@ -3058,8 +2963,358 @@ impl MachineCore {
         }
         Ok(())
     }
-
+    
     fn shiftleft_opcode(&mut self) -> SimpleResult {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let shift_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(shift_reg as usize);
+
+        let shift_amount = self.registers_64[shift_reg as usize] as u8;
+
+        match size {
+            8 => {
+                check_register64!(register as usize, shift_reg as usize);
+
+                let reg_value = self.registers_64[register as usize] as u8;
+
+                self.registers_64[register as usize] = (reg_value << shift_amount) as u64;
+
+                if self.registers_64[register as usize] as u8 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register as usize] as u8 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register as usize] as u8 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            16 => {
+                check_register64!(register as usize);
+
+                let reg_value = self.registers_64[register as usize] as u16;
+
+                self.registers_64[register as usize] = (reg_value << shift_amount) as u64;
+
+                if self.registers_64[register as usize] as u16 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register as usize] as u16 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register as usize] as u16 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            32 => {
+                check_register64!(register as usize);
+
+                let reg_value = self.registers_64[register as usize] as u32;
+
+                self.registers_64[register as usize] = (reg_value << shift_amount) as u64;
+
+                if self.registers_64[register as usize] as u32 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register as usize] as u32 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register as usize] as u32 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            64 => {
+                check_register64!(register as usize);
+
+                let reg_value = self.registers_64[register as usize];
+
+                self.registers_64[register as usize] = reg_value << shift_amount;
+
+                if self.registers_64[register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register as usize] & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register as usize] % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            128 => {
+                check_register128!(register as usize);
+
+                let reg_value = self.registers_128[register as usize];
+
+                self.registers_128[register as usize] = reg_value << shift_amount;
+
+                if self.registers_128[register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_128[register as usize] & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_128[register as usize] % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+        Ok(())
+    }
+
+    fn shiftright_opcode(&mut self) -> SimpleResult {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let shift_reg = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(shift_reg as usize);
+
+        let shift_amount = self.registers_64[shift_reg as usize] as u8;
+
+        match size {
+            8 => {
+                check_register64!(register as usize);
+
+                let reg_value = self.registers_64[register as usize] as u8;
+
+                self.registers_64[register as usize] = (reg_value >> shift_amount) as u64;
+
+                if self.registers_64[register as usize] as u8 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register as usize] as u8 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register as usize] as u8 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            16 => {
+                check_register64!(register as usize);
+
+                let reg_value = self.registers_64[register as usize] as u16;
+
+                self.registers_64[register as usize] = (reg_value >> shift_amount) as u64;
+
+                if self.registers_64[register as usize] as u16 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register as usize] as u16 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register as usize] as u16 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            32 => {
+                check_register64!(register as usize);
+
+                let reg_value = self.registers_64[register as usize] as u32;
+
+                self.registers_64[register as usize] = (reg_value >> shift_amount) as u64;
+
+                if self.registers_64[register as usize] as u32 == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register as usize] as u32 & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register as usize] as u32 % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            64 => {
+                check_register64!(register as usize);
+
+                let reg_value = self.registers_64[register as usize];
+
+                self.registers_64[register as usize] = reg_value >> shift_amount;
+
+                if self.registers_64[register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_64[register as usize] & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_64[register as usize] % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            128 => {
+                check_register128!(register as usize);
+
+                let reg_value = self.registers_128[register as usize];
+
+                self.registers_128[register as usize] = reg_value >> shift_amount;
+
+                if self.registers_128[register as usize] == 0 {
+                    self.zero_flag = true;
+                }
+                else {
+                    self.zero_flag = false;
+                }
+
+                if self.registers_128[register as usize] & 0x80 == 0x80 {
+                    self.sign_flag = Sign::Negative;
+                }
+                else {
+                    self.sign_flag = Sign::Positive;
+                }
+
+                if self.registers_128[register as usize] % 2 == 0 {
+                    self.odd_flag = false;
+                }
+                else {
+                    self.odd_flag = true;
+                }
+            },
+            _ => return Err(Fault::InvalidSize),
+        }
+        Ok(())
+    }
+
+    fn andc_opcode(&mut self) -> SimpleResult {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register = (self.program[self.program_counter] as u8) as usize;
+        self.advance_by_1_byte();
+
+        int_c_opcode!(self, &, size, register);
+
+        
+        Ok(())
+    }
+
+    fn orc_opcode(&mut self) -> Result<(),Fault> {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as u8 as usize;
+        self.advance_by_1_byte();
+
+        int_c_opcode!(self, |, size, register);
+
+        Ok(())
+    }
+
+    fn xorc_opcode(&mut self) -> SimpleResult {
+        let size = self.program[self.program_counter] as u8;
+        self.advance_by_1_byte();
+        let register = self.program[self.program_counter] as u8 as usize;
+        self.advance_by_1_byte();
+
+        int_c_opcode!(self, ^, size, register);
+
+        Ok(())
+    }
+
+    fn shiftleftc_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as u8;
@@ -3213,7 +3468,7 @@ impl MachineCore {
         Ok(())
     }
 
-    fn shiftright_opcode(&mut self) -> SimpleResult {
+    fn shiftrightc_opcode(&mut self) -> SimpleResult {
         let size = self.program[self.program_counter] as u8;
         self.advance_by_1_byte();
         let register = self.program[self.program_counter] as u8;
@@ -4819,97 +5074,8 @@ impl MachineCore {
         let register2 = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
 
-        match size {
-            32 => {
-                check_registerF32!(register1, register2);
-                self.registers_f32[register1] += self.registers_f32[register2];
+        float_opcode!(self, +, size, register1, register2);
 
-                if self.registers_f32[register1].is_nan() {
-                    self.nan_flag = true;
-                }
-                else {
-                    self.nan_flag = false;
-                }
-                if self.registers_f32[register1].is_infinite() {
-                    self.infinity_flag = true;
-                }
-                else {
-                    self.infinity_flag = false;
-                }
-                if self.registers_f32[register1] == 0.0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    if self.registers_f32[register1] < 0.0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
-                        self.sign_flag = Sign::Positive;
-                    }
-                }
-                let str = self.registers_f32[register1].to_string();
-                for chr in str.chars().rev() {
-                    match chr {
-                        '1' | '3' | '5' | '7' | '9' => {
-                            self.odd_flag = true;
-                            break;
-                        },
-                        '2' | '4' | '6' | '8' => {
-                            self.odd_flag = false;
-                            break;
-                        },
-                        _ => {},
-                    }
-                }
-                
-            },
-            64 => {
-                check_registerF64!(register1, register2);
-                self.registers_f64[register1] += self.registers_f64[register2];
-
-                if self.registers_f64[register1].is_nan() {
-                    self.nan_flag = true;
-                }
-                else {
-                    self.nan_flag = false;
-                }
-                if self.registers_f64[register1].is_infinite() {
-                    self.infinity_flag = true;
-                }
-                else {
-                    self.infinity_flag = false;
-                }
-                if self.registers_f64[register1] == 0.0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    if self.registers_f64[register1] < 0.0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
-                        self.sign_flag = Sign::Positive;
-                    }
-                }
-                let str = self.registers_f64[register1].to_string();
-                for chr in str.chars().rev() {
-                    match chr {
-                        '1' | '3' | '5' | '7' | '9' => {
-                            self.odd_flag = true;
-                            break;
-                        },
-                        '2' | '4' | '6' | '8' => {
-                            self.odd_flag = false;
-                            break;
-                        },
-                        _ => {},
-                    }
-                }
-                
-            },
-            _ => return Err(Fault::InvalidSize),
-        }
 
         Ok(())
     }
@@ -4922,98 +5088,7 @@ impl MachineCore {
         let register2 = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
 
-        match size {
-            32 => {
-                check_registerF32!(register1, register2);
-                self.registers_f32[register1] -= self.registers_f32[register2];
-
-                if self.registers_f32[register1].is_nan() {
-                    self.nan_flag = true;
-                }
-                else {
-                    self.nan_flag = false;
-                }
-                if self.registers_f32[register1].is_infinite() {
-                    self.infinity_flag = true;
-                }
-                else {
-                    self.infinity_flag = false;
-                }
-                if self.registers_f32[register1] == 0.0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    if self.registers_f32[register1] < 0.0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
-                        self.sign_flag = Sign::Positive;
-                    }
-                }
-                let str = self.registers_f32[register1].to_string();
-                for chr in str.chars().rev() {
-                    match chr {
-                        '1' | '3' | '5' | '7' | '9' => {
-                            self.odd_flag = true;
-                            break;
-                        },
-                        '2' | '4' | '6' | '8' => {
-                            self.odd_flag = false;
-                            break;
-                        },
-                        _ => {},
-                    }
-                }
-            },
-            64 => {
-                check_registerF64!(register1, register2);
-                self.registers_f64[register1] -= self.registers_f64[register2];
-
-                if self.registers_f64[register1].is_nan() {
-                    self.nan_flag = true;
-                }
-                else {
-                    self.nan_flag = false;
-                }
-                if self.registers_f64[register1].is_infinite() {
-                    self.infinity_flag = true;
-                }
-                else {
-                    self.infinity_flag = false;
-                }
-                if self.registers_f64[register1] == 0.0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    if self.registers_f64[register1] < 0.0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
-                        self.sign_flag = Sign::Positive;
-                    }
-                }
-                let str = self.registers_f64[register1].to_string();
-                for chr in str.chars().rev() {
-                    match chr {
-                        '1' | '3' | '5' | '7' | '9' => {
-                            self.odd_flag = true;
-                            break;
-                        },
-                        '2' | '4' | '6' | '8' => {
-                            self.odd_flag = false;
-                            break;
-                        },
-                        _ => {},
-                    }
-                }
-                
-                
-                
-            },
-            _ => return Err(Fault::InvalidSize),
-        }
+        float_opcode!(self, -, size, register1, register2);
 
         Ok(())
     }
@@ -5026,98 +5101,7 @@ impl MachineCore {
         let register2 = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
 
-        match size {
-            32 => {
-                check_registerF32!(register1, register2);
-                self.registers_f32[register1] *= self.registers_f32[register2];
-
-                if self.registers_f32[register1].is_nan() {
-                    self.nan_flag = true;
-                }
-                else {
-                    self.nan_flag = false;
-                }
-                if self.registers_f32[register1].is_infinite() {
-                    self.infinity_flag = true;
-                }
-                else {
-                    self.infinity_flag = false;
-                }
-                if self.registers_f32[register1] == 0.0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    if self.registers_f32[register1] < 0.0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
-                        self.sign_flag = Sign::Positive;
-                    }
-                }
-                let str = self.registers_f32[register1].to_string();
-                for chr in str.chars().rev() {
-                    match chr {
-                        '1' | '3' | '5' | '7' | '9' => {
-                            self.odd_flag = true;
-                            break;
-                        },
-                        '2' | '4' | '6' | '8' => {
-                            self.odd_flag = false;
-                            break;
-                        },
-                        _ => {},
-                    }
-                }
-            },
-            64 => {
-                check_registerF64!(register1, register2);
-                self.registers_f64[register1] *= self.registers_f64[register2];
-
-                if self.registers_f64[register1].is_nan() {
-                    self.nan_flag = true;
-                }
-                else {
-                    self.nan_flag = false;
-                }
-                if self.registers_f64[register1].is_infinite() {
-                    self.infinity_flag = true;
-                }
-                else {
-                    self.infinity_flag = false;
-                }
-                if self.registers_f64[register1] == 0.0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    if self.registers_f64[register1] < 0.0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
-                        self.sign_flag = Sign::Positive;
-                    }
-                }
-                let str = self.registers_f64[register1].to_string();
-                for chr in str.chars().rev() {
-                    match chr {
-                        '1' | '3' | '5' | '7' | '9' => {
-                            self.odd_flag = true;
-                            break;
-                        },
-                        '2' | '4' | '6' | '8' => {
-                            self.odd_flag = false;
-                            break;
-                        },
-                        _ => {},
-                    }
-                }
-                
-                
-                
-            },
-            _ => return Err(Fault::InvalidSize),
-        }
+        float_opcode!(self, *, size, register1, register2);
 
         Ok(())
     }
@@ -5131,108 +5115,7 @@ impl MachineCore {
         let register2 = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
 
-        match size {
-            32 => {
-                check_registerF32!(register1, register2);
-
-                if self.registers_f32[register2] == 0.0 {
-                    return Err(Fault::DivideByZero);
-                }
-                
-                self.registers_f32[register1] /= self.registers_f32[register2];
-
-                if self.registers_f32[register1].is_nan() {
-                    self.nan_flag = true;
-                }
-                else {
-                    self.nan_flag = false;
-                }
-                if self.registers_f32[register1].is_infinite() {
-                    self.infinity_flag = true;
-                }
-                else {
-                    self.infinity_flag = false;
-                }
-                if self.registers_f32[register1] == 0.0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    if self.registers_f32[register1] < 0.0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
-                        self.sign_flag = Sign::Positive;
-                    }
-                }
-                let str = self.registers_f32[register1].to_string();
-                for chr in str.chars().rev() {
-                    match chr {
-                        '1' | '3' | '5' | '7' | '9' => {
-                            self.odd_flag = true;
-                            break;
-                        },
-                        '2' | '4' | '6' | '8' => {
-                            self.odd_flag = false;
-                            break;
-                        },
-                        _ => {},
-                    }
-                }
-            },
-            64 => {
-                check_registerF64!(register1, register2);
-
-                if self.registers_f64[register2] == 0.0 {
-                    return Err(Fault::DivideByZero);
-                }
-                
-                self.registers_f64[register1] /= self.registers_f64[register2];
-
-                if self.registers_f64[register1].is_nan() {
-                    self.nan_flag = true;
-                }
-                else {
-                    self.nan_flag = false;
-                }
-                if self.registers_f64[register1].is_infinite() {
-                    self.infinity_flag = true;
-                }
-                else {
-                    self.infinity_flag = false;
-                }
-                if self.registers_f64[register1] == 0.0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    if self.registers_f64[register1] < 0.0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
-                        self.sign_flag = Sign::Positive;
-                    }
-                }
-                let str = self.registers_f64[register1].to_string();
-                for chr in str.chars().rev() {
-                    match chr {
-                        '1' | '3' | '5' | '7' | '9' => {
-                            self.odd_flag = true;
-                            break;
-                        },
-                        '2' | '4' | '6' | '8' => {
-                            self.odd_flag = false;
-                            break;
-                        },
-                        _ => {},
-                    }
-                }
-                
-                
-                
-            },
-            _ => return Err(Fault::InvalidSize),
-        }
+        float_opcode!(self, /, size, register1, register2, div);
 
         Ok(())
     }
@@ -5442,103 +5325,7 @@ impl MachineCore {
         let register = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
 
-        match size {
-            32 => {
-                check_registerF32!(register);
-
-                let constant = f32::from_le_bytes(self.get_4_bytes().to_le_bytes().try_into().unwrap());
-                self.advance_by_4_bytes();
-                
-                self.registers_f32[register] += constant;
-
-                if self.registers_f32[register].is_nan() {
-                    self.nan_flag = true;
-                }
-                else {
-                    self.nan_flag = false;
-                }
-                if self.registers_f32[register].is_infinite() {
-                    self.infinity_flag = true;
-                }
-                else {
-                    self.infinity_flag = false;
-                }
-                if self.registers_f32[register] == 0.0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    if self.registers_f32[register] < 0.0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
-                        self.sign_flag = Sign::Positive;
-                    }
-                }
-                let str = self.registers_f32[register].to_string();
-                for chr in str.chars().rev() {
-                    match chr {
-                        '1' | '3' | '5' | '7' | '9' => {
-                            self.odd_flag = true;
-                            break;
-                        },
-                        '2' | '4' | '6' | '8' => {
-                            self.odd_flag = false;
-                            break;
-                        },
-                        _ => {},
-                    }
-                }
-            },
-            64 => {
-                check_registerF64!(register);
-
-                let constant = f64::from_le_bytes(self.get_8_bytes().to_le_bytes().try_into().unwrap());
-                self.advance_by_8_bytes();
-                
-                self.registers_f64[register] += constant;
-
-                if self.registers_f64[register].is_nan() {
-                    self.nan_flag = true;
-                }
-                else {
-                    self.nan_flag = false;
-                }
-                if self.registers_f64[register].is_infinite() {
-                    self.infinity_flag = true;
-                }
-                else {
-                    self.infinity_flag = false;
-                }
-                if self.registers_f64[register] == 0.0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    if self.registers_f64[register] < 0.0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
-                        self.sign_flag = Sign::Positive;
-                    }
-                }
-                let str = self.registers_f64[register].to_string();
-                for chr in str.chars().rev() {
-                    match chr {
-                        '1' | '3' | '5' | '7' | '9' => {
-                            self.odd_flag = true;
-                            break;
-                        },
-                        '2' | '4' | '6' | '8' => {
-                            self.odd_flag = false;
-                            break;
-                        },
-                        _ => {},
-                    }
-                }
-            },
-            _ => return Err(Fault::InvalidSize),
-        }
+        float_c_opcode!(self, +, size, register);
 
         Ok(())
     }
@@ -5549,103 +5336,7 @@ impl MachineCore {
         let register = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
 
-        match size {
-            32 => {
-                check_registerF32!(register);
-
-                let constant = f32::from_le_bytes(self.get_4_bytes().to_le_bytes().try_into().unwrap());
-                self.advance_by_4_bytes();
-                
-                self.registers_f32[register] -= constant;
-
-                if self.registers_f32[register].is_nan() {
-                    self.nan_flag = true;
-                }
-                else {
-                    self.nan_flag = false;
-                }
-                if self.registers_f32[register].is_infinite() {
-                    self.infinity_flag = true;
-                }
-                else {
-                    self.infinity_flag = false;
-                }
-                if self.registers_f32[register] == 0.0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    if self.registers_f32[register] < 0.0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
-                        self.sign_flag = Sign::Positive;
-                    }
-                }
-                let str = self.registers_f32[register].to_string();
-                for chr in str.chars().rev() {
-                    match chr {
-                        '1' | '3' | '5' | '7' | '9' => {
-                            self.odd_flag = true;
-                            break;
-                        },
-                        '2' | '4' | '6' | '8' => {
-                            self.odd_flag = false;
-                            break;
-                        },
-                        _ => {},
-                    }
-                }
-            },
-            64 => {
-                check_registerF64!(register);
-
-                let constant = f64::from_le_bytes(self.get_8_bytes().to_le_bytes().try_into().unwrap());
-                self.advance_by_8_bytes();
-                
-                self.registers_f64[register] -= constant;
-
-                if self.registers_f64[register].is_nan() {
-                    self.nan_flag = true;
-                }
-                else {
-                    self.nan_flag = false;
-                }
-                if self.registers_f64[register].is_infinite() {
-                    self.infinity_flag = true;
-                }
-                else {
-                    self.infinity_flag = false;
-                }
-                if self.registers_f64[register] == 0.0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    if self.registers_f64[register] < 0.0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
-                        self.sign_flag = Sign::Positive;
-                    }
-                }
-                let str = self.registers_f64[register].to_string();
-                for chr in str.chars().rev() {
-                    match chr {
-                        '1' | '3' | '5' | '7' | '9' => {
-                            self.odd_flag = true;
-                            break;
-                        },
-                        '2' | '4' | '6' | '8' => {
-                            self.odd_flag = false;
-                            break;
-                        },
-                        _ => {},
-                    }
-                }
-            },
-            _ => return Err(Fault::InvalidSize),
-        }
+        float_c_opcode!(self, -, size, register);
 
         Ok(())
     }
@@ -5656,103 +5347,7 @@ impl MachineCore {
         let register = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
 
-        match size {
-            32 => {
-                check_registerF32!(register);
-
-                let constant = f32::from_le_bytes(self.get_4_bytes().to_le_bytes().try_into().unwrap());
-                self.advance_by_4_bytes();
-                
-                self.registers_f32[register] *= constant;
-
-                if self.registers_f32[register].is_nan() {
-                    self.nan_flag = true;
-                }
-                else {
-                    self.nan_flag = false;
-                }
-                if self.registers_f32[register].is_infinite() {
-                    self.infinity_flag = true;
-                }
-                else {
-                    self.infinity_flag = false;
-                }
-                if self.registers_f32[register] == 0.0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    if self.registers_f32[register] < 0.0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
-                        self.sign_flag = Sign::Positive;
-                    }
-                }
-                let str = self.registers_f32[register].to_string();
-                for chr in str.chars().rev() {
-                    match chr {
-                        '1' | '3' | '5' | '7' | '9' => {
-                            self.odd_flag = true;
-                            break;
-                        },
-                        '2' | '4' | '6' | '8' => {
-                            self.odd_flag = false;
-                            break;
-                        },
-                        _ => {},
-                    }
-                }
-            },
-            64 => {
-                check_registerF64!(register);
-
-                let constant = f64::from_le_bytes(self.get_8_bytes().to_le_bytes().try_into().unwrap());
-                self.advance_by_8_bytes();
-                
-                self.registers_f64[register] *= constant;
-
-                if self.registers_f64[register].is_nan() {
-                    self.nan_flag = true;
-                }
-                else {
-                    self.nan_flag = false;
-                }
-                if self.registers_f64[register].is_infinite() {
-                    self.infinity_flag = true;
-                }
-                else {
-                    self.infinity_flag = false;
-                }
-                if self.registers_f64[register] == 0.0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    if self.registers_f64[register] < 0.0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
-                        self.sign_flag = Sign::Positive;
-                    }
-                }
-                let str = self.registers_f64[register].to_string();
-                for chr in str.chars().rev() {
-                    match chr {
-                        '1' | '3' | '5' | '7' | '9' => {
-                            self.odd_flag = true;
-                            break;
-                        },
-                        '2' | '4' | '6' | '8' => {
-                            self.odd_flag = false;
-                            break;
-                        },
-                        _ => {},
-                    }
-                }
-            },
-            _ => return Err(Fault::InvalidSize),
-        }
+        float_c_opcode!(self, *, size, register);
 
         Ok(())
     }
@@ -5764,111 +5359,7 @@ impl MachineCore {
         let register = self.program[self.program_counter] as usize;
         self.advance_by_1_byte();
 
-        match size {
-            32 => {
-                check_registerF32!(register);
-
-                let constant = f32::from_le_bytes(self.get_4_bytes().to_le_bytes().try_into().unwrap());
-                self.advance_by_4_bytes();
-
-                if constant == 0.0 {
-                    return Err(Fault::DivideByZero);
-                }
-                
-                self.registers_f32[register] /= constant;
-
-                if self.registers_f32[register].is_nan() {
-                    self.nan_flag = true;
-                }
-                else {
-                    self.nan_flag = false;
-                }
-                if self.registers_f32[register].is_infinite() {
-                    self.infinity_flag = true;
-                }
-                else {
-                    self.infinity_flag = false;
-                }
-                if self.registers_f32[register] == 0.0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    if self.registers_f32[register] < 0.0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
-                        self.sign_flag = Sign::Positive;
-                    }
-                }
-                let str = self.registers_f32[register].to_string();
-                for chr in str.chars().rev() {
-                    match chr {
-                        '1' | '3' | '5' | '7' | '9' => {
-                            self.odd_flag = true;
-                            break;
-                        },
-                        '2' | '4' | '6' | '8' => {
-                            self.odd_flag = false;
-                            break;
-                        },
-                        _ => {},
-                    }
-                }
-            },
-            64 => {
-                check_registerF64!(register);
-
-                let constant = f64::from_le_bytes(self.get_8_bytes().to_le_bytes().try_into().unwrap());
-                self.advance_by_8_bytes();
-
-                if constant == 0.0 {
-                    return Err(Fault::DivideByZero);
-                }
-                
-                self.registers_f64[register] /= constant;
-
-                if self.registers_f64[register].is_nan() {
-                    self.nan_flag = true;
-                }
-                else {
-                    self.nan_flag = false;
-                }
-                if self.registers_f64[register].is_infinite() {
-                    self.infinity_flag = true;
-                }
-                else {
-                    self.infinity_flag = false;
-                }
-                if self.registers_f64[register] == 0.0 {
-                    self.zero_flag = true;
-                }
-                else {
-                    self.zero_flag = false;
-                    if self.registers_f64[register] < 0.0 {
-                        self.sign_flag = Sign::Negative;
-                    }
-                    else {
-                        self.sign_flag = Sign::Positive;
-                    }
-                }
-                let str = self.registers_f64[register].to_string();
-                for chr in str.chars().rev() {
-                    match chr {
-                        '1' | '3' | '5' | '7' | '9' => {
-                            self.odd_flag = true;
-                            break;
-                        },
-                        '2' | '4' | '6' | '8' => {
-                            self.odd_flag = false;
-                            break;
-                        },
-                        _ => {},
-                    }
-                }
-            },
-            _ => return Err(Fault::InvalidSize),
-        }
+        float_c_opcode!(self, /, size, register, div);
 
         Ok(())
     }
@@ -6939,11 +6430,9 @@ impl MachineCore {
             Message::MemoryPointer(ptr) => {
                 let data_segment_size = self.data_segment.len() as u64;
                 let stack_size = self.stack.size() as u64;
-                let heap_size;
-                get_heap_len_err!(self.heap, heap_size);
 
                 // Here we offset the pointer so that it points to the start of the heap address space
-                let ptr = ptr + data_segment_size + stack_size + heap_size as u64;
+                let ptr = ptr + data_segment_size + stack_size as u64;
                 
                 self.registers_64[ptr_reg as usize] = ptr as u64;
             },
@@ -7007,11 +6496,9 @@ impl MachineCore {
 
         let data_segment_size = self.data_segment.len() as u64;
         let stack_size = self.stack.size() as u64;
-        let heap_size;
-        get_heap_len_err!(self.heap, heap_size);
 
         // Here we reset the offset the pointer so that it points to the start of the heap
-        let ptr = ptr - data_segment_size - stack_size - heap_size as u64;
+        let ptr = ptr - data_segment_size - stack_size;
         
         let message = Message::Realloc(ptr, size);
 
@@ -7023,7 +6510,7 @@ impl MachineCore {
             Message::MemoryPointer(ptr) => {
 
                 // Here we add the offset back to the pointer so that it points to the start of the heap address space
-                let ptr = ptr + data_segment_size + stack_size + heap_size as u64;
+                let ptr = ptr + data_segment_size + stack_size;
                 
                 self.registers_64[ptr_reg as usize] = ptr as u64;
             },

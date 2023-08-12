@@ -283,7 +283,7 @@ macro_rules! access_heap {
 #[macro_export]
 macro_rules! get_heap_len_err {
     ($method:expr, $var:ident) => {
-        access_heap!($method.try_read(), heap, {
+        crate::access_heap!($method.try_read(), heap, {
             $var = heap.len();
         }, {
             return Err(Fault::CorruptedMemory);
@@ -294,7 +294,7 @@ macro_rules! get_heap_len_err {
 #[macro_export]
 macro_rules! get_heap_len_panic {
     ($method:expr, $var:ident) => {
-        access_heap!($method.try_read(), heap, {
+        crate::access_heap!($method.try_read(), heap, {
             $var = heap.len();
         }, {
             panic!("Corrupted Memory");

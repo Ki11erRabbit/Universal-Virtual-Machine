@@ -280,6 +280,19 @@ pub enum Opcode {
     RandomF,
     /// Reading but rather than writing to the heap it writes to the stack
     ReadStack,
+    AndC,
+    OrC,
+    XorC,
+    ShiftLeftC,
+    ShiftRightC,
+    AddFIC,
+    SubFIC,
+    MulFIC,
+    DivFIC,
+    AddIFC,
+    SubIFC,
+    MulIFC,
+    DivIFC,
     
     
     
@@ -349,8 +362,14 @@ impl From<u16> for Opcode {
             47 => GtFC,
             48 => LeqFC,
             49 => GeqFC,
-            /* gap start at 50 */
-            /* Gap ends ad 63 */
+            /* Instructions for Bitwise operations and constants */
+            50 => AndC,
+            51 => OrC,
+            52 => XorC,
+            53 => ShiftLeftC,
+            54 => ShiftRightC,
+            /* Gap starts at 55 */
+            /* Gap ends at 63 */
             /* Instructions for bitwise operations */
             64 => And,
             65 => Or,
@@ -451,6 +470,15 @@ impl From<u16> for Opcode {
             169 => SleepReg,
             170 => Random,
             171 => RandomF,
+
+            172 => AddFIC,
+            173 => SubFIC,
+            174 => MulFIC,
+            175 => DivFIC,
+            176 => AddIFC,
+            177 => SubIFC,
+            178 => MulIFC,
+            179 => DivIFC,
             
             
             /* Instructions illegal instruction */
