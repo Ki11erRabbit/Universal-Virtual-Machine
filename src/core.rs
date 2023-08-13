@@ -8,7 +8,7 @@ use std::sync::mpsc::{Sender,Receiver, TryRecvError};
 use std::time::Duration;
 
 use crate::instruction::Opcode;
-use crate::{RegisterType,Message,Fault,CoreId,Byte,Pointer,FileDescriptor, Core, SimpleResult, CoreResult, RegCore, WholeStack, access_heap, get_heap_len_err, unsigned_t_signed};
+use crate::{RegisterType,Message,Fault,CoreId,Byte,Pointer,FileDescriptor, Core, SimpleResult, CoreResult, RegCore, WholeStack, access_heap, get_heap_len_err, unsigned_t_signed, Registers};
 
 
 macro_rules! check_register64 {
@@ -671,10 +671,10 @@ macro_rules! float_c_opcode {
 
 
 
-const REGISTER_64_COUNT: usize = 16;
-const REGISTER_128_COUNT: usize = 8;
-const REGISTER_F32_COUNT: usize = 8;
-const REGISTER_F64_COUNT: usize = 8;
+pub const REGISTER_64_COUNT: usize = 16;
+pub const REGISTER_128_COUNT: usize = 8;
+pub const REGISTER_F32_COUNT: usize = 8;
+pub const REGISTER_F64_COUNT: usize = 8;
 
 #[derive(Debug,PartialEq)]
 /// An Enum that represents the sign flag
@@ -1059,6 +1059,14 @@ impl RegCore for MachineCore {
     fn add_stack(&mut self, stack: WholeStack, index: usize) {
         self.stack.set_buffer(stack, index);
     }
+
+    fn set_registers(&mut self, registers: Registers) {
+        self.registers_64 = registers.0;
+        self.registers_128 = registers.1;
+        self.registers_f32 = registers.2;
+        self.registers_f64 = registers.3;
+    }
+
 }
     
 impl MachineCore {
@@ -6285,7 +6293,9 @@ impl MachineCore {
 
         check_register64!(program_counter_reg as usize, thread_id_reg as usize);
 
-        let message = Message::SpawnThread(self.registers_64[program_counter_reg as usize] as u64);
+        let registers = (self.registers_64.clone(), self.registers_128.clone(), self.registers_f32.clone(), self.registers_f64.clone());
+
+        let message = Message::SpawnThread(self.registers_64[program_counter_reg as usize] as u64, registers);
 
         self.send_message(message)?;
 

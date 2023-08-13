@@ -11,7 +11,7 @@ use std::time::{Instant, Duration};
 
 use crate::core::MachineCore;
 use crate::garbage_collector::GarbageCollector;
-use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, ForeignFunction, ForeignFunctionArg, FileDescriptor, Core, SimpleResult, GarbageCollectorCore, RegCore, Collector, ReadWrite, Stack, WholeStack, access_heap, get_heap_len_panic};
+use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, ForeignFunction, ForeignFunctionArg, FileDescriptor, Core, SimpleResult, GarbageCollectorCore, RegCore, Collector, ReadWrite, Stack, WholeStack, access_heap, get_heap_len_panic, Registers};
 use crate::binary::Binary;
 
 /// Struct that contains options for the virtual machine
@@ -237,9 +237,8 @@ pub struct Machine {
     stack: WholeStack,
     /// The memory of the virtual machine in little endian
     heap: Arc<RwLock<Memory>>,
-    next_stack_offset: usize,
     /// The cores of the virtual machine that are not running
-    cores: Vec<Box<dyn RegCore + Send>>,
+    cores: Vec<Option<Box<dyn RegCore + Send>>>,
     /// The thread handles for the running cores
     core_threads: Vec<Option<JoinHandle<SimpleResult>>>,
     /// The program to run
@@ -279,7 +278,6 @@ impl Machine {
             data_segment: Arc::new(Vec::new()),
             stack: Arc::new(Vec::new()),
             heap: Arc::new(RwLock::new(Memory::new())),
-            next_stack_offset: 0,
             cores: Vec::new(),
             core_threads: Vec::new(),
             program: None,
@@ -486,8 +484,8 @@ impl Machine {
                             let message = self.flush(fd);
                             send.send(message).unwrap();
                         },
-                        Message::SpawnThread(program_counter) => {
-                            let (message, child_id) = self.thread_spawn(program_counter);
+                        Message::SpawnThread(program_counter, registers) => {
+                            let (message, child_id) = self.thread_spawn(program_counter, registers);
                             self.thread_children.insert(child_id, core_id as u8);
                             send.send(message).unwrap();
                         },
@@ -709,11 +707,11 @@ impl Machine {
     }
 
     /// This function will run a core at the given program counter
-    fn thread_spawn(&mut self, program_counter: u64) -> (Message, u8) {
+    fn thread_spawn(&mut self, program_counter: u64, registers: Registers) -> (Message, u8) {
         if self.cores.len() == 0 {
             self.add_core();
         }
-        self.run_core_threaded(0, program_counter as usize);
+        self.run_core_threaded(0, program_counter as usize, registers);
         let core_id = self.core_threads.len() - 1;
         (Message::ThreadSpawned(core_id as u8), core_id as u8)
     }
@@ -728,7 +726,27 @@ impl Machine {
         core.add_data_segment(self.data_segment.clone());
         core.add_heap(self.heap.read().unwrap().memory.clone());
         core.add_channels(machine_sender, core_receiver);
-        self.cores.push(core);
+        self.cores.push(Some(core));
+        self.core_threads.push(None);
+    }
+
+    pub fn add_core_at(&mut self, index: usize) {
+        if index >= self.cores.len() {
+            panic!("Index out of bounds");
+        }
+
+        if !self.cores[index].is_none() && !self.channels.borrow()[index].is_none() {
+            return;
+        }
+        
+        let (core_sender, core_receiver) = channel();
+        let (machine_sender, machine_receiver) = channel();
+        self.channels.borrow_mut()[index].replace((core_sender, machine_receiver));
+        let mut core = Box::new(MachineCore::new());
+        core.add_data_segment(self.data_segment.clone());
+        core.add_heap(self.heap.read().unwrap().memory.clone());
+        core.add_channels(machine_sender, core_receiver);
+        self.cores[index].replace(core);
     }
 
     /// This function adds a garbage collector core to the machine
@@ -743,8 +761,8 @@ impl Machine {
     }
 
     /// This function will run a core at a given program counter in a new thread
-    fn run_core_threaded(&mut self, core: usize, program_counter: usize) {
-        let mut core = self.cores.remove(core);
+    fn run_core_threaded(&mut self, core_index: usize, program_counter: usize,registers: Registers) {
+        let mut core = self.cores[core_index].take().unwrap();
         let mut program = (**self.program.as_ref().expect("Program Somehow not set").clone()).to_vec();
         let new_pc = program.len();
         program.push(109);
@@ -755,31 +773,31 @@ impl Machine {
         let program = Arc::new(program);
         core.add_program(program);
 
-        core.add_stack(self.stack.clone(), self.next_stack_offset);
-        self.next_stack_offset += 1;
+        core.add_stack(self.stack.clone(), core_index);
+
+        core.set_registers(registers);
         
         let core_thread = {
             thread::spawn(move || {
                 core.run(new_pc)
             })
         };
-        self.core_threads.push(Some(core_thread));
+        self.core_threads[core_index].replace(core_thread);
     }
 
     /// This function is for running the first core
-    pub fn run_core(&mut self, core: usize, program_counter: usize) {
-        let mut core = self.cores.remove(core);
+    pub fn run_core(&mut self, core_index: usize, program_counter: usize) {
+        let mut core = self.cores[core_index].take().unwrap();
         core.add_program(self.program.as_ref().expect("Program Not set").clone());
 
-        core.add_stack(self.stack.clone(), self.next_stack_offset);
-        self.next_stack_offset += 1;
+        core.add_stack(self.stack.clone(), core_index);
         
         let core_thread = {
             thread::spawn(move || {
                 core.run(program_counter)
             })
         };
-        self.core_threads.push(Some(core_thread));
+        self.core_threads[core_index].replace(core_thread);
     }
 
     /// This function runs the garbage collector

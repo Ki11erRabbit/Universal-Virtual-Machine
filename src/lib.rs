@@ -6,6 +6,10 @@ pub mod assembler;
 pub mod binary;
 mod garbage_collector;
 
+use crate::core::REGISTER_128_COUNT;
+use crate::core::REGISTER_64_COUNT;
+use crate::core::REGISTER_F32_COUNT;
+use crate::core::REGISTER_F64_COUNT;
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::any::Any;
@@ -32,6 +36,8 @@ pub type FileDescriptor = u64;
 pub type ForeignFunction = Arc<fn(&mut dyn Core, Option<Arc<RwLock<dyn Any + Send + Sync>>>)-> SimpleResult>;
 /// The argument to a foreign function
 pub type ForeignFunctionArg = Option<Arc<RwLock<dyn Any + Send + Sync>>>;
+
+pub type Registers = ([u64; REGISTER_64_COUNT],[u128; REGISTER_128_COUNT],[f32;REGISTER_F32_COUNT],[f64;REGISTER_F64_COUNT]);
 
 //pub type FFun = Box<dyn FnMut(&mut Core) -> Result<(),Fault> + Send + Sync + 'static>;
 //fn(&mut Core) -> Result<(), Fault>
@@ -67,7 +73,7 @@ pub enum Message {
     /// Return message for close file
     FileClosed,                                // Returns file closed
     /// Takes a program address to spawn a thread
-    SpawnThread(Pointer),                      // Takes address of function to call
+    SpawnThread(Pointer, Registers),                      // Takes address of function to call
     /// Return message for spawn thread
     ThreadSpawned(CoreId),                     // Returns core id of spawned thread
     /// Takes a core id to mark as done
@@ -245,6 +251,8 @@ pub trait RegCore: Core {
     fn add_heap(&mut self, memory: Arc<RwLock<Vec<Byte>>>);
 
     fn add_stack(&mut self, stack: WholeStack, index: usize);
+
+    fn set_registers(&mut self, registers: Registers);
 }
 
 pub trait GarbageCollectorCore: Core + Collector {}
