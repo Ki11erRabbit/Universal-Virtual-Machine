@@ -114,7 +114,7 @@ impl fmt::Debug for Message {
             Message::CloseFile(fd) => write!(f, "CloseFile({})", fd),
             Message::Flush(fd) => write!(f, "Flush({})", fd),
             Message::FileClosed => write!(f, "FileClosed"),
-            Message::SpawnThread(address) => write!(f, "SpawnThread({})", address),
+            Message::SpawnThread(address,_) => write!(f, "SpawnThread({})", address),
             Message::ThreadSpawned(core_id) => write!(f, "ThreadSpawned({})", core_id),
             Message::ThreadDone(core_id) => write!(f, "ThreadDone({})", core_id),
             Message::JoinThread(core_id) => write!(f, "JoinThread({})", core_id),
