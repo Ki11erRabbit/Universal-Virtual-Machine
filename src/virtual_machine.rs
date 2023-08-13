@@ -351,6 +351,7 @@ impl Machine {
         loop {
             self.check_main_core(&mut main_thread_done);
             self.check_messages();
+            self.replenish_cores();
             if self.options.join_thread_cycle == cycle_count {
                 self.join_joinable_threads();
             }
@@ -410,6 +411,18 @@ impl Machine {
         }
         self.core_threads.clear();
         self.channels.borrow_mut().clear();
+    }
+
+    fn replenish_cores(&mut self) {
+        let mut cores_to_add = Vec::new();
+        for i in 0..self.cores.len() {
+            if self.cores[i].is_none() && self.core_threads[i].is_none() {
+                cores_to_add.push(i);
+            }
+        }
+        for core in cores_to_add {
+            self.add_core_at(core);
+        }
     }
 
     /// This function checks to see if the main thread is done and if it is, then we join it and remove it from the channels
@@ -735,7 +748,7 @@ impl Machine {
             panic!("Index out of bounds");
         }
 
-        if !self.cores[index].is_none() && !self.channels.borrow()[index].is_none() {
+        if !self.cores[index].is_none() && !self.core_threads[index].is_none() {
             return;
         }
         
