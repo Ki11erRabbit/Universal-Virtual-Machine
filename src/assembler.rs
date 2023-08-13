@@ -1337,7 +1337,8 @@ where
 
 }
 
-fn parse_file(input: &str) -> Result<(Vec<Byte>,usize,Vec<String>, Vec<String>, HashMap<String,usize>, Vec<u8>), String> {
+/// The offset is the 
+fn parse_file(input: &str, offset: Option<(usize,usize)>) -> Result<(Vec<Byte>,usize,Vec<String>, Vec<String>, HashMap<String,usize>, Vec<u8>), String> {
 
     let parser = file_parser();
 
@@ -1355,6 +1356,10 @@ fn parse_file(input: &str) -> Result<(Vec<Byte>,usize,Vec<String>, Vec<String>, 
     let mut unknown_labels = HashMap::new();
     let mut bytes = Vec::new();
     let mut segment_bytes = vec![0];
+    let (program_offset, segment_offset) = match offset {
+        Some(o) => o,
+        None => (0,0),
+    };
 
     match result {
         Ast::File(ref mut ast) => {
@@ -1369,7 +1374,7 @@ fn parse_file(input: &str) -> Result<(Vec<Byte>,usize,Vec<String>, Vec<String>, 
                                         Ast::MemorySet(_, _) => {
                                             match label_positions.get(name) {
                                                 None => {
-                                                    label_positions.insert(name.to_owned(), segment_bytes.len());
+                                                    label_positions.insert(name.to_owned(), segment_bytes.len() + segment_offset);
                                                     segment_labels.push(name.to_owned());
                                                 },
                                                 _ => (),
@@ -1378,7 +1383,7 @@ fn parse_file(input: &str) -> Result<(Vec<Byte>,usize,Vec<String>, Vec<String>, 
                                                 match label_positions.get(&label) {
                                                     Some(pos) => *pos as u64,
                                                     None => {
-                                                        unknown_labels.insert(label.to_owned(), segment_bytes.len());
+                                                        unknown_labels.insert(label.to_owned(), segment_bytes.len() + segment_offset);
                                                         0 as u64
                                                     },
                                                 }
@@ -1388,7 +1393,7 @@ fn parse_file(input: &str) -> Result<(Vec<Byte>,usize,Vec<String>, Vec<String>, 
                                         Ast::Instruction(_, _) => {
                                             match label_positions.get(name) {
                                                 None => {
-                                                    label_positions.insert(name.to_owned(), bytes.len());
+                                                    label_positions.insert(name.to_owned(), bytes.len() + program_offset);
                                                     labels.push(name.to_owned());
                                                 },
                                                 _ => (),
@@ -1397,7 +1402,7 @@ fn parse_file(input: &str) -> Result<(Vec<Byte>,usize,Vec<String>, Vec<String>, 
                                                 match label_positions.get(&label) {
                                                     Some(pos) => *pos as u64,
                                                     None => {
-                                                        unknown_labels.insert(label.to_owned(), bytes.len() + extra_bytes.len());
+                                                        unknown_labels.insert(label.to_owned(), bytes.len() + extra_bytes.len() + program_offset);
                                                         0 as u64
                                                     },
                                                 }
@@ -1451,13 +1456,13 @@ fn parse_file(input: &str) -> Result<(Vec<Byte>,usize,Vec<String>, Vec<String>, 
             
             Ok((bytes, *main_pos, labels, segment_labels,label_positions, segment_bytes))
         },
-        None => return Err("No main function".to_owned()),
+        None => Ok((bytes, 0, labels, segment_labels, label_positions, segment_bytes)),
     }
 }
 
 
 pub fn generate_binary(input: &str, program_name: &str) -> Result<Binary, String> {
-    let (bytes, main_pos,label, segment_labels, label_pos, data_segment) = parse_file(input)?;
+    let (bytes, main_pos,label, segment_labels, label_pos, data_segment) = parse_file(input, None)?;
     let mut bytes = bytes;
     let mut label = label;
     let mut label_pos = label_pos;
@@ -1485,8 +1490,42 @@ pub fn generate_binary(input: &str, program_name: &str) -> Result<Binary, String
     //Ok(file)
 }
 
+pub fn generate_binary_custom_start(input: &str, program_name: &str, start: &str) -> Result<Binary, String> {
+    let (bytes, main_pos,label,mut segment_labels, label_pos, mut data_segment) = parse_file(input, None)?;
+    let mut bytes = bytes;
+    let mut label = label;
+    let mut label_pos = label_pos;
+
+    let (mut start_bytes, _,mut start_labels,mut start_segment_labels, mut start_label_pos, mut start_data_segment) = parse_file(start, Some((bytes.len(),data_segment.len())))?;
+
+    let entry_address = bytes.len();
+
+    bytes.append(&mut start_bytes);
+    label.append(&mut start_labels);
+    label_pos.extend(start_label_pos.drain());
+
+    label.push("start".to_owned());
+    label_pos.insert("start".to_owned(), bytes.len());
+    
+
+    bytes.push(109);
+    bytes.push(0);
+    bytes.extend_from_slice(&main_pos.to_le_bytes());
+
+    data_segment.append(&mut start_data_segment);
+    segment_labels.append(&mut start_segment_labels);
 
 
+    let mut label_addresses = Vec::new();
+    for label in label.iter() {
+        label_addresses.push(label_pos.get(label).unwrap().to_owned());
+    }
+
+    let shebang = format!("#!/usr/bin/env {}\n", program_name);
+
+
+    Ok(Binary::new(&shebang,entry_address,bytes,data_segment,label,label_addresses))
+}
 
 
 #[cfg(test)]
