@@ -418,23 +418,6 @@ fn parse_arithmetic(opcode: Vec<u8>, opcode_const: Vec<u8>, args: &Vec<Ast>) -> 
     }
 }
 
-fn parse_arithmetic_const(opcode: Vec<u8>, args: &Vec<Ast>) -> Result<Vec<u8>, String> {
-    let mut bytes = opcode;
-    
-    for arg in args {
-        match arg {
-            Ast::Number(n) => {
-                bytes.append(&mut n.to_bytes());
-            },
-            Ast::Register(r) => {
-                bytes.push(*r);
-            },
-            _ => return Err("Only registers are allowed in this op".to_owned()),
-        }
-    }
-
-    Ok(bytes)
-}
 fn parse_jump<F>(opcode: Vec<u8>, args: &Vec<Ast>, mut pos_setter: F) -> Result<Vec<u8>, String>
 where
     F: FnMut(String,&Vec<u8>) -> u64,{

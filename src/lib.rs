@@ -12,7 +12,6 @@ use crate::core::REGISTER_64_COUNT;
 use crate::core::REGISTER_F32_COUNT;
 use crate::core::REGISTER_F64_COUNT;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::sync::RwLock;
 use std::any::Any;
 use std::fmt;
@@ -278,11 +277,62 @@ pub type WholeStack = Arc<Vec<Stack>>;
 
 
 #[macro_export]
+/// A macro used for accessing a lockable object (AKA a Mutex or RwLock).
+/// Make sure to return or break from the block or we will be stuck in an infinite loop.
+macro_rules! access {
+    ($method:expr, $id:ident ,$block:block, $err:block) => {
+        loop {
+            match $method {
+                Ok($id) => $block,
+                Err(std::sync::TryLockError::WouldBlock) => {
+                    std::thread::yield_now();
+                },
+                Err(_) => $err,
+            }
+        }
+    };
+}
+
+#[macro_export]
+/// A macro used for accessing a lockable object with a reference (AKA a Mutex or RwLock).
+/// Make sure to return or break from the block or we will be stuck in an infinite loop.
+macro_rules! access_ref {
+    ($method:expr, $id:ident ,$block:block, $err:block) => {
+        loop {
+            match $method {
+                Ok(ref $id) => $block,
+                Err(std::sync::TryLockError::WouldBlock) => {
+                    std::thread::yield_now();
+                },
+                Err(_) => $err,
+            }
+        }
+    };
+}
+
+#[macro_export]
+/// A macro used for accessing a lockable object with mutable access (AKA a Mutex or RwLock).
+/// Make sure to return or break from the block or we will be stuck in an infinite loop.
+macro_rules! access_mut {
+    ($method:expr, $id:ident ,$block:block, $err:block) => {
+        loop {
+            match $method {
+                Ok(mut $id) => $block,
+                Err(std::sync::TryLockError::WouldBlock) => {
+                    std::thread::yield_now();
+                },
+                Err(_) => $err,
+            }
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! access_heap {
     ($method:expr, $id:ident ,$block:block, $err:block) => {
         loop {
             match $method {
-                Ok($id) => {$block; break;},
+                Ok($id) => {$block break;},
                 Err(std::sync::TryLockError::WouldBlock) => {
                     std::thread::yield_now();
                 },
@@ -300,6 +350,12 @@ macro_rules! get_heap_len_err {
         }, {
             return Err(Fault::CorruptedMemory);
         })
+    };
+
+    ($method:expr, $var:ident, $err:block) => {
+        crate::access_heap!($method.try_read(), heap, {
+            $var = heap.len();
+        }, $err)
     };
 }
 

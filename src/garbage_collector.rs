@@ -2,12 +2,11 @@
 
 use std::collections::HashMap;
 use std::sync::{RwLock, Arc};
-use std::sync::TryLockError;
 
 use log::{info, trace, error};
 
 use crate::virtual_machine::Memory;
-use crate::{Core, Byte, SimpleResult, Message, CoreResult, Collector, Pointer, GarbageCollectorCore, WholeStack, get_heap_len_panic, access_heap};
+use crate::{Core, Byte, SimpleResult, Message, CoreResult, Collector, Pointer, GarbageCollectorCore, WholeStack, get_heap_len_panic, access, };
 use crate::core::MachineCore;
 
 
@@ -131,19 +130,15 @@ impl GarbageCollector {
         }
 
         let mut heap;
-        loop {
-            match self.heap.try_write() {
-                Ok(mem) => {
-                    heap = mem;
-                    break;
-                },
-                Err(TryLockError::WouldBlock) => continue,
-                Err(_) => {
-                    error!("Garbage Collector: Poisoned lock on heap.");
-                    panic!("Poisoned lock.")},
-            }
-        }
 
+        access!(self.heap.try_write(), mem, {
+            heap = mem;
+            break;
+        },{
+            error!("Garbage Collector: Poisoned lock on heap.");
+            panic!("Poisoned lock.");
+        });
+        
         for (ptr, _) in heap.allocated_blocks.iter() {
             self.found_ptrs.insert(*ptr, !self.found_flag);
         }
@@ -151,18 +146,15 @@ impl GarbageCollector {
         let mut stacks = Vec::new();
 
         for stack in self.stack.iter() {
-            loop {
-                match stack.try_read() {
-                    Ok(stack) => {
-                        stacks.push(stack.clone());
-                        break;
-                    },
-                    Err(TryLockError::WouldBlock) => continue,
-                    Err(_) => {
-                        error!("Garbage Collector: Poisoned lock on stack.");
-                        panic!("Poisoned lock.")},
-                }
-            }
+
+            access!(stack.try_read(), stack, {
+                stacks.push(stack.clone());
+                break;
+            },{
+                error!("Garbage Collector: Poisoned lock on stack.");
+                panic!("Poisoned lock.");
+            });
+            
         }
 
         let data_segment_size = self.data_segment.len();
@@ -189,7 +181,7 @@ impl GarbageCollector {
                         self.found_ptrs.insert(address, self.found_flag);
                     }
 
-                    access_heap!(heap.memory.try_read(), memory, {
+                    access!(heap.memory.try_read(), memory, {
                         if address as usize + POINTER_SIZE > memory.len() {
                             address = 0;
                             break;

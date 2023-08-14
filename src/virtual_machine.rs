@@ -1,10 +1,9 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{Arc, RwLock, TryLockError, Mutex};
+use std::sync::{Arc, RwLock};
 use std::thread::{self,JoinHandle};
 use std::sync::mpsc::{Sender,Receiver, channel};
-use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::{Write, Read, self};
 use std::time::{Instant, Duration};
@@ -13,7 +12,7 @@ use log::{trace, info, error};
 
 use crate::core::MachineCore;
 use crate::garbage_collector::GarbageCollector;
-use crate::{Pointer, CoreId, Byte, RegisterType, Message, Fault, ForeignFunction, ForeignFunctionArg, FileDescriptor, Core, SimpleResult, GarbageCollectorCore, RegCore, Collector, ReadWrite, Stack, WholeStack, access_heap, get_heap_len_panic, Registers};
+use crate::{Pointer, CoreId, Byte, Message, Fault, ForeignFunction, ForeignFunctionArg, FileDescriptor, Core, SimpleResult, GarbageCollectorCore, RegCore, Collector, ReadWrite, WholeStack, get_heap_len_panic, Registers, access_mut};
 use crate::binary::Binary;
 
 /// Struct that contains options for the virtual machine
@@ -71,55 +70,45 @@ impl Memory {
     /// This function is used to allocate memory when the right message is passed in
     /// We try to acquire a lock on the memory and if we can't we try again until we do.
     pub fn malloc(&mut self, size: u64) -> Message {
-        loop {
-            match self.memory.try_write() {
-                Ok(mut memory) => {
 
-                    let mut block = Vec::new();
-                    let mut new_size = 0;
-                    let mut new_ptr = 0;
-                    for (ptr, block_size) in self.available_blocks.iter() {
-                        if *block_size >= size as usize {
-                            new_size = *block_size - size as usize;
-                            new_ptr = *ptr + size;
+        access_mut!(self.memory.try_write(), memory, {
 
-
-                            block.push(*ptr);
-
-                            break;
-                        }
-                    }
-
-                    if !block.is_empty() {
-                        if new_size > 0 {
-                            self.available_blocks.insert(new_ptr, new_size);
-                        }
-                        for ptr in block {
-                            self.available_blocks.remove(&ptr);
-                            return Message::MemoryPointer(ptr);
-                        }
-                    }
-                    
-                    let new_size = memory.len() + size as usize;
-
-                    let ptr = memory.len() as u64;
-
-                    if new_size > memory.len() {
-                        memory.resize(new_size, 0);
-                    }
-
-                    self.allocated_blocks.insert(ptr, size as usize);
-
-                    return Message::MemoryPointer(ptr);
-                }
-                Err(TryLockError::WouldBlock) => {
-                    continue;
-                },
-                Err(_) => {
-                    panic!("Memory lock poisoned");
+            let mut block = Vec::new();
+            let mut new_size = 0;
+            let mut new_ptr = 0;
+            for (ptr, block_size) in self.available_blocks.iter() {
+                if *block_size >= size as usize {
+                    new_size = *block_size - size as usize;
+                    new_ptr = *ptr + size;
+                    block.push(*ptr);
+                    break;
                 }
             }
-        }
+
+            if !block.is_empty() {
+                if new_size > 0 {
+                    self.available_blocks.insert(new_ptr, new_size);
+                }
+                for ptr in block {
+                    self.available_blocks.remove(&ptr);
+                    return Message::MemoryPointer(ptr);
+                }
+            }
+            
+            let new_size = memory.len() + size as usize;
+            
+            let ptr = memory.len() as u64;
+            
+            if new_size > memory.len() {
+                memory.resize(new_size, 0);
+            }
+            
+            self.allocated_blocks.insert(ptr, size as usize);
+            
+            return Message::MemoryPointer(ptr);
+        },{
+            panic!("Memory lock poisoned");
+        });
     }
 
     /// This function is used to reallocate the memory of a pointer to a larger or smaller size
@@ -131,65 +120,56 @@ impl Memory {
         let old_size = *self.allocated_blocks.get(&ptr).expect("Reallocating Bad Pointer") as u64;
         let mut ret_ptr = None;
         let mut free_ptr = None;
-        loop {
-            match self.memory.try_write() {
-                Ok(mut memory) => {
+        access_mut!(self.memory.try_write(), memory, {
+                if old_size < size {
+                    let try_address = old_size + ptr ;
 
-                    if old_size < size {
-                        let try_address = old_size + ptr ;
-
-                        // If we are not already allocated and not free
-                        if !self.allocated_blocks.contains_key(&try_address) && !self.available_blocks.contains_key(&try_address) {
-                            let difference = size - old_size;
-
-                            let mem_size = memory.len();
-
-                            memory.resize(mem_size + difference as usize, 0);
-
-                            return Message::MemoryPointer(ptr);
-                        }// TODO: add in check for if we already have blocks allocated
-                        else {
-
-                            let mem_size = memory.len();
-
-                            let new_ptr = mem_size as u64;
-
-                            memory.resize(mem_size + size as usize, 0);
-
-                            let old_memory = memory[ptr as usize..(ptr + old_size) as usize].to_vec();
-
-                            for (index, byte) in old_memory.iter().enumerate() {
-                                memory[new_ptr as usize + index] = *byte;
-                            }
-
-                            self.allocated_blocks.insert(new_ptr, size as usize);
-                            self.allocated_blocks.remove(&ptr);
-                            self.available_blocks.insert(ptr, old_size as usize);
-
-                            free_ptr = Some(ptr);
-                            ret_ptr = Some(new_ptr);
-                            break;
-                        }
-                    }
-                    else {
-                        let difference = old_size - size;
+                    // If we are not already allocated and not free
+                    if !self.allocated_blocks.contains_key(&try_address) && !self.available_blocks.contains_key(&try_address) {
+                        let difference = size - old_size;
 
                         let mem_size = memory.len();
 
-                        self.allocated_blocks.insert(ptr, size as usize);
-                        self.available_blocks.insert(ptr + size, difference as usize);
+                        memory.resize(mem_size + difference as usize, 0);
 
                         return Message::MemoryPointer(ptr);
+                    }// TODO: add in check for if we already have blocks allocated
+                    else {
+
+                        let mem_size = memory.len();
+
+                        let new_ptr = mem_size as u64;
+
+                        memory.resize(mem_size + size as usize, 0);
+
+                        let old_memory = memory[ptr as usize..(ptr + old_size) as usize].to_vec();
+
+                        for (index, byte) in old_memory.iter().enumerate() {
+                            memory[new_ptr as usize + index] = *byte;
+                        }
+
+                        self.allocated_blocks.insert(new_ptr, size as usize);
+                        self.allocated_blocks.remove(&ptr);
+                        self.available_blocks.insert(ptr, old_size as usize);
+
+                        free_ptr = Some(ptr);
+                        ret_ptr = Some(new_ptr);
+                        break;
                     }
                 }
-                Err(TryLockError::WouldBlock) => {
-                    continue;
-                },
-                Err(_) => {
-                    panic!("Memory lock poisoned");
+                else {
+                    let difference = old_size - size;
+                    
+                    //let mem_size = memory.len();
+                    
+                    self.allocated_blocks.insert(ptr, size as usize);
+                    self.available_blocks.insert(ptr + size, difference as usize);
+
+                    return Message::MemoryPointer(ptr);
                 }
-            }
-        }
+        },{
+            panic!("Memory lock poisoned");
+        });
         if let Some(ptr) = free_ptr {
             self.free(ptr);
         }
@@ -529,55 +509,37 @@ impl Machine {
                             send.send(Message::ForeignFunction(arg, func)).unwrap();
                         },
                         Message::Malloc(size) => {
-                            loop {
-                                match self.heap.try_write() {
-                                    Ok(mut memory) => {
-                                        let message = memory.malloc(size);
-                                        send.send(message).unwrap();
-                                        break;
-                                    }
-                                    Err(TryLockError::WouldBlock) => continue,
-                                    Err(_) => {
-                                        error!("Machine: Malloc failed due to Memory Corruption due to a poisoned lock");
-                                        panic!("Memory Corrupted")
-                                    },
-                                }
-                                
-                            }
+
+                            access_mut!(self.heap.try_write(), memory, {
+                                let message = memory.malloc(size);
+                                send.send(message).unwrap();
+                                break;
+                            }, {
+                                error!("Machine: Malloc failed due to Memory Corruption due to a poisoned lock");
+                                panic!("Memory Corrupted")
+                            });
+                            
                         },
                         Message::Free(ptr) => {
-                            loop {
-                                match self.heap.try_write() {
-                                    Ok(mut memory) => {
-                                        let message = memory.free(ptr);
-                                        send.send(message).unwrap();
-                                        break;
-                                    }
-                                    Err(TryLockError::WouldBlock) => continue,
-                                    Err(_) => {
-                                        error!("Machine: Free failed due to Memory Corruption due to a poisoned lock");
-                                        panic!("Memory Corrupted")
-                                    },
-                                }
-                                
-                            }
+                            
+                            access_mut!(self.heap.try_write(), memory, {
+                                let message = memory.free(ptr);
+                                send.send(message).unwrap();
+                                break;
+                            }, {
+                                error!("Machine: Free failed due to Memory Corruption due to a poisoned lock");
+                                panic!("Memory Corrupted")
+                            });
                         },
                         Message::Realloc(ptr, size) => {
-                            loop {
-                                match self.heap.try_write() {
-                                    Ok(mut memory) => {
-                                        let message = memory.realloc(ptr, size);
-                                        send.send(message).unwrap();
-                                        break;
-                                    }
-                                    Err(TryLockError::WouldBlock) => continue,
-                                    Err(_) => {
-                                        error!("Machine: Realloc failed due to Memory Corruption due to a poisoned lock");
-                                        panic!("Memory Corrupted")
-                                    },
-                                }
-                                
-                            }
+                            access_mut!(self.heap.try_write(), memory, {
+                                let message = memory.realloc(ptr, size);
+                                send.send(message).unwrap();
+                                break;
+                            }, {
+                                error!("Machine: Realloc failed due to Memory Corruption due to a poisoned lock");
+                                panic!("Memory Corrupted")
+                            });
                         },
                         Message::ReadFile(fd, size) => {
                             let message = self.read_file(fd, size as usize);
@@ -914,6 +876,7 @@ mod tests {
     use crate::assembler::generate_binary;
     use std::io::Read;
     use std::time::SystemTime;
+    use std::fs::File;
 
     use super::*;
 

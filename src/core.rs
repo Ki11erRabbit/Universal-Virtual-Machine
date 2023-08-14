@@ -1,17 +1,16 @@
 
 use std::collections::HashSet;
-use std::sync::{Arc,RwLock,TryLockError, Mutex};
+use std::sync::{Arc,RwLock};
 use std::num::Wrapping;
 use std::thread;
 use std::fmt;
-use std::io::Write;
 use std::sync::mpsc::{Sender,Receiver, TryRecvError};
 use std::time::Duration;
 
 use log::{debug, info, trace, error};
 
 use crate::instruction::Opcode;
-use crate::{RegisterType,Message,Fault,CoreId,Byte,Pointer,FileDescriptor, Core, SimpleResult, CoreResult, RegCore, WholeStack, access_heap, get_heap_len_err, unsigned_t_signed, Registers};
+use crate::{RegisterType,Message,Fault,CoreId,Byte,Pointer,Core, SimpleResult, CoreResult, RegCore, WholeStack, get_heap_len_err, unsigned_t_signed, Registers, access, access_mut};
 
 
 macro_rules! check_register64 {
@@ -739,20 +738,13 @@ impl Stack {
     }
 
     pub fn local_len(&self) -> usize {
-        loop {
-            match self.stack[self.index].try_read() {
-                Ok(stack) => {
-                    return stack.len();
-                },
-                Err(TryLockError::WouldBlock) => {
-                    thread::yield_now();
-                },
-                Err(TryLockError::Poisoned(_)) => {
-                    error!("Core {}: Stack corrupted due to Poisoned Lock", self.index);
-                    panic!("Poisoned Stack");
-                }
-            }
-        }
+        
+        access!(self.stack[self.index].try_read(), stack, {
+            return stack.len();
+        }, {
+            error!("Core {}: Stack corrupted due to Poisoned Lock", self.index);
+            panic!("Poisoned Stack");
+        });
     }
 
     pub fn get_stack_pointer(&self) -> usize {
@@ -778,43 +770,32 @@ impl Stack {
 
     pub fn get_bytes(&self, start: usize, size: usize) -> Vec<Byte> {
         let (start, index) = self.translate_address(start);
-        loop {
-            match self.stack[index].try_read() {
-                Ok(ref stack) => {
-                    return stack[start..start+size].to_vec();
-                },
-                Err(TryLockError::WouldBlock) => {
-                    thread::yield_now();
-                },
-                Err(TryLockError::Poisoned(_)) => {
-                    error!("Core {}: Stack corrupted due to Poisoned Lock", self.index);
-                    panic!("Poisoned Stack");
-                }
-            }
-        }
+
+        access!(self.stack[index].try_read(), stack, {
+            return stack[start..start+size].to_vec();
+        },{
+            error!("Core {}: Stack corrupted due to Poisoned Lock", self.index);
+            panic!("Poisoned Stack");
+        });
+        
     }
 
     pub fn write_bytes(&mut self, start: usize, bytes: &[Byte]) {
         let (start, index) = self.translate_address(start);
-        loop {
-            match self.stack[index].try_write() {
-                Ok(mut stack) => {
-                    stack[start..start+bytes.len()].copy_from_slice(bytes);
-                    return;
-                },
-                Err(TryLockError::WouldBlock) => {
-                    thread::yield_now();
-                },
-                Err(TryLockError::Poisoned(_)) => {
-                    error!("Core {}: Stack corrupted due to Poisoned Lock", self.index);
-                    panic!("Poisoned Stack");
-                }
-            }
-        }
+
+        access_mut!(self.stack[index].try_write(), stack, {
+            stack[start..start+bytes.len()].copy_from_slice(bytes);
+            return;
+        },{
+            error!("Core {}: Stack corrupted due to Poisoned Lock", self.index);
+            panic!("Poisoned Stack");
+        });
+        
     }
 
     pub fn push(&mut self, bytes: &[Byte]) -> Result<(),Fault> {
         if self.stack_pointer + bytes.len() > self.size() {
+            error!("Core {}: Stack Overflow", self.index);
             return Err(Fault::StackOverflow);
         }
 
@@ -825,6 +806,7 @@ impl Stack {
 
     pub fn pop(&mut self, size: usize) -> Result<Vec<Byte>,Fault> {
         if self.stack_pointer < size {
+            error!("Core {}: Stack Underflow", self.index);
             return Err(Fault::StackUnderflow);
         }
 
@@ -994,7 +976,10 @@ impl Core for MachineCore {
                         self.prepare_for_collection()?;
                     },
 
-                    _ => unimplemented!(),
+                    message => {
+                        error!("Core {}: Unimplemented message: {:?}", self.core_id, message);
+                        unimplemented!()
+                    },
 
                 }
 
@@ -1147,23 +1132,17 @@ impl MachineCore {
     }
 
     fn get_heap(&mut self, address: Pointer, size: u64) -> CoreResult<Vec<u8>> {
-        loop {
-            match self.heap.try_read() {
-                Ok(heap) => {
-                    if address + size > heap.len() as u64 {
-                        return Err(Fault::SegmentationFault);
-                    }
-                    return Ok(heap[address as usize..(address + size) as usize].to_vec());
-                },
-                Err(TryLockError::WouldBlock) => {
-                    thread::yield_now();
-                },
-                Err(TryLockError::Poisoned(_)) => {
-                    error!("Core {}: Heap Corrupted due to poisoned lock", self.core_id);
-                    return Err(Fault::CorruptedMemory);
-                }
+
+        access!(self.heap.try_read(), heap, {
+            if address + size > heap.len() as u64 {
+                error!("Core {}: Tried to access invalid heap address {}", self.core_id, address);
+                return Err(Fault::SegmentationFault);
             }
-        }
+            return Ok(heap[address as usize..(address + size) as usize].to_vec());
+        }, {
+            error!("Core {}: Heap Corrupted due to poisoned lock", self.core_id);
+            return Err(Fault::CorruptedMemory);
+        });
     }
 
     /// Function allows us to access the 3 parts of memory with a single address space
@@ -1173,21 +1152,13 @@ impl MachineCore {
         let stack_size = self.stack.size() as u64;
         let heap_size;
 
-        loop {
-            match self.heap.try_read() {
-                Ok(heap) => {
-                    heap_size = heap.len() as u64;
-                    break;
-                },
-                Err(TryLockError::WouldBlock) => {
-                    thread::yield_now();
-                },
-                Err(TryLockError::Poisoned(_)) => {
-                    error!("Core {}: Heap Corrupted due to poisoned lock", self.core_id);
-                    return Err(Fault::CorruptedMemory);
-                }
-            }
-        }
+        get_heap_len_err!(self.heap, heap_size, {
+            error!("Core {}: Heap Corrupted due to poisoned lock", self.core_id);
+            return Err(Fault::CorruptedMemory);
+        });
+
+        let heap_size = heap_size as u64;
+                
         
         let mem_size = data_segment_size + stack_size + heap_size;
 
@@ -1209,27 +1180,19 @@ impl MachineCore {
     }
 
     fn write_to_heap(&mut self, address: Pointer, bytes: &[Byte]) -> SimpleResult {
-        loop {
-            match self.heap.try_write() {
-                Ok(mut heap) => {
-                    if address + bytes.len() as u64 > heap.len() as u64 {
-                        error!("Core {}: Tried to write to invalid memory address {}", self.core_id, address);
-                        return Err(Fault::SegmentationFault);
-                    }
-                    //Verify that this works
-                    heap[address as usize..(address + bytes.len() as u64) as usize].copy_from_slice(bytes);
-                    return Ok(());
-                },
-                Err(TryLockError::WouldBlock) => {
-                    thread::yield_now();
-                },
-                Err(TryLockError::Poisoned(_)) => {
-                    error!("Core {}: Heap Corrupted due to poisoned lock", self.core_id);
-                    return Err(Fault::CorruptedMemory);
-                }
-            }
-        }
 
+        access_mut!(self.heap.try_write(), heap, {
+            if address + bytes.len() as u64 > heap.len() as u64 {
+                error!("Core {}: Tried to write to invalid memory address {}", self.core_id, address);
+                return Err(Fault::SegmentationFault);
+            }
+            //Verify that this works
+            heap[address as usize..(address + bytes.len() as u64) as usize].copy_from_slice(bytes);
+            return Ok(());
+        }, {
+            error!("Core {}: Heap Corrupted due to poisoned lock", self.core_id);
+            return Err(Fault::CorruptedMemory);
+        });
     }
 
     /// Function allows us to write to the 3 parts of memory with a single address space
@@ -1238,21 +1201,12 @@ impl MachineCore {
         let stack_size = self.stack.size() as u64;
         let heap_size;
 
-        loop {
-            match self.heap.try_read() {
-                Ok(heap) => {
-                    heap_size = heap.len() as u64;
-                    break;
-                },
-                Err(TryLockError::WouldBlock) => {
-                    thread::yield_now();
-                },
-                Err(TryLockError::Poisoned(_)) => {
-                    error!("Core {}: Heap Corrupted due to poisoned lock", self.core_id);
-                    return Err(Fault::CorruptedMemory);
-                }
-            }
-        }
+        get_heap_len_err!(self.heap, heap_size, {
+            error!("Core {}: Heap Corrupted due to poisoned lock", self.core_id);
+            return Err(Fault::CorruptedMemory);
+        });
+
+        let heap_size = heap_size as u64;
         
         let mem_size = data_segment_size + stack_size + heap_size;
 
@@ -1290,6 +1244,7 @@ impl MachineCore {
         info!("Core {}: Pushing to the stack", self.core_id);
         trace!("Core {}: Value: {:?}",self.core_id, value);
         if value.len() + self.stack.get_stack_pointer() > self.stack.local_len() {
+            error!("Core {}: Stack Overflow", self.core_id);
             return Err(Fault::StackOverflow);
         }
 
@@ -1304,6 +1259,7 @@ impl MachineCore {
         let size = size / 8;
 
         if size > self.stack_len() {
+            error!("Core {}: Stack Underflow", self.core_id);
             return Err(Fault::StackUnderflow);
         }
 

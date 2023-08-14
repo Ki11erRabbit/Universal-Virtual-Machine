@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::instruction::Opcode;
 
-use crate::{Byte,Pointer};
+use crate::Byte;
 
 #[derive(Debug, PartialEq)]
 pub struct Binary {
