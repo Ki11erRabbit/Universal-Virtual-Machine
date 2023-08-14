@@ -1,11 +1,14 @@
 
 use std::collections::HashSet;
-use std::sync::{Arc,RwLock,TryLockError};
+use std::sync::{Arc,RwLock,TryLockError, Mutex};
 use std::num::Wrapping;
 use std::thread;
 use std::fmt;
+use std::io::Write;
 use std::sync::mpsc::{Sender,Receiver, TryRecvError};
 use std::time::Duration;
+
+use log::{debug, info, trace, error};
 
 use crate::instruction::Opcode;
 use crate::{RegisterType,Message,Fault,CoreId,Byte,Pointer,FileDescriptor, Core, SimpleResult, CoreResult, RegCore, WholeStack, access_heap, get_heap_len_err, unsigned_t_signed, Registers};
@@ -745,6 +748,7 @@ impl Stack {
                     thread::yield_now();
                 },
                 Err(TryLockError::Poisoned(_)) => {
+                    error!("Core {}: Stack corrupted due to Poisoned Lock", self.index);
                     panic!("Poisoned Stack");
                 }
             }
@@ -767,6 +771,7 @@ impl Stack {
                 return (address - local_len * i, i);
             }
         }
+        error!("Core {}: Address {} is out of bounds", self.index, address);
         unreachable!();
     }
 
@@ -782,6 +787,7 @@ impl Stack {
                     thread::yield_now();
                 },
                 Err(TryLockError::Poisoned(_)) => {
+                    error!("Core {}: Stack corrupted due to Poisoned Lock", self.index);
                     panic!("Poisoned Stack");
                 }
             }
@@ -800,6 +806,7 @@ impl Stack {
                     thread::yield_now();
                 },
                 Err(TryLockError::Poisoned(_)) => {
+                    error!("Core {}: Stack corrupted due to Poisoned Lock", self.index);
                     panic!("Poisoned Stack");
                 }
             }
@@ -830,7 +837,7 @@ impl Stack {
 
 impl fmt::Debug for MachineCore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "Core:\n")?;
+        write!(f, "Core {}:\n",self.core_id)?;
         write!(f, "    registers_64: {:?}\n", self.registers_64)?;
         write!(f, "    registers_128: {:?}\n", self.registers_128)?;
         write!(f, "    registers_f32: {:?}\n", self.registers_f32)?;
@@ -912,12 +919,14 @@ pub struct MachineCore {
     /// The threads
     /// This is a set of all the threads that this core has spawned
     pub threads: HashSet<CoreId>,
+    pub core_id: usize,
 }
 
 impl Core for MachineCore {
     /// The main loop for the machine
     /// This function will run the program until it is done
     fn run(&mut self, program_counter: usize) -> SimpleResult {
+        info!("Core {}: Running", self.core_id);
         self.program_counter = program_counter;
 
         let mut is_done = false;
@@ -975,6 +984,7 @@ impl Core for MachineCore {
 
     /// Function for checking for messages from the machine thread
     fn check_messages(&mut self) -> SimpleResult {
+        info!("Core {}: Checking messages", self.core_id);
         match self.recv_channel.as_ref().expect("Recieve channel was not initialized").try_recv() {
             Ok(message) => {
                 match message {
@@ -1020,6 +1030,7 @@ impl Core for MachineCore {
 
     fn get_register_64<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut u64> {
         if register >= REGISTER_64_COUNT {
+            error!("Core {}: Tried to access invalid register {}", self.core_id, register);
             return Err(Fault::InvalidRegister(register, RegisterType::Register64));
         }
         Ok(&mut self.registers_64[register])
@@ -1027,6 +1038,7 @@ impl Core for MachineCore {
 
     fn get_register_128<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut u128> {
         if register >= REGISTER_128_COUNT {
+            error!("Core {}: Tried to access invalid register {}", self.core_id, register);
             return Err(Fault::InvalidRegister(register, RegisterType::Register128));
         }
         Ok(&mut self.registers_128[register])
@@ -1034,6 +1046,7 @@ impl Core for MachineCore {
 
     fn get_register_f32<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut f32> {
         if register >= REGISTER_F32_COUNT {
+            error!("Core {}: Tried to access invalid register {}", self.core_id, register);
             return Err(Fault::InvalidRegister(register, RegisterType::RegisterF32));
         }
         Ok(&mut self.registers_f32[register])
@@ -1041,10 +1054,12 @@ impl Core for MachineCore {
 
     fn get_register_f64<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut f64> {
         if register >= REGISTER_F64_COUNT {
+            error!("Core {}: Tried to access invalid register {}", self.core_id, register);
             return Err(Fault::InvalidRegister(register, RegisterType::RegisterF64));
         }
         Ok(&mut self.registers_f64[register])
     }
+
 }
 
 impl RegCore for MachineCore {
@@ -1065,6 +1080,10 @@ impl RegCore for MachineCore {
         self.registers_128 = registers.1;
         self.registers_f32 = registers.2;
         self.registers_f64 = registers.3;
+    }
+
+    fn set_core_id(&mut self, core_id: usize) {
+        self.core_id = core_id;
     }
 
 }
@@ -1093,10 +1112,13 @@ impl MachineCore {
             send_channel: None,
             recv_channel: None,
             threads: HashSet::new(),
+            core_id: 0,
+            
         }
     }
 
     fn prepare_for_collection(&mut self) -> SimpleResult {
+        info!("Core {}: Preparing for garbage collection", self.core_id);
         let mut reg_memory = Vec::new();
         for reg in self.registers_64.iter() {
             reg_memory.extend_from_slice(&reg.to_le_bytes());
@@ -1137,6 +1159,7 @@ impl MachineCore {
                     thread::yield_now();
                 },
                 Err(TryLockError::Poisoned(_)) => {
+                    error!("Core {}: Heap Corrupted due to poisoned lock", self.core_id);
                     return Err(Fault::CorruptedMemory);
                 }
             }
@@ -1160,6 +1183,7 @@ impl MachineCore {
                     thread::yield_now();
                 },
                 Err(TryLockError::Poisoned(_)) => {
+                    error!("Core {}: Heap Corrupted due to poisoned lock", self.core_id);
                     return Err(Fault::CorruptedMemory);
                 }
             }
@@ -1168,6 +1192,7 @@ impl MachineCore {
         let mem_size = data_segment_size + stack_size + heap_size;
 
         if address + size > mem_size {
+            error!("Core {}: Tried to access invalid memory address {}", self.core_id, address);
             return Err(Fault::SegmentationFault);
         }
 
@@ -1188,6 +1213,7 @@ impl MachineCore {
             match self.heap.try_write() {
                 Ok(mut heap) => {
                     if address + bytes.len() as u64 > heap.len() as u64 {
+                        error!("Core {}: Tried to write to invalid memory address {}", self.core_id, address);
                         return Err(Fault::SegmentationFault);
                     }
                     //Verify that this works
@@ -1198,6 +1224,7 @@ impl MachineCore {
                     thread::yield_now();
                 },
                 Err(TryLockError::Poisoned(_)) => {
+                    error!("Core {}: Heap Corrupted due to poisoned lock", self.core_id);
                     return Err(Fault::CorruptedMemory);
                 }
             }
@@ -1205,6 +1232,7 @@ impl MachineCore {
 
     }
 
+    /// Function allows us to write to the 3 parts of memory with a single address space
     pub fn write_to_memory(&mut self, address: Pointer, bytes: &[Byte]) -> SimpleResult {
         let data_segment_size = self.data_segment.len() as u64;
         let stack_size = self.stack.size() as u64;
@@ -1220,6 +1248,7 @@ impl MachineCore {
                     thread::yield_now();
                 },
                 Err(TryLockError::Poisoned(_)) => {
+                    error!("Core {}: Heap Corrupted due to poisoned lock", self.core_id);
                     return Err(Fault::CorruptedMemory);
                 }
             }
@@ -1232,6 +1261,7 @@ impl MachineCore {
         }
 
         if address < data_segment_size {
+            error!("Core {}: Attempted to write to read-only memory", self.core_id);
             return Err(Fault::SegmentationFault);
         } else if address < data_segment_size + stack_size {
             let real_address = address - data_segment_size;
@@ -1257,6 +1287,8 @@ impl MachineCore {
 
     /// Convenience function for pushing a value to the stack
     fn push_stack(&mut self,value: &[Byte]) -> SimpleResult {
+        info!("Core {}: Pushing to the stack", self.core_id);
+        trace!("Core {}: Value: {:?}",self.core_id, value);
         if value.len() + self.stack.get_stack_pointer() > self.stack.local_len() {
             return Err(Fault::StackOverflow);
         }
@@ -1267,6 +1299,8 @@ impl MachineCore {
     /// Convenience function for popping a value from the stack
     /// size is in bits
     fn pop_stack(&mut self, size: usize) -> CoreResult<Vec<Byte>> {
+        info!("Core {}: Popping from the stack", self.core_id);
+        trace!("Core {}: Size: {}",self.core_id, size);
         let size = size / 8;
 
         if size > self.stack_len() {
@@ -1344,6 +1378,8 @@ impl MachineCore {
         use Opcode::*;
 
         let opcode = self.decode_opcode();
+
+        debug!("Core {}: Executing opcode {:?}", self.core_id, opcode);
 
         match opcode {
             Halt | NoOp => return Ok(true),
@@ -1472,7 +1508,7 @@ impl MachineCore {
             
 
             x => {
-                println!("Invalid opcode: {:?} {} at {}", x, u16::from_le_bytes(self.program[self.program_counter - 2..self.program_counter].try_into().unwrap()), self.program_counter - 2);
+                error!("Core {}: Invalid opcode: {:?} {} at {}",self.core_id, x, u16::from_le_bytes(self.program[self.program_counter - 2..self.program_counter].try_into().unwrap()), self.program_counter - 2);
                 return Err(Fault::InvalidOperation)},
             
 

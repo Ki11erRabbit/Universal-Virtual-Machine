@@ -4,6 +4,7 @@ pub mod virtual_machine;
 pub mod core;
 pub mod assembler;
 pub mod binary;
+pub mod log;
 mod garbage_collector;
 
 use crate::core::REGISTER_128_COUNT;
@@ -11,6 +12,7 @@ use crate::core::REGISTER_64_COUNT;
 use crate::core::REGISTER_F32_COUNT;
 use crate::core::REGISTER_F64_COUNT;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::RwLock;
 use std::any::Any;
 use std::fmt;
@@ -253,6 +255,8 @@ pub trait RegCore: Core {
     fn add_stack(&mut self, stack: WholeStack, index: usize);
 
     fn set_registers(&mut self, registers: Registers);
+
+    fn set_core_id(&mut self, core_id: usize);
 }
 
 pub trait GarbageCollectorCore: Core + Collector {}

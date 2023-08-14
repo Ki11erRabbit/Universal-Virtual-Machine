@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::sync::{RwLock, Arc};
 use std::sync::TryLockError;
 
+use log::{info, trace, error};
+
 use crate::virtual_machine::Memory;
 use crate::{Core, Byte, SimpleResult, Message, CoreResult, Collector, Pointer, GarbageCollectorCore, WholeStack, get_heap_len_panic, access_heap};
 use crate::core::MachineCore;
@@ -68,7 +70,8 @@ impl Core for GarbageCollector {
 
     fn get_register_f64<'input>(&'input mut self, register: usize) -> CoreResult<&'input mut f64> {
         self.core.get_register_f64(register)
-    }   
+    }
+
 }
 
 impl Collector for GarbageCollector {
@@ -113,6 +116,7 @@ impl GarbageCollector {
 
     fn collect(&mut self) -> CoreResult<bool> {
 
+        info!("Garbage Collector: Waiting for message to start collection.");
         let message = self.recv_message()?;
 
         let stack_pointers;
@@ -134,7 +138,9 @@ impl GarbageCollector {
                     break;
                 },
                 Err(TryLockError::WouldBlock) => continue,
-                Err(_) => panic!("Poisoned lock."),
+                Err(_) => {
+                    error!("Garbage Collector: Poisoned lock on heap.");
+                    panic!("Poisoned lock.")},
             }
         }
 
@@ -152,7 +158,9 @@ impl GarbageCollector {
                         break;
                     },
                     Err(TryLockError::WouldBlock) => continue,
-                    Err(_) => panic!("Poisoned lock."),
+                    Err(_) => {
+                        error!("Garbage Collector: Poisoned lock on stack.");
+                        panic!("Poisoned lock.")},
                 }
             }
         }
@@ -165,6 +173,8 @@ impl GarbageCollector {
         let memory_len = data_segment_size + stack_len + heap_len;
         
         const POINTER_SIZE: usize = 8;
+
+        let mut num_bytes_collected = 0;
         
         for (stack, stack_pointer) in stacks.iter().zip(stack_pointers.iter()) {
 
@@ -175,6 +185,7 @@ impl GarbageCollector {
 
                 while address != 0 && address < memory_len as u64 {
                     if heap.allocated_blocks.contains_key(&address) {
+                        num_bytes_collected += heap.allocated_blocks.get(&address).unwrap();
                         self.found_ptrs.insert(address, self.found_flag);
                     }
 
@@ -185,6 +196,7 @@ impl GarbageCollector {
                         }
                         address = u64::from_le_bytes(memory[address as usize..(address as usize + POINTER_SIZE)].try_into().unwrap());
                     }, {
+                        error!("Garbage Collector: Failed to read heap due to poisoned lock.");
                         panic!("Poisoned lock.");
                     });
                 }
@@ -207,7 +219,8 @@ impl GarbageCollector {
         self.found_flag = !self.found_flag;
 
         self.send_message(Message::Success)?;
-
+        info!("Garbage Collector: Finished collection.");
+        trace!("Garbage Collector: Freed {} bytes.", num_bytes_collected);
         Ok(false)
     }
 }

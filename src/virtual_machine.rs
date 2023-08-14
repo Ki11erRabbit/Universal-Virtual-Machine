@@ -1,13 +1,15 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{Arc, RwLock, TryLockError};
+use std::sync::{Arc, RwLock, TryLockError, Mutex};
 use std::thread::{self,JoinHandle};
 use std::sync::mpsc::{Sender,Receiver, channel};
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::{Write, Read, self};
 use std::time::{Instant, Duration};
+
+use log::{trace, info, error};
 
 use crate::core::MachineCore;
 use crate::garbage_collector::GarbageCollector;
@@ -331,8 +333,8 @@ impl Machine {
     /// We also have options for joining joinable threads for the nth cycle and defragging memory for the nth cycle
     /// After the loop ends, we then clear the thread handles and the channels for the threads
     pub fn run(&mut self) {
-        //TODO: change print to log
-
+        info!("Machine: Running machine");
+        trace!("Machine: Stack size: {}", self.options.calculate_stack_size() * self.cores.len());
         let stack: WholeStack = Arc::new(vec![Arc::new(RwLock::new(vec![0; self.options.calculate_stack_size()].into_boxed_slice())); self.cores.len()]);
 
         self.stack = stack;
@@ -360,12 +362,14 @@ impl Machine {
             }
 
             if main_thread_done {
+                info!("Main thread done");
                 break;
             }
 
             if time.is_some() {
                 let time = time.as_mut().unwrap();
                 if time.elapsed().as_secs() >= Duration::from_secs(self.options.gc_time.unwrap() * 60).as_secs() {
+                    info!("Starting garbage collection");
                     let message = Message::CollectGarbage;
                     let mut stack_pointers = Vec::new();
 
@@ -392,9 +396,12 @@ impl Machine {
 
                     match message {
                         Message::Success => {
-                            println!("Garbage Collected");
+                            trace!("Garbage collection successful");
                         },
-                        _ => panic!("Unexpected message from garbage collector"),
+                        _ => {
+                            error!("Machine: Unexpected message from garbage collector");
+                            panic!("Unexpected message from garbage collector")
+                        },
                     }
 
                     for pair in self.channels.borrow().iter() {
@@ -417,6 +424,7 @@ impl Machine {
         let mut cores_to_add = Vec::new();
         for i in 0..self.cores.len() {
             if self.cores[i].is_none() && self.core_threads[i].is_none() {
+                info!("Machine: Replenishing core {}", i);
                 cores_to_add.push(i);
             }
         }
@@ -438,14 +446,15 @@ impl Machine {
 
     /// This function checks to see if there are any threads that are able to be joined that were set to be joined.
     fn join_joinable_threads(&mut self) {
+        info!("Joining joinable threads");
         let mut threads_joined = Vec::new();
         for thread_id in self.threads_to_join.borrow().iter() {
             if self.core_threads[*thread_id as usize].as_ref().expect("core doesn't exist").is_finished() {
                 match self.core_threads[*thread_id as usize].take().expect("Already joined this core").join() {
                     Ok(result) => {
                         match result {
-                            Ok(_) => eprintln!("Core {} finished", *thread_id),
-                            Err(fault) => eprintln!("Core {} faulted with: {}", *thread_id, fault),
+                            Ok(_) => info!("Core {} finished", *thread_id),
+                            Err(fault) => error!("Core {} faulted with: {}", *thread_id, fault),
                         }
 
                         match self.thread_children.remove(thread_id) {
@@ -459,7 +468,7 @@ impl Machine {
 
                         self.channels.borrow_mut()[*thread_id as usize] = None;
                     },
-                    Err(_) => eprintln!("Core {} panicked", *thread_id),
+                    Err(_) => error!("Core {} panicked", *thread_id),
                 }
                         threads_joined.push(*thread_id);
                     }
@@ -471,6 +480,7 @@ impl Machine {
 
     /// This function goes through the channels and checks to see if there are any messages to be processed
     fn check_messages(&mut self) {
+        info!("Machine: Checking messages from cores");
         let mut core_id = 0;
         self.channels.clone().borrow().iter().for_each(|channels| {
             if channels.is_none() {
@@ -527,7 +537,10 @@ impl Machine {
                                         break;
                                     }
                                     Err(TryLockError::WouldBlock) => continue,
-                                    Err(_) => panic!("Memory Corrupted"),
+                                    Err(_) => {
+                                        error!("Machine: Malloc failed due to Memory Corruption due to a poisoned lock");
+                                        panic!("Memory Corrupted")
+                                    },
                                 }
                                 
                             }
@@ -541,7 +554,10 @@ impl Machine {
                                         break;
                                     }
                                     Err(TryLockError::WouldBlock) => continue,
-                                    Err(_) => panic!("Memory Corrupted"),
+                                    Err(_) => {
+                                        error!("Machine: Free failed due to Memory Corruption due to a poisoned lock");
+                                        panic!("Memory Corrupted")
+                                    },
                                 }
                                 
                             }
@@ -555,7 +571,10 @@ impl Machine {
                                         break;
                                     }
                                     Err(TryLockError::WouldBlock) => continue,
-                                    Err(_) => panic!("Memory Corrupted"),
+                                    Err(_) => {
+                                        error!("Machine: Realloc failed due to Memory Corruption due to a poisoned lock");
+                                        panic!("Memory Corrupted")
+                                    },
                                 }
                                 
                             }
@@ -564,7 +583,10 @@ impl Machine {
                             let message = self.read_file(fd, size as usize);
                             send.send(message).unwrap();
                         },
-                        _ => unimplemented!(),
+                        message => {
+                            error!("Machine: Message {:?}, not implemented", message);
+                            unimplemented!()
+                        },
 
                     }
 
@@ -580,20 +602,22 @@ impl Machine {
 
     /// This function will mark a thread for joining and then wait to send the right message back to block the calling thread
     fn join_thread(&mut self, thread_id: CoreId) {
+        info!("Machine: Joining thread {}", thread_id);
         let core_id = thread_id as usize;
 
         match self.core_threads[core_id].take().expect("Already joined this core").join() {
             Ok(result) => {
                 match result {
-                    Ok(_) => eprintln!("Core {} finished", core_id),
-                    Err(fault) => eprintln!("Core {} faulted with: {}", core_id, fault),
+                    Ok(_) => info!("Machine: Core {} finished", core_id),
+                    Err(fault) => error!("Machine: Core {} faulted with: {}", core_id, fault),
                 }
             },
-            Err(_) => eprintln!("Core {} panicked", core_id),
+            Err(_) => error!("Machine: Core {} panicked", core_id),
         }
     }
 
     fn read_file(&mut self, fd: FileDescriptor, amount: usize) -> Message {
+        info!("Machine: Reading {} bytes from file {}", amount, fd);
         if fd as usize >= self.files.len() {
             return Message::Error(Fault::InvalidFileDescriptor);
         }
@@ -631,6 +655,8 @@ impl Machine {
 
     /// This function writes bytes to a file based on the file descriptor
     fn write_file(&mut self, fd: FileDescriptor, data: Vec<u8>) -> Message {
+        info!("Machine: Writing to file {}", fd);
+        trace!("Machine: Writing {} to file {}", String::from_utf8(data.clone()).unwrap(), fd);
         if fd as usize >= self.files.len() {
             return Message::Error(Fault::InvalidFileDescriptor);
         }
@@ -666,6 +692,7 @@ impl Machine {
 
     /// This function will flush the file based on the file descriptor
     fn flush(&mut self, fd: FileDescriptor) -> Message {
+        info!("Machine: Flushing file: {}", fd);
         let fd = fd as usize - 1;
         if fd as usize >= self.files.len() {
             return Message::Error(Fault::InvalidFileDescriptor);
@@ -683,7 +710,7 @@ impl Machine {
     /// This function will close the file based on the file descriptor
     /// Trying to remove stdout or stderr will result in weird behavior
     fn close_file(&mut self, fd: FileDescriptor) -> Message {
-        let fd = fd - 1;
+        info!("Machine: Closing file: {}", fd);
         if fd as usize >= self.files.len() {
             return Message::Error(Fault::InvalidFileDescriptor);
         }
@@ -695,6 +722,8 @@ impl Machine {
     /// This function will open a file based on the filename and the flag
     /// The flag is just a char that is either 'r', 'w', 'a', or 't'
     fn open_file(&mut self, filename: Vec<u8>, flag: u8) -> Message {
+        info!("Machine: Opening file as fd: {}", self.files.len());
+        trace!("Machine: Opening file: {} with flag: {}", String::from_utf8(filename.clone()).unwrap(), flag as char);
         let mut file = OpenOptions::new();
         let file = file.create(true);
         let file = match flag as char {
@@ -710,7 +739,7 @@ impl Machine {
                 match file.open(filename) {
                     Ok(file) => {
                         self.files.push(Some(Box::new(file)));
-                        Message::FileDescriptor(self.files.len() as FileDescriptor)
+                        Message::FileDescriptor((self.files.len() - 1) as FileDescriptor)
                     },
                     Err(_) => Message::Error(Fault::FileOpenError),
                 }
@@ -721,6 +750,7 @@ impl Machine {
 
     /// This function will run a core at the given program counter
     fn thread_spawn(&mut self, program_counter: u64, registers: Registers) -> (Message, u8) {
+        info!("Machine: Spawning thread");
         if self.cores.len() == 0 {
             self.add_core();
         }
@@ -731,7 +761,7 @@ impl Machine {
 
     /// This function adds a core to the machine
     pub fn add_core(&mut self) {
-        //TODO: Make it so that we don't panic from trying to add another core while running
+        info!("Machine: Adding core");
         let (core_sender, core_receiver) = channel();
         let (machine_sender, machine_receiver) = channel();
         self.channels.borrow_mut().push(Some((core_sender, machine_receiver)));
@@ -745,6 +775,7 @@ impl Machine {
 
     pub fn add_core_at(&mut self, index: usize) {
         if index >= self.cores.len() {
+            error!("Machine: Tried adding a core at an index that is out of bounds");
             panic!("Index out of bounds");
         }
 
@@ -775,6 +806,7 @@ impl Machine {
 
     /// This function will run a core at a given program counter in a new thread
     fn run_core_threaded(&mut self, core_index: usize, program_counter: usize,registers: Registers) {
+        info!("Machine: Running core {} in a new thread", core_index);
         let mut core = self.cores[core_index].take().unwrap();
         let mut program = (**self.program.as_ref().expect("Program Somehow not set").clone()).to_vec();
         let new_pc = program.len();
@@ -800,6 +832,7 @@ impl Machine {
 
     /// This function is for running the first core
     pub fn run_core(&mut self, core_index: usize, program_counter: usize) {
+        info!("Machine: Running core {} in a new thread", core_index);
         let mut core = self.cores[core_index].take().unwrap();
         core.add_program(self.program.as_ref().expect("Program Not set").clone());
 
@@ -815,6 +848,7 @@ impl Machine {
 
     /// This function runs the garbage collector
     pub fn run_gc(&mut self) {
+        info!("Machine: Running GC");
         let gc = self.gc.take().unwrap();
 
         let (core_sender, core_receiver) = channel();
@@ -841,7 +875,10 @@ impl Machine {
                 };
                 self.gc = Some(Err(gc_thread));
             },
-            Err(_) => panic!("GC already running"),
+            Err(_) => {
+                error!("Machine: Tried running GC when it should already be running");
+                panic!("GC already running")
+            },
             
         }
 
@@ -849,6 +886,7 @@ impl Machine {
 
     /// This function will add a program to the machine
     pub fn add_program(&mut self, program: Vec<Byte>) {
+        info!("Machine: Adding program");
         self.program = Some(Arc::new(program));
     }
 
@@ -860,6 +898,7 @@ impl Machine {
     /// This function will load a binary into the machine
     /// A binary is just a struct that contains the program, data segment, and entry point
     pub fn load_binary(&mut self, binary: &Binary) {
+        info!("Machine: Loading binary");
         self.program = Some(Arc::new(binary.program().clone()));
         let segment = binary.data_segment().clone();
         self.data_segment = Arc::new(segment);
