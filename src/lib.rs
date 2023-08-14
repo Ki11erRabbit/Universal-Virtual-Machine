@@ -4,7 +4,6 @@ pub mod virtual_machine;
 pub mod core;
 pub mod assembler;
 pub mod binary;
-pub mod log;
 mod garbage_collector;
 
 use crate::core::REGISTER_128_COUNT;
