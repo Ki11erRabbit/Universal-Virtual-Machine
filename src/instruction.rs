@@ -293,6 +293,8 @@ pub enum Opcode {
     SubIFC,
     MulIFC,
     DivIFC,
+    /// This instruction will clear all the registers
+    Reset,
     
     
     
@@ -458,7 +460,7 @@ impl From<u16> for Opcode {
             /* Instructions 155, 156, 157, 158 are reserved for future use */
             159 => RegMove,
             160 => RegMoveF,
-            /* Instruction 161 is reserved for future use */
+            161 => Reset,
             /* Special Return for Threads */
             162 => ThreadReturn,
             163 => ThreadJoin,
