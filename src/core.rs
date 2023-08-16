@@ -7,7 +7,10 @@ use std::fmt;
 use std::sync::mpsc::{Sender,Receiver, TryRecvError};
 use std::time::Duration;
 
+#[cfg(not(test))]
 use log::{debug, info, trace, error};
+#[cfg(test)]
+use std::{println as debug, println as info, println as trace, println as error};
 
 use crate::instruction::Opcode;
 use crate::{RegisterType,Message,Fault,CoreId,Byte,Pointer,Core, SimpleResult, CoreResult, RegCore, WholeStack, get_heap_len_err, unsigned_t_signed, Registers, access, access_mut};
@@ -834,8 +837,7 @@ impl fmt::Debug for MachineCore {
         write!(f, "    remainder_64: {:?}\n", self.remainder_64)?;
         write!(f, "    remainder_128: {:?}\n", self.remainder_128)?;
         write!(f, "    program_counter: {:?}\n", self.program_counter)?;
-        write!(f, "    stack: {:?}\n", self.stack)?;
-        write!(f, "    program: {:?}\n", *self.program)
+        write!(f, "    stack: {:?}\n", self.stack)
 
     }
 
@@ -881,8 +883,8 @@ pub struct MachineCore {
     pub remainder_128: u128,
     /// The program counter
     pub program_counter: usize,
-    /// The program
-    pub program: Arc<Vec<Byte>>,
+    ///// The program
+    //pub program: Arc<Vec<Byte>>,
     /// The data segment
     /// This part of memory ir read-only
     pub data_segment: Arc<Vec<Byte>>,
@@ -930,7 +932,7 @@ impl Core for MachineCore {
     /// Used for adding a program to the core
     /// This should not be called after the core has been started
     fn add_program(&mut self, program: Arc<Vec<Byte>>) {
-        self.program = program;
+        //self.program = program;
     }
 
     fn add_channels(&mut self, send: Sender<Message>, recv: Receiver<Message>) {
@@ -998,7 +1000,11 @@ impl Core for MachineCore {
     /// Function that checks if the program counter is out of bounds
     fn check_program_counter(&self) -> CoreResult<bool> {
 
-        if self.program_counter >= self.program.len() {
+        trace!("Core {}: Checking program counter {}", self.core_id, self.program_counter);
+        trace!("Core {:?}: Data segment: {:?}", self.core_id, self.data_segment);
+
+        if self.program_counter >= self.data_segment.len() {
+            trace!("Core {}: Stopping because program counter is out of bounds", self.core_id);
             return Ok(true);
         }
         return Ok(false);
@@ -1090,7 +1096,7 @@ impl MachineCore {
             infinity_flag: false,
             nan_flag: false,
             program_counter: 0,
-            program: Arc::new(Vec::new()),
+            //program: Arc::new(Vec::new()),
             data_segment: Arc::new(Vec::new()),
             stack: Stack::new(),
             heap: Arc::new(RwLock::new(Vec::new())),
@@ -1294,27 +1300,27 @@ impl MachineCore {
 
     /// Function that grabs a byte from the program without advancing the program counter
     pub fn get_1_byte(&mut self) -> Byte {
-        let value = self.program[self.program_counter];
+        let value = self.data_segment[self.program_counter];
         value
     }
     /// Function that grabs 2 bytes from the program without advancing the program counter
     pub fn get_2_bytes(&mut self) -> u16 {
-        let value = u16::from_le_bytes([self.program[self.program_counter], self.program[self.program_counter + 1]]);
+        let value = u16::from_le_bytes([self.data_segment[self.program_counter], self.data_segment[self.program_counter + 1]]);
         value
     }
     /// Function that grabs 4 bytes from the program without advancing the program counter
     pub fn get_4_bytes(&mut self) -> u32 {
-        let value = u32::from_le_bytes([self.program[self.program_counter], self.program[self.program_counter + 1], self.program[self.program_counter + 2], self.program[self.program_counter + 3]]);
+        let value = u32::from_le_bytes([self.data_segment[self.program_counter], self.data_segment[self.program_counter + 1], self.data_segment[self.program_counter + 2], self.data_segment[self.program_counter + 3]]);
         value
     }
     /// Function that grabs 8 bytes from the program without advancing the program counter
     pub fn get_8_bytes(&mut self) -> u64 {
-        let value = u64::from_le_bytes([self.program[self.program_counter], self.program[self.program_counter + 1], self.program[self.program_counter + 2], self.program[self.program_counter + 3], self.program[self.program_counter + 4], self.program[self.program_counter + 5], self.program[self.program_counter + 6], self.program[self.program_counter + 7]]);
+        let value = u64::from_le_bytes([self.data_segment[self.program_counter], self.data_segment[self.program_counter + 1], self.data_segment[self.program_counter + 2], self.data_segment[self.program_counter + 3], self.data_segment[self.program_counter + 4], self.data_segment[self.program_counter + 5], self.data_segment[self.program_counter + 6], self.data_segment[self.program_counter + 7]]);
         value
     }
     /// Function that grabs 16 bytes from the program without advancing the program counter
     pub fn get_16_bytes(&mut self) -> u128 {
-        let value = u128::from_le_bytes([self.program[self.program_counter], self.program[self.program_counter + 1], self.program[self.program_counter + 2], self.program[self.program_counter + 3], self.program[self.program_counter + 4], self.program[self.program_counter + 5], self.program[self.program_counter + 6], self.program[self.program_counter + 7], self.program[self.program_counter + 8], self.program[self.program_counter + 9], self.program[self.program_counter + 10], self.program[self.program_counter + 11], self.program[self.program_counter + 12], self.program[self.program_counter + 13], self.program[self.program_counter + 14], self.program[self.program_counter + 15]]);
+        let value = u128::from_le_bytes([self.data_segment[self.program_counter], self.data_segment[self.program_counter + 1], self.data_segment[self.program_counter + 2], self.data_segment[self.program_counter + 3], self.data_segment[self.program_counter + 4], self.data_segment[self.program_counter + 5], self.data_segment[self.program_counter + 6], self.data_segment[self.program_counter + 7], self.data_segment[self.program_counter + 8], self.data_segment[self.program_counter + 9], self.data_segment[self.program_counter + 10], self.data_segment[self.program_counter + 11], self.data_segment[self.program_counter + 12], self.data_segment[self.program_counter + 13], self.data_segment[self.program_counter + 14], self.data_segment[self.program_counter + 15]]);
         value
     }
 
@@ -1464,7 +1470,7 @@ impl MachineCore {
             
 
             x => {
-                error!("Core {}: Invalid opcode: {:?} {} at {}",self.core_id, x, u16::from_le_bytes(self.program[self.program_counter - 2..self.program_counter].try_into().unwrap()), self.program_counter - 2);
+                error!("Core {}: Invalid opcode: {:?} {} at {}",self.core_id, x, u16::from_le_bytes(self.data_segment[self.program_counter - 2..self.program_counter].try_into().unwrap()), self.program_counter - 2);
                 return Err(Fault::InvalidOperation)},
             
 
@@ -1475,9 +1481,9 @@ impl MachineCore {
     }
 
     fn set_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8 as usize;
+        let size = self.data_segment[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as usize;
+        let register = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
         match size {
             8 => {
@@ -1516,9 +1522,9 @@ impl MachineCore {
     }
 
     fn deref_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as usize;
+        let size = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as usize;
+        let register = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
         let address = self.get_8_bytes();
         self.advance_by_8_bytes();
@@ -1544,9 +1550,9 @@ impl MachineCore {
     }
 
     fn move_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let address_register = self.program[self.program_counter] as u8;
+        let address_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(address_register as usize);
@@ -1555,7 +1561,7 @@ impl MachineCore {
         
         match size {
             8 => {
-                let register = self.program[self.program_counter] as u8;
+                let register = self.data_segment[self.program_counter] as u8;
                 check_register64!(register as usize);
                 self.advance_by_1_byte();
 
@@ -1564,7 +1570,7 @@ impl MachineCore {
                 self.write_to_memory(address, &bytes)?;
             },
             16 => {
-                let register = self.program[self.program_counter] as u8;
+                let register = self.data_segment[self.program_counter] as u8;
                 check_register64!(register as usize);
                 self.advance_by_1_byte();
 
@@ -1573,7 +1579,7 @@ impl MachineCore {
                 self.write_to_memory(address, &bytes)?;
             },
             32 => {
-                let register = self.program[self.program_counter] as u8;
+                let register = self.data_segment[self.program_counter] as u8;
                 check_register64!(register as usize);
                 self.advance_by_1_byte();
 
@@ -1582,7 +1588,7 @@ impl MachineCore {
                 self.write_to_memory(address, &bytes)?;
             },
             64 => {
-                let register = self.program[self.program_counter] as u8;
+                let register = self.data_segment[self.program_counter] as u8;
                 check_register64!(register as usize);
                 self.advance_by_1_byte();
 
@@ -1591,7 +1597,7 @@ impl MachineCore {
                 self.write_to_memory(address, &bytes)?;
             },
             128 => {
-                let register = self.program[self.program_counter] as u8;
+                let register = self.data_segment[self.program_counter] as u8;
                 check_register128!(register as usize);
                 self.advance_by_1_byte();
 
@@ -1607,14 +1613,14 @@ impl MachineCore {
     }
 
     fn derefreg_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as u8 as usize;
+        let register = self.data_segment[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
-        let address_register = self.program[self.program_counter] as u8 as usize;
+        let address_register = self.data_segment[self.program_counter] as u8 as usize;
         check_register64!(address_register);
         self.advance_by_1_byte();
-        let offset = i64::from_le_bytes(self.program[self.program_counter..self.program_counter + 8].try_into().unwrap());
+        let offset = i64::from_le_bytes(self.data_segment[self.program_counter..self.program_counter + 8].try_into().unwrap());
         self.advance_by_8_bytes();
 
         let sign = if offset < 0 { -1 } else { 1 };
@@ -1673,11 +1679,11 @@ impl MachineCore {
 
 
     fn add_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
+        let register1 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
+        let register2 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
 
@@ -1687,11 +1693,11 @@ impl MachineCore {
 
 
     fn sub_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
+        let register1 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
+        let register2 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         int_opcode!(self, -, size, register1, register2, >);
@@ -1701,11 +1707,11 @@ impl MachineCore {
 
 
     fn mul_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
+        let register1 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
+        let register2 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         int_opcode!(self, *, size, register1, register2, <);
@@ -1715,11 +1721,11 @@ impl MachineCore {
 
 
     fn div_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
+        let register1 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
+        let register2 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         int_opcode!(self, /, size, register1, register2, >, remainder);
@@ -1728,11 +1734,11 @@ impl MachineCore {
     }
 
     fn neq_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
+        let register1 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
+        let register2 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -1811,11 +1817,11 @@ impl MachineCore {
     }
     
     fn eq_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
+        let register1 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
+        let register2 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -1893,11 +1899,11 @@ impl MachineCore {
     }
 
     fn lt_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
+        let register1 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
+        let register2 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -1974,11 +1980,11 @@ impl MachineCore {
     }
 
     fn gt_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
+        let register1 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
+        let register2 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -2055,11 +2061,11 @@ impl MachineCore {
     }
         
     fn leq_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
+        let register1 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
+        let register2 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -2136,11 +2142,11 @@ impl MachineCore {
     }
         
     fn geq_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
+        let register1 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
+        let register2 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -2218,9 +2224,9 @@ impl MachineCore {
 
 
     fn addc_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = (self.program[self.program_counter] as u8) as usize;
+        let register = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         int_c_opcode!(self, +, size, register, <);
@@ -2230,9 +2236,9 @@ impl MachineCore {
 
 
     fn subc_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = (self.program[self.program_counter] as u8) as usize;
+        let register = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         int_c_opcode!(self, -, size, register, >);
@@ -2242,9 +2248,9 @@ impl MachineCore {
 
 
     fn mulc_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = (self.program[self.program_counter] as u8) as usize;
+        let register = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         int_c_opcode!(self, *, size, register, <);
@@ -2254,9 +2260,9 @@ impl MachineCore {
 
 
     fn divc_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = (self.program[self.program_counter] as u8) as usize;
+        let register = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         int_c_opcode!(self, /, size, register, >, remainder);
@@ -2265,9 +2271,9 @@ impl MachineCore {
     }
 
     fn neqc_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = (self.program[self.program_counter] as u8) as usize;
+        let register = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -2350,9 +2356,9 @@ impl MachineCore {
     }
     
     fn eqc_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = (self.program[self.program_counter] as u8) as usize;
+        let register = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -2435,9 +2441,9 @@ impl MachineCore {
     }
 
     fn ltc_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = (self.program[self.program_counter] as u8) as usize;
+        let register = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -2519,9 +2525,9 @@ impl MachineCore {
     }
 
     fn gtc_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = (self.program[self.program_counter] as u8) as usize;
+        let register = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -2603,9 +2609,9 @@ impl MachineCore {
     }
         
     fn leqc_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = (self.program[self.program_counter] as u8) as usize;
+        let register = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -2687,9 +2693,9 @@ impl MachineCore {
     }
         
     fn geqc_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = (self.program[self.program_counter] as u8) as usize;
+        let register = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -2771,11 +2777,11 @@ impl MachineCore {
     }
 
     fn and_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = (self.program[self.program_counter] as u8) as usize;
+        let register1 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
-        let register2 = (self.program[self.program_counter] as u8) as usize;
+        let register2 = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         int_opcode!(self, &, size, register1, register2);
@@ -2785,11 +2791,11 @@ impl MachineCore {
     }
 
     fn or_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.program[self.program_counter] as u8 as usize;
+        let register1 = self.data_segment[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as u8 as usize;
+        let register2 = self.data_segment[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
 
         int_opcode!(self, |, size, register1, register2);
@@ -2798,11 +2804,11 @@ impl MachineCore {
     }
 
     fn xor_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.program[self.program_counter] as u8 as usize;
+        let register1 = self.data_segment[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as u8 as usize;
+        let register2 = self.data_segment[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
 
         int_opcode!(self, ^, size, register1, register2);
@@ -2811,9 +2817,9 @@ impl MachineCore {
     }
 
     fn not_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as u8;
+        let register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         match size {
@@ -2963,11 +2969,11 @@ impl MachineCore {
     }
     
     fn shiftleft_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as u8;
+        let register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let shift_reg = self.program[self.program_counter] as u8;
+        let shift_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(shift_reg as usize);
@@ -3121,11 +3127,11 @@ impl MachineCore {
     }
 
     fn shiftright_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as u8;
+        let register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let shift_reg = self.program[self.program_counter] as u8;
+        let shift_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(shift_reg as usize);
@@ -3279,9 +3285,9 @@ impl MachineCore {
     }
 
     fn andc_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = (self.program[self.program_counter] as u8) as usize;
+        let register = (self.data_segment[self.program_counter] as u8) as usize;
         self.advance_by_1_byte();
 
         int_c_opcode!(self, &, size, register);
@@ -3291,9 +3297,9 @@ impl MachineCore {
     }
 
     fn orc_opcode(&mut self) -> Result<(),Fault> {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as u8 as usize;
+        let register = self.data_segment[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
 
         int_c_opcode!(self, |, size, register);
@@ -3302,9 +3308,9 @@ impl MachineCore {
     }
 
     fn xorc_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as u8 as usize;
+        let register = self.data_segment[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
 
         int_c_opcode!(self, ^, size, register);
@@ -3313,11 +3319,11 @@ impl MachineCore {
     }
 
     fn shiftleftc_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as u8;
+        let register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let shift_amount = self.program[self.program_counter] as u8;
+        let shift_amount = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         match size {
@@ -3467,11 +3473,11 @@ impl MachineCore {
     }
 
     fn shiftrightc_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as u8;
+        let register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let shift_amount = self.program[self.program_counter] as u8;
+        let shift_amount = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         match size {
@@ -3629,9 +3635,9 @@ impl MachineCore {
     }
 
     fn writebyte_opcode(&mut self) -> Result<(),Fault> {
-        let fd_register = self.program[self.program_counter] as u8;
+        let fd_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let value_register = self.program[self.program_counter] as u8;
+        let value_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(fd_register as usize, value_register as usize);
@@ -3654,11 +3660,11 @@ impl MachineCore {
     }
 
     fn write_opcode(&mut self) -> SimpleResult {
-        let fd_register = self.program[self.program_counter] as u8;
+        let fd_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let pointer_register = self.program[self.program_counter] as u8;
+        let pointer_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let length_register = self.program[self.program_counter] as u8;
+        let length_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(fd_register as usize, pointer_register as usize, length_register as usize);
@@ -3685,7 +3691,7 @@ impl MachineCore {
     }
 
     fn flush_opcode(&mut self) -> SimpleResult {
-        let fd_register = self.program[self.program_counter] as u8;
+        let fd_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(fd_register as usize);
@@ -3707,10 +3713,10 @@ impl MachineCore {
     }
 
     fn remainder_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
-        let register = self.program[self.program_counter] as u8;
+        let register = self.data_segment[self.program_counter] as u8;
 
         match size {
             8 | 16 | 32 | 64 => {
@@ -3733,12 +3739,12 @@ impl MachineCore {
     }
 
     fn addfi_opcode(&mut self) -> SimpleResult {
-        let float_size = self.program[self.program_counter] as u8;
+        let float_size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
-        let float_register = self.program[self.program_counter] as u8;
+        let float_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let int_register = self.program[self.program_counter] as u8;
+        let int_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(int_register as usize);
@@ -3800,12 +3806,12 @@ impl MachineCore {
     }
 
     fn subfi_opcode(&mut self) -> SimpleResult {
-        let float_size = self.program[self.program_counter] as u8;
+        let float_size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
-        let float_register = self.program[self.program_counter] as u8;
+        let float_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let int_register = self.program[self.program_counter] as u8;
+        let int_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(int_register as usize);
@@ -3867,12 +3873,12 @@ impl MachineCore {
     }
 
     fn mulfi_opcode(&mut self) -> SimpleResult {
-        let float_size = self.program[self.program_counter] as u8;
+        let float_size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
-        let float_register = self.program[self.program_counter] as u8;
+        let float_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let int_register = self.program[self.program_counter] as u8;
+        let int_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(int_register as usize);
@@ -3934,12 +3940,12 @@ impl MachineCore {
     }
 
     fn divfi_opcode(&mut self) -> SimpleResult {
-        let float_size = self.program[self.program_counter] as u8;
+        let float_size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
-        let float_register = self.program[self.program_counter] as u8;
+        let float_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let int_register = self.program[self.program_counter] as u8;
+        let int_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(int_register as usize);
@@ -4009,13 +4015,13 @@ impl MachineCore {
     }
 
     fn addif_opcode(&mut self) -> SimpleResult {
-        let int_size = self.program[self.program_counter] as u8;
+        let int_size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let float_size = self.program[self.program_counter] as u8;
+        let float_size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let int_register = self.program[self.program_counter] as u8;
+        let int_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let float_register = self.program[self.program_counter] as u8;
+        let float_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(int_register as usize);
@@ -4210,7 +4216,7 @@ impl MachineCore {
                 }
             },
             128 => {
-                let int_value = self.program[self.program_counter] as i128;
+                let int_value = self.data_segment[self.program_counter] as i128;
                 
                 let float_value = match float_size {
                     32 => {
@@ -4263,13 +4269,13 @@ impl MachineCore {
     }
 
     fn subif_opcode(&mut self) -> SimpleResult {
-        let int_size = self.program[self.program_counter] as u8;
+        let int_size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let float_size = self.program[self.program_counter] as u8;
+        let float_size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let int_register = self.program[self.program_counter] as u8;
+        let int_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let float_register = self.program[self.program_counter] as u8;
+        let float_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(int_register as usize);
@@ -4477,13 +4483,13 @@ impl MachineCore {
     }
 
     fn mulif_opcode(&mut self) -> SimpleResult {
-        let int_size = self.program[self.program_counter] as u8;
+        let int_size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let float_size = self.program[self.program_counter] as u8;
+        let float_size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let int_register = self.program[self.program_counter] as u8;
+        let int_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let float_register = self.program[self.program_counter] as u8;
+        let float_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(int_register as usize);
@@ -4691,13 +4697,13 @@ impl MachineCore {
     }
 
     fn divif_opcode(&mut self) -> SimpleResult {
-        let int_size = self.program[self.program_counter] as u8;
+        let int_size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let float_size = self.program[self.program_counter] as u8;
+        let float_size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let int_register = self.program[self.program_counter] as u8;
+        let int_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let float_register = self.program[self.program_counter] as u8;
+        let float_register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(int_register as usize);
@@ -4931,18 +4937,18 @@ impl MachineCore {
     }
 
     fn setf_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as usize;
+        let size = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as usize;
+        let register = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
         match size {
             32 => {
                 check_registerF32!(register as usize);
                 let mut value = 0.0f32.to_ne_bytes();
-                value[0] = self.program[self.program_counter];
-                value[1] = self.program[self.program_counter + 1];
-                value[2] = self.program[self.program_counter + 2];
-                value[3] = self.program[self.program_counter + 3];
+                value[0] = self.data_segment[self.program_counter];
+                value[1] = self.data_segment[self.program_counter + 1];
+                value[2] = self.data_segment[self.program_counter + 2];
+                value[3] = self.data_segment[self.program_counter + 3];
 
                 self.advance_by_4_bytes();
                 
@@ -4951,14 +4957,14 @@ impl MachineCore {
             64 => {
                 check_registerF64!(register as usize);
                 let mut value = 0.0f64.to_ne_bytes();
-                value[0] = self.program[self.program_counter];
-                value[1] = self.program[self.program_counter + 1];
-                value[2] = self.program[self.program_counter + 2];
-                value[3] = self.program[self.program_counter + 3];
-                value[4] = self.program[self.program_counter + 4];
-                value[5] = self.program[self.program_counter + 5];
-                value[6] = self.program[self.program_counter + 6];
-                value[7] = self.program[self.program_counter + 7];
+                value[0] = self.data_segment[self.program_counter];
+                value[1] = self.data_segment[self.program_counter + 1];
+                value[2] = self.data_segment[self.program_counter + 2];
+                value[3] = self.data_segment[self.program_counter + 3];
+                value[4] = self.data_segment[self.program_counter + 4];
+                value[5] = self.data_segment[self.program_counter + 5];
+                value[6] = self.data_segment[self.program_counter + 6];
+                value[7] = self.data_segment[self.program_counter + 7];
                 
                 self.advance_by_8_bytes();
 
@@ -4970,11 +4976,11 @@ impl MachineCore {
     }
 
     fn dereff_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as usize;
+        let size = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as u8 as usize;
+        let register = self.data_segment[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
-        let address = self.program[self.program_counter] as u64;
+        let address = self.data_segment[self.program_counter] as u64;
         self.advance_by_8_bytes();
         match size {
             32 => {
@@ -4991,14 +4997,14 @@ impl MachineCore {
     }
 
     fn movef_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8 as usize;
+        let size = self.data_segment[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as u8 as usize;
+        let register = self.data_segment[self.program_counter] as u8 as usize;
         self.advance_by_1_byte();
         match size {
             32 => {
                 check_registerF32!(register as usize);
-                let address = self.program[self.program_counter] as u64;
+                let address = self.data_segment[self.program_counter] as u64;
                 self.advance_by_8_bytes();
 
                 let bytes = self.registers_f32[register].to_le_bytes();
@@ -5008,7 +5014,7 @@ impl MachineCore {
             },
             64 => {
                 check_registerF64!(register as usize);
-                let address = self.program[self.program_counter] as u64;
+                let address = self.data_segment[self.program_counter] as u64;
                 self.advance_by_8_bytes();
 
                 let bytes = self.registers_f64[register].to_le_bytes();
@@ -5022,14 +5028,14 @@ impl MachineCore {
     }
 
     fn derefregf_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as usize;
+        let register = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let address_register = self.program[self.program_counter] as usize;
+        let address_register = self.data_segment[self.program_counter] as usize;
         check_register64!(address_register);
         self.advance_by_1_byte();
-        let offset = i64::from_le_bytes(self.program[self.program_counter..self.program_counter + 8].try_into().unwrap());
+        let offset = i64::from_le_bytes(self.data_segment[self.program_counter..self.program_counter + 8].try_into().unwrap());
         self.advance_by_8_bytes();
 
         let sign = if offset < 0 { -1 } else { 1 };
@@ -5065,11 +5071,11 @@ impl MachineCore {
     }
 
     fn addf_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.program[self.program_counter] as usize;
+        let register1 = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as usize;
+        let register2 = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         float_opcode!(self, +, size, register1, register2);
@@ -5079,11 +5085,11 @@ impl MachineCore {
     }
 
     fn subf_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.program[self.program_counter] as usize;
+        let register1 = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as usize;
+        let register2 = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         float_opcode!(self, -, size, register1, register2);
@@ -5092,11 +5098,11 @@ impl MachineCore {
     }
         
     fn mulf_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.program[self.program_counter] as usize;
+        let register1 = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as usize;
+        let register2 = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         float_opcode!(self, *, size, register1, register2);
@@ -5106,11 +5112,11 @@ impl MachineCore {
 
 
     fn divf_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.program[self.program_counter] as usize;
+        let register1 = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as usize;
+        let register2 = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         float_opcode!(self, /, size, register1, register2, div);
@@ -5120,11 +5126,11 @@ impl MachineCore {
 
 
     fn eqf_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.program[self.program_counter] as usize;
+        let register1 = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as usize;
+        let register2 = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -5153,11 +5159,11 @@ impl MachineCore {
     }
 
     fn neqf_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.program[self.program_counter] as usize;
+        let register1 = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as usize;
+        let register2 = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -5186,11 +5192,11 @@ impl MachineCore {
     }
 
     fn ltf_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.program[self.program_counter] as usize;
+        let register1 = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as usize;
+        let register2 = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -5219,11 +5225,11 @@ impl MachineCore {
     }
 
     fn gtf_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.program[self.program_counter] as usize;
+        let register1 = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as usize;
+        let register2 = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -5252,11 +5258,11 @@ impl MachineCore {
     }
 
     fn leqf_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.program[self.program_counter] as usize;
+        let register1 = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as usize;
+        let register2 = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -5285,11 +5291,11 @@ impl MachineCore {
     }
 
     fn geqf_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register1 = self.program[self.program_counter] as usize;
+        let register1 = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as usize;
+        let register2 = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -5318,9 +5324,9 @@ impl MachineCore {
     }
 
     fn addfc_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as usize;
+        let register = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         float_c_opcode!(self, +, size, register);
@@ -5329,9 +5335,9 @@ impl MachineCore {
     }
 
     fn subfc_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as usize;
+        let register = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         float_c_opcode!(self, -, size, register);
@@ -5340,9 +5346,9 @@ impl MachineCore {
     }
         
     fn mulfc_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as usize;
+        let register = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         float_c_opcode!(self, *, size, register);
@@ -5352,9 +5358,9 @@ impl MachineCore {
 
 
     fn divfc_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as usize;
+        let register = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         float_c_opcode!(self, /, size, register, div);
@@ -5364,9 +5370,9 @@ impl MachineCore {
 
 
     fn eqfc_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as usize;
+        let register = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -5403,9 +5409,9 @@ impl MachineCore {
     }
 
     fn neqfc_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as usize;
+        let register = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -5442,9 +5448,9 @@ impl MachineCore {
     }
 
     fn ltfc_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as usize;
+        let register = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -5481,9 +5487,9 @@ impl MachineCore {
     }
 
     fn gtfc_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as usize;
+        let register = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -5520,9 +5526,9 @@ impl MachineCore {
     }
 
     fn leqfc_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as usize;
+        let register = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -5559,9 +5565,9 @@ impl MachineCore {
     }
 
     fn geqfc_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as usize;
+        let register = self.data_segment[self.program_counter] as usize;
         self.advance_by_1_byte();
 
         match size {
@@ -5599,10 +5605,10 @@ impl MachineCore {
 
 
     fn jump_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
         
@@ -5612,10 +5618,10 @@ impl MachineCore {
     }
 
     fn jumpeq_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5626,10 +5632,10 @@ impl MachineCore {
     }
 
     fn jumpneq_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5640,10 +5646,10 @@ impl MachineCore {
     }
 
     fn jumplt_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5654,10 +5660,10 @@ impl MachineCore {
     }
 
     fn jumpgt_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5668,10 +5674,10 @@ impl MachineCore {
     }
 
     fn jumpleq_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5682,10 +5688,10 @@ impl MachineCore {
     }
 
     fn jumpgeq_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5696,10 +5702,10 @@ impl MachineCore {
     }
 
     fn jumpzero_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5710,10 +5716,10 @@ impl MachineCore {
     }
 
     fn jumpnotzero_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5724,10 +5730,10 @@ impl MachineCore {
     }
 
     fn jumpneg_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5742,10 +5748,10 @@ impl MachineCore {
     }
 
     fn jumppos_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5760,10 +5766,10 @@ impl MachineCore {
     }
 
     fn jumpeven_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5775,10 +5781,10 @@ impl MachineCore {
     }
 
     fn jumpodd_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5790,10 +5796,10 @@ impl MachineCore {
     }
 
     fn jumpback_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if self.program_counter - line >= self.program.len() {
+        if self.program_counter - line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5803,10 +5809,10 @@ impl MachineCore {
     }
 
     fn jumpforward_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if self.program_counter + line >= self.program.len() {
+        if self.program_counter + line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5816,10 +5822,10 @@ impl MachineCore {
     }
 
     fn jumpinfinity_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5831,10 +5837,10 @@ impl MachineCore {
     }
 
     fn jumpnotinfinity_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5846,10 +5852,10 @@ impl MachineCore {
     }
 
     fn jumpoverflow_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5861,10 +5867,10 @@ impl MachineCore {
     }
 
     fn jumpnotoverflow_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5876,10 +5882,10 @@ impl MachineCore {
     }
 
     fn jumpunderflow_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
         
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5891,10 +5897,10 @@ impl MachineCore {
     }
 
     fn jumpnotunderflow_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5906,10 +5912,10 @@ impl MachineCore {
     }
 
     fn jumpnan_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5921,10 +5927,10 @@ impl MachineCore {
     }
 
     fn jumpnotnan_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5936,10 +5942,10 @@ impl MachineCore {
     }
 
     fn jumpremainder_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5951,10 +5957,10 @@ impl MachineCore {
     }
 
     fn jumpnotremainder_opcode(&mut self) -> SimpleResult {
-        let line = self.program[self.program_counter] as usize;
+        let line = self.data_segment[self.program_counter] as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
 
@@ -5969,7 +5975,7 @@ impl MachineCore {
         let line = self.get_8_bytes() as usize;
         self.advance_by_8_bytes();
 
-        if line >= self.program.len() {
+        if line >= self.data_segment.len() {
             return Err(Fault::InvalidJump);
         }
         self.push_stack(&self.program_counter.to_le_bytes())?;
@@ -5985,9 +5991,9 @@ impl MachineCore {
     }
 
     fn pop_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as u8;
+        let register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         let value = self.pop_stack(size as usize)?;
@@ -6060,9 +6066,9 @@ impl MachineCore {
     }
 
     fn push_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as u8;
+        let register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         match size {
@@ -6097,9 +6103,9 @@ impl MachineCore {
     }
     
     fn popf_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as u8;
+        let register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         let value = self.pop_stack(size as usize)?;
@@ -6137,9 +6143,9 @@ impl MachineCore {
     }
 
     fn pushf_opcode(&mut self) -> SimpleResult {
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register = self.program[self.program_counter] as u8;
+        let register = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         match size {
@@ -6159,11 +6165,11 @@ impl MachineCore {
     }
 
     fn regmove_opcode(&mut self) -> SimpleResult {
-        let register1 = self.program[self.program_counter] as u8;
+        let register1 = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as u8;
+        let register2 = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         match size {
@@ -6185,11 +6191,11 @@ impl MachineCore {
     }
 
     fn regmovef_opcode(&mut self) -> SimpleResult {
-        let register1 = self.program[self.program_counter] as u8;
+        let register1 = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let register2 = self.program[self.program_counter] as u8;
+        let register2 = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let size = self.program[self.program_counter] as u8;
+        let size = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         match size {
@@ -6211,13 +6217,13 @@ impl MachineCore {
     }
 
     fn open_opcode(&mut self) -> SimpleResult {
-        let pointer_reg = self.program[self.program_counter] as u8;
+        let pointer_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let size_reg = self.program[self.program_counter] as u8;
+        let size_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let flag_reg = self.program[self.program_counter] as u8;
+        let flag_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let fd_reg = self.program[self.program_counter] as u8;
+        let fd_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(pointer_reg as usize, size_reg as usize, flag_reg as usize, fd_reg as usize);
@@ -6250,7 +6256,7 @@ impl MachineCore {
     }
 
     fn close_opcode(&mut self) -> SimpleResult {
-        let fd_reg = self.program[self.program_counter] as u8;
+        let fd_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(fd_reg as usize);
@@ -6278,9 +6284,9 @@ impl MachineCore {
 
     fn threadspawn_opcode(&mut self) -> SimpleResult {
 
-        let program_counter_reg = self.program[self.program_counter] as u8;
+        let program_counter_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let thread_id_reg = self.program[self.program_counter] as u8;
+        let thread_id_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(program_counter_reg as usize, thread_id_reg as usize);
@@ -6331,7 +6337,7 @@ impl MachineCore {
     }
 
     fn threadjoin_opcode(&mut self) -> SimpleResult {
-        let thread_id_reg = self.program[self.program_counter] as u8;
+        let thread_id_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(thread_id_reg as usize);
@@ -6358,7 +6364,7 @@ impl MachineCore {
     }
 
     fn threaddetach_opcode(&mut self) -> SimpleResult {
-        let thread_id_reg = self.program[self.program_counter] as u8;
+        let thread_id_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(thread_id_reg as usize);
@@ -6371,7 +6377,7 @@ impl MachineCore {
     }
 
     fn foreigncall_opcode(&mut self) -> SimpleResult {
-        let function_id_reg = self.program[self.program_counter] as u8;
+        let function_id_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(function_id_reg as usize);
@@ -6400,7 +6406,7 @@ impl MachineCore {
     }
 
     fn stackpointer_opcode(&mut self) -> SimpleResult {
-        let stackptr_reg = self.program[self.program_counter] as u8;
+        let stackptr_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(stackptr_reg as usize);
@@ -6411,9 +6417,9 @@ impl MachineCore {
     }
 
     fn malloc_opcode(&mut self) -> SimpleResult {
-        let ptr_reg = self.program[self.program_counter] as u8;
+        let ptr_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let size_reg = self.program[self.program_counter] as u8;
+        let size_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(ptr_reg as usize, size_reg as usize);
@@ -6448,7 +6454,7 @@ impl MachineCore {
     }
 
     fn free_opcode(&mut self) -> SimpleResult {
-        let ptr_reg = self.program[self.program_counter] as u8;
+        let ptr_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(ptr_reg as usize);
@@ -6482,9 +6488,9 @@ impl MachineCore {
     }
 
     fn realloc_opcode(&mut self) -> SimpleResult {
-        let ptr_reg = self.program[self.program_counter] as u8;
+        let ptr_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let size_reg = self.program[self.program_counter] as u8;
+        let size_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(ptr_reg as usize, size_reg as usize);
@@ -6536,9 +6542,9 @@ impl MachineCore {
     }
 
     fn sleepreg_opcode(&mut self) -> SimpleResult {
-        let time_reg = self.program[self.program_counter] as u8;
+        let time_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let scale_reg = self.program[self.program_counter] as u8;
+        let scale_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(time_reg as usize, scale_reg as usize);
@@ -6554,7 +6560,7 @@ impl MachineCore {
     fn random_opcode(&mut self) -> SimpleResult {
         let size = self.get_1_byte();
         self.advance_by_1_byte();
-        let reg = self.program[self.program_counter] as u8;
+        let reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         match size {
@@ -6593,7 +6599,7 @@ impl MachineCore {
     fn randomf_opcode(&mut self) -> SimpleResult {
         let size = self.get_1_byte();
         self.advance_by_1_byte();
-        let reg = self.program[self.program_counter] as u8;
+        let reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         match size {
@@ -6616,9 +6622,9 @@ impl MachineCore {
     }
 
     fn readbyte_opcode(&mut self) -> SimpleResult {
-        let fd_reg = self.program[self.program_counter] as u8;
+        let fd_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let value_reg = self.program[self.program_counter] as u8;
+        let value_reg = self.data_segment[self.program_counter] as u8;
 
         check_register64!(fd_reg as usize, value_reg as usize);
 
@@ -6646,11 +6652,11 @@ impl MachineCore {
     }
 
     fn read_opcode(&mut self) -> SimpleResult {
-        let fd_reg = self.program[self.program_counter] as u8;
+        let fd_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let ptr_reg = self.program[self.program_counter] as u8;
+        let ptr_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
-        let amount_reg = self.program[self.program_counter] as u8;
+        let amount_reg = self.data_segment[self.program_counter] as u8;
         self.advance_by_1_byte();
 
         check_register64!(fd_reg as usize, ptr_reg as usize, amount_reg as usize);

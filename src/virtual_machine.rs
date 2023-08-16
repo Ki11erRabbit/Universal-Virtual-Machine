@@ -8,7 +8,11 @@ use std::fs::OpenOptions;
 use std::io::{Write, Read, self};
 use std::time::{Instant, Duration};
 
+#[cfg(not(test))]
 use log::{trace, info, error};
+#[cfg(test)]
+use std::{println as trace, println as info, println as error};
+
 
 use crate::core::MachineCore;
 use crate::garbage_collector::GarbageCollector;
@@ -224,8 +228,8 @@ pub struct Machine {
     /// The thread handles for the running cores
     core_threads: Vec<Option<JoinHandle<SimpleResult>>>,
     /// The program to run
-    program: Option<Arc<Vec<Byte>>>,
-    /// The entry point of the program for the program counter
+    //program: Option<Arc<Vec<Byte>>>,
+    ///// The entry point of the program for the program counter
     entry_point: Option<usize>,
     /// The channels for the cores to communicate with the machine's event loop
     channels: Rc<RefCell<Vec<Option<(Sender<Message>, Receiver<Message>)>>>>,
@@ -262,7 +266,7 @@ impl Machine {
             heap: Arc::new(RwLock::new(Memory::new())),
             cores: Vec::new(),
             core_threads: Vec::new(),
-            program: None,
+            //program: None,
             entry_point: None,
             channels: Rc::new(RefCell::new(Vec::new())),
             files: vec![None, None, None],
@@ -770,7 +774,7 @@ impl Machine {
     fn run_core_threaded(&mut self, core_index: usize, program_counter: usize,registers: Registers) {
         info!("Machine: Running core {} in a new thread", core_index);
         let mut core = self.cores[core_index].take().unwrap();
-        let mut program = (**self.program.as_ref().expect("Program Somehow not set").clone()).to_vec();
+        /*let mut program = (**self.program.as_ref().expect("Program Somehow not set").clone()).to_vec();
         let new_pc = program.len();
         program.push(109);
         program.push(0);
@@ -778,7 +782,9 @@ impl Machine {
         program.push(162);
         program.push(0);
         let program = Arc::new(program);
-        core.add_program(program);
+        core.add_program(program);*/
+
+        self.stack[core_index].write().expect("Stack blocked for some reason")[0..8].copy_from_slice(&self.data_segment.len().to_le_bytes());
 
         core.add_stack(self.stack.clone(), core_index);
 
@@ -786,7 +792,7 @@ impl Machine {
         
         let core_thread = {
             thread::spawn(move || {
-                core.run(new_pc)
+                core.run(program_counter)
             })
         };
         self.core_threads[core_index].replace(core_thread);
@@ -796,7 +802,7 @@ impl Machine {
     pub fn run_core(&mut self, core_index: usize, program_counter: usize) {
         info!("Machine: Running core {} in a new thread", core_index);
         let mut core = self.cores[core_index].take().unwrap();
-        core.add_program(self.program.as_ref().expect("Program Not set").clone());
+        //core.add_program(self.program.as_ref().expect("Program Not set").clone());
 
         core.add_stack(self.stack.clone(), core_index);
         
@@ -849,7 +855,7 @@ impl Machine {
     /// This function will add a program to the machine
     pub fn add_program(&mut self, program: Vec<Byte>) {
         info!("Machine: Adding program");
-        self.program = Some(Arc::new(program));
+        //self.program = Some(Arc::new(program));
     }
 
     /// This function will get the total number of cores
@@ -861,9 +867,10 @@ impl Machine {
     /// A binary is just a struct that contains the program, data segment, and entry point
     pub fn load_binary(&mut self, binary: &Binary) {
         info!("Machine: Loading binary");
-        self.program = Some(Arc::new(binary.program().clone()));
-        let segment = binary.data_segment().clone();
-        self.data_segment = Arc::new(segment);
+        let segment = Arc::new(binary.program().clone());
+        //let segment = binary.data_segment().clone();
+        //self.data_segment = Arc::new(segment);
+        self.data_segment = segment;
         self.entry_point = Some(binary.entry_address());
     }
 
@@ -951,6 +958,8 @@ ret}
         let mut machine = Machine::new();
 
         machine.load_binary(&binary);
+
+        println!("{}", binary.program_with_count());
 
         machine.add_core();
 

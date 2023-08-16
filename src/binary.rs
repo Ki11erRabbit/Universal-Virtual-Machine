@@ -62,14 +62,18 @@ impl Binary {
     }
 
     pub fn program_with_count(&self) -> String {
-        let mut program = String::new();
+        let mut program = " 0:".to_string();
         let mut count = 0;
+        let mut line = 0;
+        
         for byte in &self.program {
             program.push_str(&format!("{}", byte));
             program.push(' ');
             count += 1;
             if count == 16 {
+                line += count;
                 program.push('\n');
+                program.push_str(&format!("{}:", line));
                 count = 0;
             }
         }

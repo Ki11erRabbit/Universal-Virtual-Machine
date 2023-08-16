@@ -125,7 +125,7 @@ impl GarbageCollector {
             _ => return Ok(true),
         }
         
-        if self.core.program.len() != 0 {
+        if self.core.data_segment.len() != 0 {
             self.core.execute_instruction()?;
         }
 

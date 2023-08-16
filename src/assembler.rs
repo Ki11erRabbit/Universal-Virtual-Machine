@@ -1344,6 +1344,8 @@ fn parse_file(input: &str, offset: Option<(usize,usize)>) -> Result<(Vec<Byte>,u
         None => (0,0),
     };
 
+    let offset = program_offset + segment_offset;
+
     match result {
         Ast::File(ref mut ast) => {
             for i in ast.iter_mut() {
@@ -1357,8 +1359,8 @@ fn parse_file(input: &str, offset: Option<(usize,usize)>) -> Result<(Vec<Byte>,u
                                         Ast::MemorySet(_, _) => {
                                             match label_positions.get(name) {
                                                 None => {
-                                                    label_positions.insert(name.to_owned(), segment_bytes.len() + segment_offset);
-                                                    segment_labels.push(name.to_owned());
+                                                    label_positions.insert(name.to_owned(), bytes.len() + offset);
+                                                    labels.push(name.to_owned());
                                                 },
                                                 _ => (),
                                             }
@@ -1366,17 +1368,17 @@ fn parse_file(input: &str, offset: Option<(usize,usize)>) -> Result<(Vec<Byte>,u
                                                 match label_positions.get(&label) {
                                                     Some(pos) => *pos as u64,
                                                     None => {
-                                                        unknown_labels.insert(label.to_owned(), segment_bytes.len() + segment_offset);
+                                                        unknown_labels.insert(label.to_owned(), bytes.len() + offset);
                                                         0 as u64
                                                     },
                                                 }
                                             })?;
-                                            segment_bytes.append(&mut instruction_bytes);
+                                            bytes.append(&mut instruction_bytes);
                                         },
                                         Ast::Instruction(_, _) => {
                                             match label_positions.get(name) {
                                                 None => {
-                                                    label_positions.insert(name.to_owned(), bytes.len() + program_offset);
+                                                    label_positions.insert(name.to_owned(), bytes.len() + offset);
                                                     labels.push(name.to_owned());
                                                 },
                                                 _ => (),
@@ -1385,7 +1387,7 @@ fn parse_file(input: &str, offset: Option<(usize,usize)>) -> Result<(Vec<Byte>,u
                                                 match label_positions.get(&label) {
                                                     Some(pos) => *pos as u64,
                                                     None => {
-                                                        unknown_labels.insert(label.to_owned(), bytes.len() + extra_bytes.len() + program_offset);
+                                                        unknown_labels.insert(label.to_owned(), bytes.len() + extra_bytes.len() + offset);
                                                         0 as u64
                                                     },
                                                 }
