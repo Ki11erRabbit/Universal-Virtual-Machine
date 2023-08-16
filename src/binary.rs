@@ -1172,6 +1172,9 @@ impl Binary {
 
                     assembly.push_str(&format!("${}, ${}, ${}\n", reg1, reg2, reg3));
                 },
+                Reset => {
+                    assembly.push_str("reset\n");
+                },
                 Illegal => {
                     assembly.push_str("illegal\n");
                 },

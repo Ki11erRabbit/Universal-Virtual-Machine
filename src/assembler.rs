@@ -1189,6 +1189,7 @@ where
                         _ => return Err("Invalid arguments for randf".to_owned()),
                     }
                 },
+                "reset" => return Ok(vec![161,0]),
 
                 instr => return Err(format!("Invalid instruction: {}", instr)),
                 

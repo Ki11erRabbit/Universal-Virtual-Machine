@@ -88,10 +88,10 @@ macro_rules! int_op_branch {
             $core.zero_flag = false;
             // Checking to see if the most significant bit is set
             if new_value ^ $mask == (Wrapping(new_value) + Wrapping($mask)).0 {
-                $core.sign_flag = Sign::Positive;
+                $core.sign_flag = Sign::Negative;
             }
             else {
-                $core.sign_flag = Sign::Negative;
+                $core.sign_flag = Sign::Positive;
             }
         }
         // Fast way to check if the number is odd
@@ -130,10 +130,10 @@ macro_rules! int_op_branch {
             $core.zero_flag = false;
             // Checking to see if the most significant bit is set
             if new_value ^ $mask == (Wrapping(new_value) + Wrapping($mask)).0 {
-                $core.sign_flag = Sign::Positive;
+                $core.sign_flag = Sign::Negative;
             }
             else {
-                $core.sign_flag = Sign::Negative;
+                $core.sign_flag = Sign::Positive;
             }
         }
         // Fast way to check if the number is odd
@@ -161,10 +161,10 @@ macro_rules! int_op_branch {
             $core.zero_flag = false;
             // Checking to see if the most significant bit is set
             if new_value ^ $mask == (Wrapping(new_value) + Wrapping($mask)).0 {
-                $core.sign_flag = Sign::Positive;
+                $core.sign_flag = Sign::Negative;
             }
             else {
-                $core.sign_flag = Sign::Negative;
+                $core.sign_flag = Sign::Positive;
             }
         }
         // Fast way to check if the number is odd
@@ -264,10 +264,10 @@ macro_rules! int_op_c_branch {
             $core.zero_flag = false;
             // Checking to see if the most significant bit is set
             if new_value ^ $mask == (Wrapping(new_value) + Wrapping($mask)).0 {
-                $core.sign_flag = Sign::Positive;
+                $core.sign_flag = Sign::Negative;
             }
             else {
-                $core.sign_flag = Sign::Negative;
+                $core.sign_flag = Sign::Positive;
             }
         }
         // Fast way to check if the number is odd
@@ -299,10 +299,10 @@ macro_rules! int_op_c_branch {
             $core.zero_flag = false;
             // Checking to see if the most significant bit is set
             if new_value ^ $mask == (Wrapping(new_value) + Wrapping($mask)).0 {
-                $core.sign_flag = Sign::Positive;
+                $core.sign_flag = Sign::Negative;
             }
             else {
-                $core.sign_flag = Sign::Negative;
+                $core.sign_flag = Sign::Positive;
             }
         }
         // Fast way to check if the number is odd
@@ -343,10 +343,10 @@ macro_rules! int_op_c_branch {
             $core.zero_flag = false;
             // Checking to see if the most significant bit is set
             if new_value ^ $mask == (Wrapping(new_value) + Wrapping($mask)).0 {
-                $core.sign_flag = Sign::Positive;
+                $core.sign_flag = Sign::Negative;
             }
             else {
-                $core.sign_flag = Sign::Negative;
+                $core.sign_flag = Sign::Positive;
             }
         }
         // Fast way to check if the number is odd
@@ -1467,6 +1467,7 @@ impl MachineCore {
             XorC => self.xorc_opcode()?,
             ShiftLeftC => self.shiftleftc_opcode()?,
             ShiftRightC => self.shiftrightc_opcode()?,
+            Reset => self.reset_opcode()?,
             
 
             x => {
@@ -6679,6 +6680,23 @@ impl MachineCore {
             },
             Message::Error(fault) => return Err(fault),
             _ => return Err(Fault::InvalidMessage),
+        }
+
+        Ok(())
+    }
+
+    fn reset_opcode(&mut self) -> SimpleResult {
+        for i in 0..self.registers_64.len() {
+            self.registers_64[i] = 0;
+        }
+        for i in 0..self.registers_128.len() {
+            self.registers_128[i] = 0;
+        }
+        for i in 0..self.registers_f32.len() {
+            self.registers_f32[i] = 0.0;
+        }
+        for i in 0..self.registers_f64.len() {
+            self.registers_f64[i] = 0.0;
         }
 
         Ok(())
