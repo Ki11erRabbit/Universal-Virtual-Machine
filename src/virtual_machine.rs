@@ -1357,4 +1357,54 @@ ret}
         assert_eq!(machine.heap.read().unwrap().memory.read().unwrap()[..], [0, 0, 0, 0, 0, 0, 0, 0]);
     }
 
+    #[test]
+    fn test_arbitrary_call() {
+        
+        let input = "
+fibonacci{
+move 32, $2, 1u32
+leq 32, $1, $2
+jumpgt rec
+move $0, $1, 32
+jump end
+}
+rec{
+push 32, $1
+sub 32, $1, $2
+move 64, $10, fibonacci
+call $10
+pop 32, $1
+push 32, $0
+move 32, $2, 2u32
+sub 32, $1, $2
+call $10
+pop 32, $1
+add 32, $0, $1}
+end{
+ret}
+main{
+move 32, $1, 9u32
+call fibonacci
+move 64, $4, 4u64
+malloc $3, $4
+move 32, $3, $0
+ret
+}
+";
+        let binary = generate_binary(input, "test").unwrap();
+
+        let mut machine = Machine::new();
+
+        machine.load_binary(&binary);
+
+        machine.add_core();
+
+        machine.run();
+
+        assert_eq!(machine.heap.read().unwrap().memory.read().unwrap()[..], [34, 0, 0, 0]);
+
+        
+
+    }
+
 }

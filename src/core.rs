@@ -1341,7 +1341,7 @@ impl MachineCore {
 
         let opcode = self.decode_opcode();
 
-        debug!("Core {}: Executing opcode {:?}", self.core_id, opcode);
+        debug!("Core {}: Executing opcode {:?} at {}", self.core_id, opcode, self.program_counter -2);
 
         match opcode {
             Halt | NoOp => return Ok(true),
@@ -1468,6 +1468,7 @@ impl MachineCore {
             ShiftLeftC => self.shiftleftc_opcode()?,
             ShiftRightC => self.shiftrightc_opcode()?,
             Reset => self.reset_opcode()?,
+            CallArb => self.callarb_opcode()?,
             
 
             x => {
@@ -6698,6 +6699,36 @@ impl MachineCore {
         for i in 0..self.registers_f64.len() {
             self.registers_f64[i] = 0.0;
         }
+
+        Ok(())
+    }
+
+    fn callarb_opcode(&mut self) -> SimpleResult {
+        let reg = self.data_segment[self.program_counter] as u8;
+        self.advance_by_1_byte();
+
+        check_register64!(reg as usize);
+
+        let address = self.registers_64[reg as usize];
+
+        let data_segment_len = self.data_segment.len() as u64;
+        let stack_len = self.stack.size() as u64;
+        let heap_len;
+
+        get_heap_len_err!(self.heap, heap_len);
+
+        let heap_len = heap_len as u64;
+
+        let memory_len = data_segment_len + stack_len + heap_len;
+        
+
+        if address >= memory_len {
+            return Err(Fault::InvalidAddress(address));
+        }
+
+        self.push_stack(&self.program_counter.to_le_bytes())?;
+        self.program_counter = address as usize;
+        
 
         Ok(())
     }

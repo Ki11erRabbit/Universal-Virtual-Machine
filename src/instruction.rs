@@ -161,6 +161,8 @@ pub enum Opcode {
     
 
     /* Instructions for function calls */
+    /// This instruction calls an arbitrary function from memory specified by a register
+    CallArb,
     /// This instruction calls a function
     /// This instruction will load the current program counter value onto the stack
     Call,
@@ -408,6 +410,7 @@ impl From<u16> for Opcode {
             
             // Block of reserved opcodes for future use
             /* Instructions for function calls */
+            108 => CallArb,
             109 => Call,
             110 => Return,
             /* Instructions for stack management */

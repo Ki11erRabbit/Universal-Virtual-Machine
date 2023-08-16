@@ -706,6 +706,14 @@ impl Binary {
 
                     assembly.push_str(&format!("{}u64\n", offset));
                 },
+                CallArb => {
+                    assembly.push_str("callarb ");
+
+                    let reg = self.program[read_head];
+                    read_head += 1;
+
+                    assembly.push_str(&format!("${}\n", reg));
+                },
                 Call => {
                     assembly.push_str("call ");
 

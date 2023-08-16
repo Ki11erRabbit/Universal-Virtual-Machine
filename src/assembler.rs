@@ -418,13 +418,18 @@ fn parse_arithmetic(opcode: Vec<u8>, opcode_const: Vec<u8>, args: &Vec<Ast>) -> 
     }
 }
 
-fn parse_jump<F>(opcode: Vec<u8>, args: &Vec<Ast>, mut pos_setter: F) -> Result<Vec<u8>, String>
+fn parse_jump<F>(opcode: Vec<u8>, alt_opcode: Vec<u8>, args: &Vec<Ast>, mut pos_setter: F) -> Result<Vec<u8>, String>
 where
     F: FnMut(String,&Vec<u8>) -> u64,{
     let mut bytes = opcode;
     
     for arg in args {
         match arg {
+            Ast::Register(r) => {
+                let mut bytes = alt_opcode;
+                bytes.push(*r);
+                return Ok(bytes);
+            },
             Ast::Number(n) => {
                 bytes.append(&mut n.to_bytes());
             },
@@ -596,32 +601,32 @@ where
                 "not" => return parse_arithmetic(vec![67,0], vec![53,0], args),
                 "shl" => return parse_arithmetic(vec![68,0], vec![54,0], args),
                 "shr" => return parse_arithmetic(vec![69,0], vec![55,0], args),
-                "jump" => return parse_jump(vec![70,0], args, pos_setter),
-                "jumpeq" => return parse_jump(vec![71,0], args, pos_setter),
-                "jumpneq" => return parse_jump(vec![72,0], args, pos_setter),
-                "jumplt" => return parse_jump(vec![73,0], args, pos_setter),
-                "jumpgt" => return parse_jump(vec![74,0], args, pos_setter),
-                "jumpleq" => return parse_jump(vec![75,0], args, pos_setter),
-                "jumpgeq" => return parse_jump(vec![76,0], args, pos_setter),
-                "jumpzero" => return parse_jump(vec![77,0], args, pos_setter),
-                "jumpnzero" => return parse_jump(vec![78,0], args, pos_setter),
-                "jumpneg" => return parse_jump(vec![79,0], args, pos_setter),
-                "jumppos" => return parse_jump(vec![80,0], args, pos_setter),
-                "jumpeven" => return parse_jump(vec![81,0], args, pos_setter),
-                "jumpodd" => return parse_jump(vec![82,0], args, pos_setter),
-                "jumpback" => return parse_jump(vec![83,0], args, pos_setter),
-                "jumpforward" => return parse_jump(vec![84,0], args, pos_setter),
-                "jumpinf" => return parse_jump(vec![85,0], args, pos_setter),
-                "jumpninf" => return parse_jump(vec![86,0], args, pos_setter),
-                "jumpoverflow" => return parse_jump(vec![87,0], args, pos_setter),
-                "jumpunderflow" => return parse_jump(vec![88,0], args, pos_setter),
-                "jumpnoverflow" => return parse_jump(vec![89,0], args, pos_setter),
-                "jumpnunderflow" => return parse_jump(vec![90,0], args, pos_setter),
-                "jumpnan" => return parse_jump(vec![91,0], args, pos_setter),
-                "jumpnnan" => return parse_jump(vec![92,0], args, pos_setter),
-                "jumprmdr" => return parse_jump(vec![93,0], args, pos_setter),
-                "jumpnrmdr" => return parse_jump(vec![94,0], args, pos_setter),
-                "call" => return parse_jump(vec![109,0], args, pos_setter),
+                "jump" => return parse_jump(vec![70,0],vec![0,0], args, pos_setter),
+                "jumpeq" => return parse_jump(vec![71,0],vec![0,0], args, pos_setter),
+                "jumpneq" => return parse_jump(vec![72,0],vec![0,0], args, pos_setter),
+                "jumplt" => return parse_jump(vec![73,0],vec![0,0], args, pos_setter),
+                "jumpgt" => return parse_jump(vec![74,0],vec![0,0], args, pos_setter),
+                "jumpleq" => return parse_jump(vec![75,0],vec![0,0], args, pos_setter),
+                "jumpgeq" => return parse_jump(vec![76,0],vec![0,0], args, pos_setter),
+                "jumpzero" => return parse_jump(vec![77,0],vec![0,0], args, pos_setter),
+                "jumpnzero" => return parse_jump(vec![78,0],vec![0,0], args, pos_setter),
+                "jumpneg" => return parse_jump(vec![79,0],vec![0,0], args, pos_setter),
+                "jumppos" => return parse_jump(vec![80,0],vec![0,0], args, pos_setter),
+                "jumpeven" => return parse_jump(vec![81,0],vec![0,0], args, pos_setter),
+                "jumpodd" => return parse_jump(vec![82,0],vec![0,0], args, pos_setter),
+                "jumpback" => return parse_jump(vec![83,0],vec![0,0], args, pos_setter),
+                "jumpforward" => return parse_jump(vec![84,0],vec![0,0], args, pos_setter),
+                "jumpinf" => return parse_jump(vec![85,0],vec![0,0], args, pos_setter),
+                "jumpninf" => return parse_jump(vec![86,0],vec![0,0], args, pos_setter),
+                "jumpoverflow" => return parse_jump(vec![87,0],vec![0,0], args, pos_setter),
+                "jumpunderflow" => return parse_jump(vec![88,0],vec![0,0], args, pos_setter),
+                "jumpnoverflow" => return parse_jump(vec![89,0],vec![0,0], args, pos_setter),
+                "jumpnunderflow" => return parse_jump(vec![90,0],vec![0,0], args, pos_setter),
+                "jumpnan" => return parse_jump(vec![91,0],vec![0,0], args, pos_setter),
+                "jumpnnan" => return parse_jump(vec![92,0],vec![0,0], args, pos_setter),
+                "jumprmdr" => return parse_jump(vec![93,0],vec![0,0], args, pos_setter),
+                "jumpnrmdr" => return parse_jump(vec![94,0],vec![0,0], args, pos_setter),
+                "call" => return parse_jump(vec![109,0],vec![108,0], args, pos_setter),
                 "ret" => return Ok(vec![110,0]),
                 "pop" => {
                     let mut bytes: Vec<u8> = Vec::new();
@@ -1334,11 +1339,12 @@ fn parse_file(input: &str, offset: Option<(usize,usize)>) -> Result<(Vec<Byte>,u
         Err(_) => return Err("Error parsing file".to_owned()),
     };
 
-    let mut labels = Vec::new();
+    let mut labels = vec!["null".to_owned()];
     let mut segment_labels = vec!["null".to_owned()];
     let mut label_positions = HashMap::new();
+    label_positions.insert("null".to_owned(), 0);
     let mut unknown_labels = HashMap::new();
-    let mut bytes = Vec::new();
+    let mut bytes = vec![0];
     let mut segment_bytes = vec![0];
     let (program_offset, segment_offset) = match offset {
         Some(o) => o,
