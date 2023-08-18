@@ -297,6 +297,7 @@ pub enum Opcode {
     DivIFC,
     /// This instruction will clear all the registers
     Reset,
+    StrLen,
     
     
     
@@ -484,6 +485,7 @@ impl From<u16> for Opcode {
             177 => SubIFC,
             178 => MulIFC,
             179 => DivIFC,
+            180 => StrLen,
             
             
             /* Instructions illegal instruction */

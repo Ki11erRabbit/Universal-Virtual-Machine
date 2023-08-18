@@ -1484,6 +1484,7 @@ impl MachineCore {
             ShiftRightC => self.shiftrightc_opcode()?,
             Reset => self.reset_opcode()?,
             CallArb => self.callarb_opcode()?,
+            StrLen => self.strlen_opcode()?,
             
 
             x => {
@@ -6735,6 +6736,31 @@ impl MachineCore {
         self.push_stack(&self.program_counter.to_le_bytes())?;
         self.program_counter = address as usize;
         
+
+        Ok(())
+    }
+
+    fn strlen_opcode(&mut self) -> SimpleResult {
+        let len_reg = self.get_1_byte();
+        self.advance_by_1_byte();
+        let ptr_reg = self.get_1_byte();
+        self.advance_by_1_byte();
+
+        check_register64!(ptr_reg as usize, len_reg as usize);
+
+        let ptr = self.registers_64[ptr_reg as usize];
+
+        let mut len = 0;
+
+        loop {
+            let byte = self.get_from_memory(ptr + len as u64, 1)?[0];
+            if byte == 0 {
+                break;
+            }
+            len += 1;
+        }
+
+        self.registers_64[len_reg as usize] = len as u64;
 
         Ok(())
     }
