@@ -1195,6 +1195,28 @@ where
                     }
                 },
                 "reset" => return Ok(vec![161,0]),
+                "strlen" => {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut ops: Vec<MoveOps> = Vec::new();
+                    for arg in args {
+                        match arg {
+                            Ast::Register(r) => {
+                                bytes.push(*r);
+                                ops.push(MoveOps::Register);
+                            },
+                            _ => return Err("Expected only registers and strings".to_owned()),
+                        }
+                    }
+
+                    match ops.as_slice() {
+                        [MoveOps::Register, MoveOps::Register] => {
+                            let mut temp = vec![180,0];
+                            temp.append(&mut bytes);
+                            return Ok(temp);
+                        },
+                        _ => return Err("Invalid arguments for strlen".to_owned()),
+                    }
+                },
 
                 instr => return Err(format!("Invalid instruction: {}", instr)),
                 

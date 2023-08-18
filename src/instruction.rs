@@ -1,3 +1,368 @@
+/// # Assembly Instructions
+/// All integer constants are unsigned 8 bit integers as the default
+/// All floating point constants are 32 bit floats as the default
+/// To specify the type the constant should be, use Rust constant syntax
+/// ## Example
+/// ```
+///0.0f64 // This is a 64 bit float
+///0.0f32 // This is a 32 bit float
+///0u8 // This is an 8 bit unsigned integer
+///0u16 // This is a 16 bit unsigned integer
+///```
+/// To specify a register, use the `$` symbol followed by a number to specify the register
+/// ## Example
+/// ```
+///$0 // This is register 0
+///$1 // This is register 1
+///```
+/// This is a table of all the register types and their sizes
+/// | Register     | Size |
+/// |--------------|------|
+/// | 64 bit int   | 16   |
+/// | 128 bit int  | 8    |
+/// | 32 bit float | 8    |
+/// | 64 bit float | 8    |
+///
+///
+/// ## Halt
+/// `halt`
+/// ## No Op
+/// `noop`
+/// ## Move
+/// These instructions are for integers.
+/// ### Dereferencing from a register
+/// `move <size>u8, $<value>, $<pointer>, <offset>i64`
+/// ### Dereferencing a hard coded address
+/// `move <size>u8, $<value>, <address>`
+/// ### Moving a value from a register to memory
+/// `move <size>u8, $<pointer>, $<value>`
+/// ### Loading a constant into a register
+/// `move <size>u8, $<value>, <constant>`
+/// ### Moving between registers
+/// `move $<dest>, $<src>, <size>u8`
+/// ## MoveF
+/// These instructions are for floating point numbers.
+/// ### Dereferencing from a register
+/// `movef <size>u8, $<value>, $<pointer>, <offset>i64`
+/// ### Dereferencing a hard coded address
+/// `movef <size>u8, $<value>, <address>`
+/// ### Moving a value from a register to memory
+/// `movef <size>u8, $<pointer>, $<value>`
+/// ### Loading a constant into a register
+/// `movef <size>u8, $<value>, <constant>`
+/// ### Moving between registers
+/// `movef $<dest>, $<src>, <size>u8`
+/// ## Math and Comparison Instructions
+/// These instructions are for integers.
+/// ### Addition
+/// #### With Registers
+/// `add <size>u8, $<dest>, $<src>`
+/// #### With Constants
+/// `add <size>u8, $<dest>, <constant>`
+/// ### Subtraction
+/// #### With Registers
+/// `sub <size>u8, $<dest>, $<src>`
+/// #### With Constants
+/// `sub <size>u8, $<dest>, <constant>`
+/// ### Multiplication
+/// #### With Registers
+/// `mul <size>u8, $<dest>, $<src>`
+/// #### With Constants
+/// `mul <size>u8, $<dest>, <constant>`
+/// ### Division
+/// #### With Registers
+/// `div <size>u8, $<dest>, $<src>`
+/// #### With Constants
+/// `div <size>u8, $<dest>, <constant>`
+/// ### Equality
+/// #### With Registers
+/// `eq <size>u8, $<a>, $<b>`
+/// #### With Constants
+/// `eq <size>u8, $<a>, <constant>`
+/// ### Inequality
+/// #### With Registers
+/// `neq <size>u8, $<a>, $<b>`
+/// #### With Constants
+/// `neq <size>u8, $<a>, <constant>`
+/// ### Less Than
+/// #### With Registers
+/// `lt <size>u8, $<a>, $<b>`
+/// #### With Constants
+/// `lt <size>u8, $<a>, <constant>`
+/// ### Greater Than
+/// #### With Registers
+/// `gt <size>u8, $<a>, $<b>`
+/// #### With Constants
+/// `gt <size>u8, $<a>, <constant>`
+/// ### Less Than or Equal To
+/// #### With Registers
+/// `leq <size>u8, $<a>, $<b>`
+/// #### With Constants
+/// `leq <size>u8, $<a>, <constant>`
+/// ### Greater Than or Equal To
+/// #### With Registers
+/// `geq <size>u8, $<a>, $<b>`
+/// #### With Constants
+/// `geq <size>u8, $<a>, <constant>`
+/// ## Math and Comparison Instructions
+/// These instructions are for floating point numbers.
+/// ### Addition
+/// #### With Registers
+/// `addf <size>u8, $<dest>, $<src>`
+/// #### With Constants
+/// `addf <size>u8, $<dest>, <constant>`
+/// ### Subtraction
+/// #### With Registers
+/// `subf <size>u8, $<dest>, $<src>`
+/// #### With Constants
+/// `subf <size>u8, $<dest>, <constant>`
+/// ### Multiplication
+/// #### With Registers
+/// `mulf <size>u8, $<dest>, $<src>`
+/// #### With Constants
+/// `mulf <size>u8, $<dest>, <constant>`
+/// ### Division
+/// #### With Registers
+/// `divf <size>u8, $<dest>, $<src>`
+/// #### With Constants
+/// `divf <size>u8, $<dest>, <constant>`
+/// ### Equality
+/// #### With Registers
+/// `eqf <size>u8, $<a>, $<b>`
+/// #### With Constants
+/// `eqf <size>u8, $<a>, <constant>`
+/// ### Inequality
+/// #### With Registers
+/// `neqf <size>u8, $<a>, $<b>`
+/// #### With Constants
+/// `neqf <size>u8, $<a>, <constant>`
+/// ### Less Than
+/// #### With Registers
+/// `ltf <size>u8, $<a>, $<b>`
+/// #### With Constants
+/// `ltf <size>u8, $<a>, <constant>`
+/// ### Greater Than
+/// #### With Registers
+/// `gtf <size>u8, $<a>, $<b>`
+/// #### With Constants
+/// `gtf <size>u8, $<a>, <constant>`
+/// ### Less Than or Equal To
+/// #### With Registers
+/// `leqf <size>u8, $<a>, $<b>`
+/// #### With Constants
+/// `leqf <size>u8, $<a>, <constant>`
+/// ### Greater Than or Equal To
+/// #### With Registers
+/// `geqf <size>u8, $<a>, $<b>`
+/// #### With Constants
+/// `geqf <size>u8, $<a>, <constant>`
+/// ## Bitwise Instructions
+/// These instructions are for integers.
+/// ### And
+/// #### With Registers
+/// `and <size>u8, $<dest>, $<src>`
+/// #### With Constants
+/// `and <size>u8, $<dest>, <constant>`
+/// ### Or
+/// #### With Registers
+/// `or <size>u8, $<dest>, $<src>`
+/// #### With Constants
+/// `or <size>u8, $<dest>, <constant>`
+/// ### Xor
+/// #### With Registers
+/// `xor <size>u8, $<dest>, $<src>`
+/// #### With Constants
+/// `xor <size>u8, $<dest>, <constant>`
+/// ### Not
+/// `not <size>u8, $<dest>`
+/// ### Shift Left
+/// #### With Registers
+/// `shl <size>u8, $<value>, $<amount>`
+/// #### With Constants
+/// `shl <size>u8, $<value>, <amount>u8`
+/// ### Shift Right
+/// #### With Registers
+/// `shr <size>u8, $<value>, $<amount>`
+/// #### With Constants
+/// `shr <size>u8, $<value>, <amount>u8`
+/// ## Math and Comparison Instructions
+/// These instructions are for floating point numbers.
+/// ### Addition
+/// #### With Registers
+/// `addf <size>u8, $<dest>, $<src>`
+/// #### With Constants
+/// `addf <size>u8, $<dest>, <constant>`
+/// ### Subtraction
+/// #### With Registers
+/// `subf <size>u8, $<dest>, $<src>`
+/// #### With Constants
+/// `subf <size>u8, $<dest>, <constant>`
+/// ### Multiplication
+/// #### With Registers
+/// `mulf <size>u8, $<dest>, $<src>`
+/// #### With Constants
+/// `mulf <size>u8, $<dest>, <constant>`
+/// ### Division
+/// #### With Registers
+/// `divf <size>u8, $<dest>, $<src>`
+/// #### With Constants
+/// `divf <size>u8, $<dest>, <constant>`
+/// ### Equality
+/// #### With Registers
+/// `eqf <size>u8, $<a>, $<b>`
+/// #### With Constants
+/// `eqf <size>u8, $<a>, <constant>`
+/// ### Inequality
+/// #### With Registers
+/// `neqf <size>u8, $<a>, $<b>`
+/// #### With Constants
+/// `neqf <size>u8, $<a>, <constant>`
+/// ### Less Than
+/// #### With Registers
+/// `ltf <size>u8, $<a>, $<b>`
+/// #### With Constants
+/// `ltf <size>u8, $<a>, <constant>`
+/// ### Greater Than
+/// #### With Registers
+/// `gtf <size>u8, $<a>, $<b>`
+/// #### With Constants
+/// `gtf <size>u8, $<a>, <constant>`
+/// ### Less Than or Equal To
+/// #### With Registers
+/// `leqf <size>u8, $<a>, $<b>`
+/// #### With Constants
+/// `leqf <size>u8, $<a>, <constant>`
+/// ### Greater Than or Equal To
+/// #### With Registers
+/// `geqf <size>u8, $<a>, $<b>`
+/// #### With Constants
+/// `geqf <size>u8, $<a>, <constant>`
+/// ## Jump Instructions
+/// ### Jump
+/// `jump <constant>u64`
+/// ### Jump If Equal
+/// `jumpeq <constant>u64`
+/// ### Jump If Not Equal
+/// `jumpneq <constant>u64`
+/// ### Jump If Less Than
+/// `jumplt <constant>u64`
+/// ### Jump If Greater Than
+/// `jumpgt <constant>u64`
+/// ### Jump If Less Than or Equal To
+/// `jumpleq <constant>u64`
+/// ### Jump If Greater Than or Equal To
+/// `jumpgeq <constant>u64`
+/// ### Jump If Zero
+/// `jumpzero <constant>u64`
+/// ### Jump If Not Zero
+/// `jumpnzero <constant>u64`
+/// ### Jump If Negative
+/// `jumpneg <constant>u64`
+/// ### Jump If Positive
+/// `jumppos <constant>u64`
+/// ### Jump If Even
+/// `jumpeven <constant>u64`
+/// ### Jump If Odd
+/// `jumpodd <constant>u64`
+/// ### Jump If Infinity
+/// `jumpinf <constant>u64`
+/// ### Jump If Not Infinity
+/// `jumpninf <constant>u64`
+/// ### Jump If NaN
+/// `jumpnan <constant>u64`
+/// ### Jump If Not NaN
+/// `jumpnnan <constant>u64`
+/// ### Jump If Overflow
+/// `jumpoverflow <constant>u64`
+/// ### Jump If Not Overflow
+/// `jumpnoverflow <constant>u64`
+/// ### Jump If Underflow
+/// `jumpunderflow <constant>u64`
+/// ### Jump If Not Underflow
+/// `jumpnunderflow <constant>u64`
+/// ### Jump If there is a Remainder
+/// `jumprmndr <constant>u64`
+/// ### Jump If there is No Remainder
+/// `jumpnrmndr <constant>u64`
+/// ### Jump Back n Instructions
+/// `jumpback <constant>u64`
+/// ### Jump Forward n Instructions
+/// `jumpforward <constant>u64`
+/// ## Call Instructions
+/// ### Call
+/// `call <constant>u64`
+/// ### Call an Arbitrary Address
+/// `callarb $<address>`
+/// ### Return
+/// `ret`
+/// ### Call a Foreign Function
+/// `foreign $<function id>`
+/// ## Stack Instructions
+/// ### Push
+/// #### For integers
+/// `push <size>u8, $<value>`
+/// #### For floats
+/// `pushf <size>u8, $<value>`
+/// ### Pop
+/// #### For integers
+/// `pop <size>u8, $<dest>`
+/// #### For floats
+/// `popf <size>u8, $<dest>`
+/// ## Heap Instructions
+/// ### Malloc
+/// `malloc $<dest ptr>, $<size>`
+/// ### Realloc
+/// `realloc $<dest/src ptr>, $<size>`
+/// ### Free
+/// `free $<ptr>`
+/// ## IO Instructions
+/// ### Read
+/// #### Read Byte
+/// `readbyte $<dest>, $<fd>`
+/// #### Read
+/// `read $<dest ptr>, $<size>, $<fd>`
+/// ### Write
+/// #### Write Byte
+/// `writebyte $<src>, $<fd>`
+/// #### Write
+/// `write $<src ptr>, $<size>, $<fd>`
+/// ### Open
+/// `open $<dest fd>, $<path ptr>, $<size> ,$<flags>`
+/// ### Close
+/// `close $<fd>`
+/// ### Flush
+/// `flush $<fd>`
+/// ## Thread Instructions
+/// ### Thread Spawn
+/// `threadspawn $<core id dest>, $<function addr>`
+/// ### Thread Join
+/// `threadjoin $<core id>`
+/// ### Thread Detach
+/// `threaddetach $<core id>`
+/// ## Random Instructions
+/// ### Random Integer
+/// `rand <size>u8, $<dest>`
+/// ### Random Float
+/// `randf <size>u8, $<dest>`
+/// ## Sleep Instructions
+/// ### With Registers
+/// `sleep $<time sec>, $<scale>`
+/// ### With Constants
+/// `sleep <time sec>u64, <scale>u64`
+/// ## Misc Instructions
+/// ### Clear
+/// resets all the core flags to their default values
+/// `clear`
+/// ### Reset
+/// resets all the registers to zero
+/// `reset`
+/// ### String Length
+/// Gets the length of a string that is null terminated
+/// `strlen $<dest>, $<src ptr>`
+
+
+
+
 
 
 
@@ -178,32 +543,6 @@ pub enum Opcode {
     PopF,
     /// This instruction will push a float onto the stack
     PushF,
-    /* Instructions for accessing the stack */
-    /// This is the DeRefReg instruction for the stack
-    DeRefRegStack,
-    /// This is the DeRef instruction for the stack
-    DeRefStack,
-    /// This is the Move instruction for the stack
-    MoveStack,
-    /// This is the DeRefReg instruction for the stack but with floats
-    DeRefRegStackF,
-    /// This is the DeRef instruction for the stack but with floats
-    DeRefStackF,
-    /// This is the Move instruction for the stack but with floats
-    MoveStackF,
-    /* Instructions for accessing the stack accross cores */
-    /// This is the DeRefReg instruction for the stack but for integers accross cores
-    DeRefRegStackC,
-    /// This is the DeRef instruction for the stack but for integers accross cores
-    DeRefStackC,
-    /// This is the Move instruction for the stack but for integers accross cores
-    MoveStackC,
-    /// This is the DeRefReg instruction for the stack but for floats accross cores
-    DeRefRegStackCF,
-    /// This is the DeRef instruction for the stack but for floats accross cores
-    DeRefStackCF,
-    /// This is the Move instruction for the stack but for floats accross cores
-    MoveStackCF,
     /* Instructions for memory management */
     /// This instruction will allocate a block of memory and return a pointer to it
     Malloc,
@@ -280,8 +619,6 @@ pub enum Opcode {
     Random,
     /// This function generates a random float
     RandomF,
-    /// Reading but rather than writing to the heap it writes to the stack
-    ReadStack,
     AndC,
     OrC,
     XorC,
@@ -419,23 +756,6 @@ impl From<u16> for Opcode {
             112 => Push,
             113 => PopF,
             114 => PushF,
-            /* 115, 116 are reserved for future use */
-            /* Instructions for accessing the stack */
-            117 => DeRefRegStack,
-            118 => DeRefStack,
-            119 => MoveStack,
-            120 => DeRefRegStackF,
-            121 => DeRefStackF,
-            122 => MoveStackF,
-            /* 123, 124, 125 are reserved for future use */
-            /* Instructions for accessing the stack accross cores */
-            126 => DeRefRegStackC,
-            127 => DeRefStackC,
-            128 => MoveStackC,
-            129 => DeRefRegStackCF,
-            130 => DeRefStackCF,
-            131 => MoveStackCF,
-            /* 132, 133, 134 are reserved for future use */
             /* Instructions for memory management */
             135 => Malloc,
             136 => Free,

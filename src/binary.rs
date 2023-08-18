@@ -501,8 +501,8 @@ impl Binary {
                 },
                 AddFC | SubFC | MulFC | DivFC | EqFC | NeqFC | LtFC | GtFC | LeqFC | GeqFC => {
                     match opcode {
-                        AddFC => assembly.push_str("addf "),
-                        SubFC => assembly.push_str("subf "),
+                        AddFC => assembly.push_str("addc "),
+                        SubFC => assembly.push_str("subc "),
                         MulFC => assembly.push_str("mulf "),
                         DivFC => assembly.push_str("divf "),
                         EqFC => assembly.push_str("eqf "),
@@ -761,158 +761,6 @@ impl Binary {
 
                     assembly.push_str(&format!("{}, ${}\n", size, reg));
                 },
-                DeRefRegStack => {
-                    assembly.push_str("movestack ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let reg1 = self.program[read_head];
-                    read_head += 1;
-                    let reg2 = self.program[read_head];
-                    read_head += 1;
-                    let offset = i64::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
-                    read_head += 8;
-
-                    assembly.push_str(&format!("{}, ${}, ${}, {}i64\n", size, reg1, reg2, offset));
-                },
-                DeRefStack => {
-                    assembly.push_str("movestack ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let reg = self.program[read_head];
-                    read_head += 1;
-                    let address = usize::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
-                    read_head += 8;
-
-                    assembly.push_str(&format!("{}, ${}, #{}\n", size, reg, address));
-                },
-                MoveStack => {
-                    assembly.push_str("movestack ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let address_reg = self.program[read_head];
-                    read_head += 1;
-                    let reg = self.program[read_head];
-                    read_head += 1;
-
-                    assembly.push_str(&format!("{}, ${}, ${}\n", size, address_reg, reg));
-                },
-                DeRefRegStackF => {
-                    assembly.push_str("movestackf ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let reg1 = self.program[read_head];
-                    read_head += 1;
-                    let reg2 = self.program[read_head];
-                    read_head += 1;
-                    let offset = i64::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
-                    read_head += 8;
-
-                    assembly.push_str(&format!("{}, ${}, ${}, {}i64\n", size, reg1, reg2, offset));
-                },
-                DeRefStackF => {
-                    assembly.push_str("movestackf ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let reg = self.program[read_head];
-                    read_head += 1;
-                    let address = usize::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
-                    read_head += 8;
-
-                    assembly.push_str(&format!("{}, ${}, #{}\n", size, reg, address));
-                },
-                MoveStackF => {
-                    assembly.push_str("movestackf ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let address_reg = self.program[read_head];
-                    read_head += 1;
-                    let reg = self.program[read_head];
-                    read_head += 1;
-
-                    assembly.push_str(&format!("{}, ${}, ${}\n", size, address_reg, reg));
-                },
-                DeRefRegStackC => {
-                    assembly.push_str("movecstack ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let core_reg = self.program[read_head];
-                    read_head += 1;
-                    let reg1 = self.program[read_head];
-                    read_head += 1;
-                    let reg2 = self.program[read_head];
-                    read_head += 1;
-                    let offset = i64::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
-                    read_head += 8;
-
-                    assembly.push_str(&format!("{}, ${}, ${}, ${}, {}i64\n", size, core_reg, reg1, reg2, offset));
-                },
-                DeRefStackC => {
-                    assembly.push_str("movecstack ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let core_reg = self.program[read_head];
-                    read_head += 1;
-                    let reg = self.program[read_head];
-                    read_head += 1;
-                    let address = usize::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
-                    read_head += 8;
-
-                    assembly.push_str(&format!("{}, ${}, ${}, #{}\n", size, core_reg, reg, address));
-                },
-                MoveStackC => {
-                    assembly.push_str("movecstack ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let core_reg = self.program[read_head];
-                    read_head += 1;
-                    let address_reg = self.program[read_head];
-                    read_head += 1;
-                    let reg = self.program[read_head];
-                    read_head += 1;
-
-                    assembly.push_str(&format!("{}, ${}, ${}, ${}\n", size, core_reg, address_reg, reg));
-                },
-                DeRefRegStackCF => {
-                    assembly.push_str("movecstackf ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let core_reg = self.program[read_head];
-                    read_head += 1;
-                    let reg1 = self.program[read_head];
-                    read_head += 1;
-                    let reg2 = self.program[read_head];
-                    read_head += 1;
-                    let offset = i64::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
-                    read_head += 8;
-
-                    assembly.push_str(&format!("{}, ${}, ${}, ${}, {}i64\n", size, core_reg, reg1, reg2, offset));
-                },
-                DeRefStackCF => {
-                    assembly.push_str("movecstackf ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let core_reg = self.program[read_head];
-                    read_head += 1;
-                    let reg = self.program[read_head];
-                    read_head += 1;
-                    let address = usize::from_le_bytes(self.program[read_head..read_head + 8].try_into().unwrap());
-                    read_head += 8;
-
-                    assembly.push_str(&format!("{}, ${}, ${}, #{}\n", size, core_reg, reg, address));
-                },
-                MoveStackCF => {
-                    assembly.push_str("movecstackf ");
-                    let size = self.program[read_head];
-                    read_head += 1;
-                    let core_reg = self.program[read_head];
-                    read_head += 1;
-                    let address_reg = self.program[read_head];
-                    read_head += 1;
-                    let reg = self.program[read_head];
-                    read_head += 1;
-
-                    assembly.push_str(&format!("{}, ${}, ${}, ${}\n", size, core_reg, address_reg, reg));
-                },
                 Malloc => {
                     assembly.push_str("malloc ");
                     let reg1 = self.program[read_head];
@@ -1143,7 +991,7 @@ impl Binary {
                     assembly.push_str(&format!("{}u64, {}u64\n", num, scale));
                 },
                 SleepReg => {
-                    assembly.push_str("sleepreg ");
+                    assembly.push_str("sleep ");
                     let reg = self.program[read_head];
                     read_head += 1;
                     let scale_reg = self.program[read_head];
@@ -1169,20 +1017,20 @@ impl Binary {
 
                     assembly.push_str(&format!("{}, ${}\n", size, reg));
                 },
-                ReadStack => {
-                    assembly.push_str("readstack ");
+                Reset => {
+                    assembly.push_str("reset\n");
+                },
+                StrLen => {
+                    assembly.push_str("strlen ");
                     let reg1 = self.program[read_head];
                     read_head += 1;
                     let reg2 = self.program[read_head];
                     read_head += 1;
-                    let reg3 = self.program[read_head];
-                    read_head += 1;
 
-                    assembly.push_str(&format!("${}, ${}, ${}\n", reg1, reg2, reg3));
+                    assembly.push_str(&format!("${}, ${}\n", reg1, reg2));
                 },
-                Reset => {
-                    assembly.push_str("reset\n");
-                },
+
+                
                 Illegal => {
                     assembly.push_str("illegal\n");
                 },
