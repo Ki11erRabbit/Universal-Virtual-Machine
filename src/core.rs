@@ -6225,13 +6225,13 @@ impl MachineCore {
     }
 
     fn open_opcode(&mut self) -> SimpleResult {
+        let fd_reg = self.get_1_byte();
+        self.advance_by_1_byte();
         let pointer_reg = self.get_1_byte();
         self.advance_by_1_byte();
         let size_reg = self.get_1_byte();
         self.advance_by_1_byte();
         let flag_reg = self.get_1_byte();
-        self.advance_by_1_byte();
-        let fd_reg = self.get_1_byte();
         self.advance_by_1_byte();
 
         check_register64!(pointer_reg as usize, size_reg as usize, flag_reg as usize, fd_reg as usize);

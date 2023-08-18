@@ -863,7 +863,7 @@ impl Binary {
                     assembly.push_str(&format!("${}, ${}\n", reg, id_reg));
                 },
                 Remainder => {
-                    assembly.push_str("remainder ");
+                    assembly.push_str("rmndr ");
                     let size = self.program[read_head];
                     read_head += 1;
                     let reg = self.program[read_head];

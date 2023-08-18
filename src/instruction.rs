@@ -15,14 +15,39 @@
 ///$0 // This is register 0
 ///$1 // This is register 1
 ///```
-/// This is a table of all the register types and their sizes
-/// | Register     | Size |
-/// |--------------|------|
-/// | 64 bit int   | 16   |
-/// | 128 bit int  | 8    |
-/// | 32 bit float | 8    |
-/// | 64 bit float | 8    |
+/// To specify an address, use the `#` symbol followed by a number to specify the address.
+/// ## Example
+/// ```
+///#0 // This is address 0
+///#1 // This is address 1
+///```
+/// Labels can be used in the place of constants in order to make the assembler figure out an address.
+/// ## Example
+/// ```
+/// move 64, $0, ref_table
+///```
 ///
+/// This is a table of all the register types and their sizes
+///
+/// | Register       | Size |
+/// |----------------|------|
+/// | 64 bit int     | 16   |
+/// |----------------|------|
+/// | 128 bit int    | 8    |
+/// |----------------|------|
+/// | 32 bit float   | 8    |
+/// |----------------|------|
+/// | 64 bit float   | 8    |
+///
+/// This the value in the angle brackets represents the name of the value in the instruction.
+/// ## Example
+///`add <size>u8, $<dest>, $<src>`
+///
+///`<size>` is the size of the operation. The trailing `u8` is used to specify the size of the constant.
+///
+///`<dest>` is the destination register and in this case one of the operands.
+///
+///`<src>` is the source register and in this case the other operand.
 ///
 /// ## Halt
 /// `halt`
@@ -237,6 +262,49 @@
 /// `geqf <size>u8, $<a>, $<b>`
 /// #### With Constants
 /// `geqf <size>u8, $<a>, <constant>`
+/// ## Math instructions between floating point and integer
+/// ### Integer to Floating Point
+/// #### Addition
+/// ##### With Registers
+/// `addfi <size>u8, $<dest>, $<src>`
+/// ##### With Constants
+/// `addfi <size>u8, $<dest>, <constant>`
+/// #### Subtraction
+/// ##### With Registers
+/// `subfi <size>u8, $<dest>, $<src>`
+/// ##### With Constants
+/// `subfi <size>u8, $<dest>, <constant>`
+/// #### Multiplication
+/// ##### With Registers
+/// `mulf <size>u8, $<dest>, $<src>`
+/// ##### With Constants
+/// `mulf <size>u8, $<dest>, <constant>`
+/// #### Division
+/// ##### With Registers
+/// `divfi <size>u8, $<dest>, $<src>`
+/// ##### With Constants
+/// `divfi <size>u8, $<dest>, <constant>`
+/// ### Floating Point to Integer
+/// #### Addition
+/// ##### With Registers
+/// `addif <size>u8, $<dest>, $<src>`
+/// ##### With Constants
+/// `addif <size>u8, $<dest>, <constant>`
+/// #### Subtraction
+/// ##### With Registers
+/// `subif <size>u8, $<dest>, $<src>`
+/// ##### With Constants
+/// `subif <size>u8, $<dest>, <constant>`
+/// #### Multiplication
+/// ##### With Registers
+/// `mulif <size>u8, $<dest>, $<src>`
+/// ##### With Constants
+/// `mulif <size>u8, $<dest>, <constant>`
+/// #### Division
+/// ##### With Registers
+/// `divif <size>u8, $<dest>, $<src>`
+/// ##### With Constants
+/// `divif <size>u8, $<dest>, <constant>`
 /// ## Jump Instructions
 /// ### Jump
 /// `jump <constant>u64`
@@ -320,12 +388,12 @@
 /// #### Read Byte
 /// `readbyte $<dest>, $<fd>`
 /// #### Read
-/// `read $<dest ptr>, $<size>, $<fd>`
+/// `read $<fd>, $<dest ptr>, $<amount>`
 /// ### Write
 /// #### Write Byte
-/// `writebyte $<src>, $<fd>`
+/// `writebyte $<fd>, $<src>`
 /// #### Write
-/// `write $<src ptr>, $<size>, $<fd>`
+/// `write $<fd>, $<src ptr>, $<length>`
 /// ### Open
 /// `open $<dest fd>, $<path ptr>, $<size> ,$<flags>`
 /// ### Close
@@ -352,13 +420,20 @@
 /// ## Misc Instructions
 /// ### Clear
 /// resets all the core flags to their default values
+///
 /// `clear`
 /// ### Reset
 /// resets all the registers to zero
+///
 /// `reset`
 /// ### String Length
 /// Gets the length of a string that is null terminated
+///
 /// `strlen $<dest>, $<src ptr>`
+/// ### Remainder
+/// Gets the remainder of a division operation
+///
+/// `rmndr $<dest>, $<src>`
 
 
 
