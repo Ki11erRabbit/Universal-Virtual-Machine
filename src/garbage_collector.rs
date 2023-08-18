@@ -43,8 +43,8 @@ impl Core for GarbageCollector {
         self.core.recv_message()
     }
 
-    fn wait_for_interrupt(&mut self, int_id: usize) -> SimpleResult {
-        self.core.wait_for_interrupt(int_id)
+    fn wait_for_interrupt(&mut self) -> SimpleResult {
+        self.core.wait_for_interrupt()
     }
 
     fn check_messages(&mut self) -> SimpleResult {

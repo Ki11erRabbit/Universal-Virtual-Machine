@@ -31,7 +31,6 @@ pub type Pointer = u64;
 /// The reason why this isn't signed or 32 bits is because we have more flavorful errors than C.
 pub type FileDescriptor = u64;
 
-
 /// A foreign function that can be called from the virtual machine
 pub type ForeignFunction = Arc<fn(&mut dyn Core, Option<Arc<RwLock<dyn Any + Send + Sync>>>)-> SimpleResult>;
 /// The argument to a foreign function
@@ -233,7 +232,7 @@ pub trait Core {
 
     fn check_messages(&mut self) -> SimpleResult;
 
-    fn wait_for_interrupt(&mut self, int_id: usize) -> SimpleResult;
+    fn wait_for_interrupt(&mut self) -> SimpleResult;
 
     fn check_program_counter(&self) -> CoreResult<bool>;
 

@@ -674,7 +674,12 @@ macro_rules! float_c_opcode {
     
 }
 
-
+#[derive(Debug,PartialEq)]
+pub enum InterruptWaiting {
+    False,
+    True(usize),
+    Any,
+}
 
 pub const REGISTER_64_COUNT: usize = 16;
 pub const REGISTER_128_COUNT: usize = 8;
@@ -904,7 +909,7 @@ pub struct MachineCore {
     /// This is a set of all the threads that this core has spawned
     pub threads: HashSet<CoreId>,
     pub core_id: usize,
-    pub waiting_for_interrupt: bool,
+    pub waiting_for_interrupt: InterruptWaiting,
 }
 
 impl Core for MachineCore {
@@ -918,7 +923,7 @@ impl Core for MachineCore {
         while !is_done {
             self.check_messages()?;
 
-            self.wait_for_interrupt(0)?;
+            self.wait_for_interrupt()?;
             
             is_done = self.execute_instruction()?;
         }
@@ -1006,27 +1011,24 @@ impl Core for MachineCore {
         Ok(())
     }
 
-    fn wait_for_interrupt(&mut self, int_id: usize) -> SimpleResult {
-        if !self.waiting_for_interrupt {
-            return Ok(())
-        }
-        
-        let msg = self.recv_channel.as_ref().expect("Recieve channel was not initialized").recv();
-        match msg {
-            Ok(message) => {
-                match message {
-                    Message::Interrupt(int_id) => {
-                        self.handle_interrupt(int_id)?;
-                    },
-                    _ => {},
-                }
-                
-            },
-            Err(_) => return Err(Fault::MachineCrash("Could not receive message")),
-        }
+    fn wait_for_interrupt(&mut self) -> SimpleResult {
+        loop {
+            let msg = self.recv_channel.as_ref().expect("Recieve channel was not initialized").recv();
+            match msg {
+                Ok(message) => {
+                    match message {
+                        Message::Interrupt(int_id) => {
+                            if self.handle_interrupt(int_id)? {
+                                return Ok(())
+                            }
+                        },
+                        _ => {},
+                    }
 
-        self.waiting_for_interrupt = true;
-        Ok(())
+                },
+                Err(_) => return Err(Fault::MachineCrash("Could not receive message")),
+            }
+        }
     }
 
     #[inline]
@@ -1137,7 +1139,7 @@ impl MachineCore {
             recv_channel: None,
             threads: HashSet::new(),
             core_id: 0,
-            waiting_for_interrupt: false,
+            waiting_for_interrupt: InterruptWaiting::False,
             
         }
     }
@@ -1172,12 +1174,25 @@ impl MachineCore {
         Ok(())
     }
 
-    fn handle_interrupt(&mut self, int_id: usize) -> SimpleResult {
+    fn handle_interrupt(&mut self, int_id: usize) -> CoreResult<bool> {
+        use InterruptWaiting::*;
         info!("Core {}: Handling Interrupt {}", self.core_id, int_id);
 
-        self.waiting_for_interrupt = false;
+        match self.waiting_for_interrupt {
+            False => Ok(true),
+            True(id) => {
+                if id == int_id {
+                    self.waiting_for_interrupt = False;
+                    return Ok(true);
+                }
+                return Ok(false);
+            },
+            Any => {
+                self.waiting_for_interrupt = False;
+                return Ok(true);
+            },
+        }
         
-        Ok(())
     }
 
     fn get_heap(&mut self, address: Pointer, size: u64) -> CoreResult<Vec<u8>> {
@@ -1402,7 +1417,10 @@ impl MachineCore {
         debug!("Core {}: Executing opcode {:?} at {}", self.core_id, opcode, self.program_counter -2);
 
         match opcode {
-            Halt | NoOp => return Ok(true),
+            Halt => {
+                self.waiting_for_interrupt = InterruptWaiting::True(0);
+            }
+            NoOp => return Ok(false),
             Set => self.set_opcode()?,
             DeRef => self.deref_opcode()?,
             Move => self.move_opcode()?,
