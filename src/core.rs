@@ -904,6 +904,7 @@ pub struct MachineCore {
     /// This is a set of all the threads that this core has spawned
     pub threads: HashSet<CoreId>,
     pub core_id: usize,
+    pub waiting_for_interrupt: bool,
 }
 
 impl Core for MachineCore {
@@ -916,6 +917,8 @@ impl Core for MachineCore {
         let mut is_done = false;
         while !is_done {
             self.check_messages()?;
+
+            self.wait_for_interrupt(0)?;
             
             is_done = self.execute_instruction()?;
         }
@@ -958,6 +961,10 @@ impl Core for MachineCore {
                         self.prepare_for_collection()?;
                         return self.recv_message();
                     },
+                    Message::Interrupt(int_id) => {
+                        self.handle_interrupt(int_id)?;
+                        return self.recv_message();
+                    },
                     _ => Ok(message),
                 }
                 
@@ -977,6 +984,9 @@ impl Core for MachineCore {
                     Message::CollectGarbage => {
                         self.prepare_for_collection()?;
                     },
+                    Message::Interrupt(int_id) => {
+                        self.handle_interrupt(int_id)?;
+                    },
 
                     message => {
                         error!("Core {}: Unimplemented message: {:?}", self.core_id, message);
@@ -993,6 +1003,29 @@ impl Core for MachineCore {
 
             }
         }
+        Ok(())
+    }
+
+    fn wait_for_interrupt(&mut self, int_id: usize) -> SimpleResult {
+        if !self.waiting_for_interrupt {
+            return Ok(())
+        }
+        
+        let msg = self.recv_channel.as_ref().expect("Recieve channel was not initialized").recv();
+        match msg {
+            Ok(message) => {
+                match message {
+                    Message::Interrupt(int_id) => {
+                        self.handle_interrupt(int_id)?;
+                    },
+                    _ => {},
+                }
+                
+            },
+            Err(_) => return Err(Fault::MachineCrash("Could not receive message")),
+        }
+
+        self.waiting_for_interrupt = true;
         Ok(())
     }
 
@@ -1104,9 +1137,11 @@ impl MachineCore {
             recv_channel: None,
             threads: HashSet::new(),
             core_id: 0,
+            waiting_for_interrupt: false,
             
         }
     }
+
 
     fn prepare_for_collection(&mut self) -> SimpleResult {
         info!("Core {}: Preparing for garbage collection", self.core_id);
@@ -1133,6 +1168,14 @@ impl MachineCore {
             }
         }
         self.pop_stack(reg_memory.len() * 8)?;
+        
+        Ok(())
+    }
+
+    fn handle_interrupt(&mut self, int_id: usize) -> SimpleResult {
+        info!("Core {}: Handling Interrupt {}", self.core_id, int_id);
+
+        self.waiting_for_interrupt = false;
         
         Ok(())
     }

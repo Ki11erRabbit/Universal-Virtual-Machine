@@ -95,6 +95,7 @@ pub enum Message {
     StackPointer(Pointer),
     StackPointers(Vec<Pointer>),
     RetryMessage(Box<Message>),
+    Interrupt(usize),
 }
 
 impl fmt::Debug for Message {
@@ -127,6 +128,7 @@ impl fmt::Debug for Message {
             Message::StackPointer(pointer) => write!(f, "StackPointer({})", pointer),
             Message::StackPointers(pointers) => write!(f, "StackPointers({:?})", pointers),
             Message::RetryMessage(message) => write!(f, "RetryMessage({:?})", message),
+            Message::Interrupt(interrupt) => write!(f, "Interrupt({})", interrupt),
         }
     }
 }
@@ -230,6 +232,8 @@ pub trait Core {
     fn recv_message(&mut self) -> CoreResult<Message>;
 
     fn check_messages(&mut self) -> SimpleResult;
+
+    fn wait_for_interrupt(&mut self, int_id: usize) -> SimpleResult;
 
     fn check_program_counter(&self) -> CoreResult<bool>;
 

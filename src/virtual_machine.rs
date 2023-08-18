@@ -37,6 +37,8 @@ pub struct MachineOptions {
     pub stack_size: usize,
     /// A scaler value for the stack size
     pub stack_scale: usize,
+    /// The nth cycle for interrupts to be sent out
+    pub interrupt_cycle: usize,
 }
 
 impl MachineOptions {
@@ -253,13 +255,14 @@ impl Machine {
     pub fn new() -> Machine {
         Machine {
             options: MachineOptions {
-                cycle_size: 1,
+                cycle_size: 5,
                 join_thread_cycle: 0,
                 defrag_cycle: 0,
                 gc_time: None,
                 gc_program: None,
                 stack_size: 1,
                 stack_scale: 512,
+                interrupt_cycle: 5,
             },
             data_segment: Arc::new(Vec::new()),
             stack: Arc::new(Vec::new()),
@@ -338,11 +341,14 @@ impl Machine {
             self.check_main_core(&mut main_thread_done);
             self.check_messages();
             self.replenish_cores();
-            if self.options.join_thread_cycle == cycle_count {
+            if cycle_count % self.options.join_thread_cycle == 0 {
                 self.join_joinable_threads();
             }
-            if self.options.defrag_cycle == cycle_count {
+            if cycle_count % self.options.defrag_cycle == 0 {
                 self.heap.write().unwrap().defrag_memory();
+            }
+            if cycle_count % self.options.interrupt_cycle == 0 {
+                self.interrupt_cores();
             }
 
             if main_thread_done {
@@ -402,6 +408,14 @@ impl Machine {
         }
         self.core_threads.clear();
         self.channels.borrow_mut().clear();
+    }
+
+    fn interrupt_cores(&mut self) {
+        for pair in self.channels.borrow().iter() {
+            if let Some((sender, _)) = pair {
+                sender.send(Message::Interrupt(0)).unwrap();
+            }
+        }
     }
 
     fn replenish_cores(&mut self) {
