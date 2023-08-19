@@ -849,6 +849,7 @@ impl fmt::Debug for MachineCore {
 }
 
 /// A struct that represents a processor core.
+/// This struct contains all the registers and flags for a processor core.
 pub struct MachineCore {
     /// 64-bit registers
     pub registers_64: [u64; REGISTER_64_COUNT],
